@@ -1,0 +1,30 @@
+{
+  "project": "Compass",
+  "vision": "US Navy/ONR S&T Portfolio Intelligence demo — synthetic-data platform for a recorded L 11.3/11.4 government demonstration.",
+  "focus": "Build is complete across all modules (including deploy tooling); awaiting a live AWS deploy + rehearsal before recording day.",
+  "stages": [
+    {"id": "design", "name": "Design — interface contracts locked (docs/CONTRACTS.md, template.yaml)", "status": "done", "note": "DB schema, API routes, RLS personas, and naming all locked before parallel build"},
+    {"id": "backend", "name": "Backend — Lambdas, state machine, Aurora/RLS, Cognito, Bedrock wiring", "status": "done", "note": "16/16 CONTRACTS.md routes implemented and routed; sam validate --lint clean"},
+    {"id": "frontend", "name": "Frontend — Next.js 15 static export, mock + live modes", "status": "done", "note": "pnpm build passes, 25 pages generated to frontend/out/, strict TS clean"},
+    {"id": "integration-review", "name": "Integration review — contract audit, offline verification, defect fixes", "status": "done", "note": "docs/BUILD_REPORT.md: 4 live-mode seam defects found and fixed (dashboard route, /chat shape, analytics trend shape, Cognito callback URL)"},
+    {"id": "deploy-tooling", "name": "Deploy tooling — scripts/*.sh, seed, user enrollment, status dashboard", "status": "done", "note": "the one previously-failed module; scripts/deploy.sh, migrate.sh, upload-to-cloudfront.sh, build-frontend.sh, seed.sh, enroll_users.sh, status_dashboard.py all added and syntax-checked"},
+    {"id": "deploy", "name": "Deploy — live AWS stand-up, migrate, seed, enroll, rehearse", "status": "pending", "note": "nothing below can be verified offline (docs/BUILD_REPORT.md §4) — needs the Day-0 human gates cleared first"}
+  ],
+  "waiting_on_human": [
+    {"what": "AWS admin-capable credentials for a us-east-1 account (WAF WebACL is CLOUDFRONT-scope, pinned to us-east-1)", "who": "deploy operator", "artifact": "samconfig.toml.template"},
+    {"what": "Enable Bedrock model access for amazon.nova-lite-v1:0 and amazon.titan-embed-text-v2:0 in the account (console opt-in, not scriptable)", "who": "deploy operator", "artifact": "docs/RUNBOOK.md"},
+    {"what": "Complete TOTP MFA enrollment (QR/secret scan) for poweruser@compass.demo and viewer@compass.demo — MfaConfiguration is ON, a human must scan the code", "who": "deploy operator", "artifact": "scripts/enroll_users.sh"}
+  ],
+  "checks": [
+    {"name": "sam validate", "command": "sam validate --lint 2>&1 | tail -1"},
+    {"name": "scripts bash -n", "command": "for f in scripts/*.sh; do bash -n \"$f\" || exit 1; done; echo 'all scripts syntax-ok'"}
+  ],
+  "log": [
+    {"date": "2026-08-09", "entry": "Contracts locked (docs/CONTRACTS.md, template.yaml Outputs) before parallel build across backend, frontend, and infra."},
+    {"date": "2026-08-10", "entry": "Backend (16/16 routes), frontend (25-page static export), and integration review complete; docs/BUILD_REPORT.md fixed 4 live-mode contract seams (dashboard routing, /chat shape, analytics trend shape, Cognito callback URL)."},
+    {"date": "2026-08-10", "entry": "Deploy-tooling module completed: scripts/deploy.sh, migrate.sh, upload-to-cloudfront.sh, build-frontend.sh, seed.sh, enroll_users.sh, and this status dashboard. All other modules were already done — this closed the last gap."},
+    {"date": "2026-08-22", "entry": "Feature freeze — no further code changes; only deploy/rehearsal/recording work after this date."},
+    {"date": "2026-08-27", "entry": "Recording day — single-take demonstration per docs/DEMO_SCRIPT.md."},
+    {"date": "2026-08-28", "entry": "Submission deadline."}
+  ]
+}

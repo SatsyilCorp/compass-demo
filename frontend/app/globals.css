@@ -1,0 +1,205 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   COMPASS — S&T PORTFOLIO INTELLIGENCE — DESIGN TOKENS
+   ----------------------------------------------------------------------------
+   USWDS-ish federal look, Navy/ONR-branded: a deep Navy blue primary (the
+   service's own color), a brushed-brass secondary accent, and USWDS's cool
+   neutral gray scale. Restrained radii and shadows — credible and
+   government-grade, not a bespoke consumer-SaaS look.
+
+   All components draw ONLY from these semantic tokens (--color-bg,
+   --color-surface, --color-text*, --color-accent*, --color-gov-*) so the
+   palette is a single edit point.
+   ============================================================================ */
+
+@theme {
+  /* ---- Ground + elevation --------------------------------------------- */
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1f4;
+  --color-border: #dfe3e8;
+  --color-border-2: #eceff2;
+  --color-border-strong: #c3cad2;
+
+  --color-text: #1b2430;
+  --color-text-strong: #0d141d;
+  --color-text-muted: #57626f;
+  --color-text-subtle: #6b7684;
+
+  /* ---- Navy primary (the Department of the Navy's own blue) ----------- */
+  --color-gov-primary: #0a2540;
+  --color-gov-primary-dark: #071a2e;
+  --color-gov-primary-darker: #04111d;
+  --color-gov-primary-light: #c3d3e3;
+  --color-gov-primary-lighter: #e9eff5;
+  --color-gov-primary-vivid: #123a63;
+
+  /* ---- Brass/gold secondary accent (Navy service colors) --------------- */
+  --color-gov-secondary: #a8842f;
+  --color-gov-secondary-dark: #7d6222;
+  --color-gov-secondary-light: #f3ead2;
+
+  /* ---- Semantic accent aliases (used by chrome + interactive elements) - */
+  --color-accent: #0a2540;
+  --color-accent-ink: #071a2e;
+  --color-accent-soft: #e9eff5;
+  --color-gold: #a8842f;
+  --color-gold-ink: #7d6222;
+  --color-gold-soft: #f3ead2;
+
+  /* ---- Status palette (USWDS-restrained) -------------------------------- */
+  --color-success: #16794f;
+  --color-success-dark: #0e5a3a;
+  --color-success-soft: #e3f3ea;
+  --color-warn: #9a6a12;
+  --color-warn-dark: #74500d;
+  --color-warn-soft: #faf0d9;
+  --color-danger: #a3312a;
+  --color-danger-dark: #7c231d;
+  --color-danger-soft: #f7e3e1;
+  --color-info: #205a8a;
+  --color-info-soft: #e4eef8;
+
+  /* Severity ramp used by the anomalies surfaces (element 6). */
+  --color-severity-low: #56626e;
+  --color-severity-medium: #9a6a12;
+  --color-severity-high: #b5541f;
+  --color-severity-critical: #a3312a;
+
+  --color-link: #0a2540;
+  --color-action-bg: #0a2540;
+  --color-action-bg-hover: #123a63;
+
+  /* ---- Type scale --------------------------------------------------------
+     Public Sans (USWDS's own typeface) end to end — the credible federal
+     look. Source Code Pro for figures, run ids, and grant numbers. */
+  --font-sans: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-mono-compass), "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  /* ---- Radius / shadow — small radii, subtle elevation (federal, not SaaS) */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 9px;
+  --radius-xl: 9px;
+  --shadow-soft: 0 1px 2px rgba(13, 20, 29, 0.06), 0 1px 1px rgba(13, 20, 29, 0.04);
+  --shadow-card: 0 1px 2px rgba(13, 20, 29, 0.06), 0 3px 8px -3px rgba(13, 20, 29, 0.10);
+  --shadow-elevated: 0 6px 16px -4px rgba(10, 37, 64, 0.22), 0 2px 4px rgba(13, 20, 29, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   Semantic utility aliases — the vocabulary every page/component reaches for.
+   --------------------------------------------------------------------------- */
+@layer utilities {
+  .bg-bg { background-color: var(--color-bg); }
+  .bg-surface { background-color: var(--color-surface); }
+  .bg-surface-2 { background-color: var(--color-surface-2); }
+  .text-text { color: var(--color-text); }
+  .text-text-strong { color: var(--color-text-strong); }
+  .text-text-muted { color: var(--color-text-muted); }
+  .text-text-subtle { color: var(--color-text-subtle); }
+  .text-link { color: var(--color-link); }
+  .text-danger { color: var(--color-danger); }
+  .text-warn { color: var(--color-warn-dark); }
+  .text-success { color: var(--color-success-dark); }
+  .text-info { color: var(--color-info); }
+  .bg-danger-soft { background-color: var(--color-danger-soft); }
+  .bg-warn-soft { background-color: var(--color-warn-soft); }
+  .bg-success-soft { background-color: var(--color-success-soft); }
+  .bg-info-soft { background-color: var(--color-info-soft); }
+  .border-border { border-color: var(--color-border); }
+  .border-border-2 { border-color: var(--color-border-2); }
+  .border-danger { border-color: var(--color-danger); }
+  .border-warn { border-color: var(--color-warn); }
+  .border-success { border-color: var(--color-success); }
+  .bg-action { background-color: var(--color-action-bg); }
+  .bg-action-hover:hover { background-color: var(--color-action-bg-hover); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .shadow-elevated { box-shadow: var(--shadow-elevated); }
+}
+
+html,
+body {
+  font-family: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.01em;
+  color: var(--color-text-strong);
+}
+
+code, kbd, .font-mono {
+  font-family: var(--font-mono-compass), "SF Mono", Menlo, monospace;
+}
+
+*:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--color-gov-primary);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Compass brand surfaces used by the shell.
+   --------------------------------------------------------------------------- */
+
+/* Navy sidebar rail — flat Navy field, subtle top-to-bottom deepen. */
+.compass-rail {
+  background: linear-gradient(180deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 100%);
+}
+
+/* Landing page atmosphere — deep Navy field with a restrained brass aura. */
+.compass-aurora {
+  background:
+    radial-gradient(65% 55% at 82% 10%, rgba(168, 132, 47, 0.14) 0%, transparent 55%),
+    linear-gradient(160deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 60%, var(--color-gov-primary-darker) 100%);
+}
+.compass-grid-overlay {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* The persistent "Prototype · synthetic data" marker in the chrome. */
+.compass-proto-pill {
+  background: var(--color-warn-soft);
+  border: 1px solid rgba(154, 106, 18, 0.4);
+  color: var(--color-warn-dark);
+}
+
+/* Skeleton loader shimmer. */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-surface-2) 0%, var(--color-border) 50%, var(--color-surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes compass-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.compass-rise {
+  animation: compass-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

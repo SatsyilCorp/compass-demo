@@ -1,0 +1,2 @@
+# No function-specific dependencies: psycopg2 comes from the CommonLayer,
+# boto3/botocore ship with the Lambda runtime.

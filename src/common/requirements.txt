@@ -1,0 +1,11 @@
+# CommonLayer dependencies — installed into python/ by `sam build`
+# (Metadata.BuildMethod: python3.12 on the CommonLayer resource).
+#
+# Keep this lean: boto3/botocore ship with the Lambda runtime and are
+# deliberately NOT pinned here. Heavy per-function deps (e.g. pyarrow for
+# parquet export, sklearn for topic modeling) belong in that function's own
+# requirements.txt, not in the shared layer.
+#
+# The target is Lambda linux/arm64. On macOS, run `sam build --use-container`
+# so pip resolves manylinux aarch64 wheels instead of darwin ones.
+psycopg2-binary==2.9.10

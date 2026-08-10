@@ -1,0 +1,7 @@
+# Per-function dependencies for the RMF artifact generator.
+#
+# PyYAML is required to parse template.yaml. CloudFormation's short-form
+# intrinsics (!Ref, !Sub, !GetAtt) are custom YAML tags, so app.py registers a
+# multi-constructor on a SafeLoader subclass; that needs a real YAML parser and
+# the Lambda Python runtime does not ship one. Pure-Python wheel, ~800 KB.
+PyYAML==6.0.2
