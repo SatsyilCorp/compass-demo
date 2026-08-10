@@ -527,6 +527,7 @@ Resources:
       RetentionPolicy: Retain
     Metadata:
       BuildMethod: makefile
+      BuildArchitecture: arm64
 
   # ===========================================================================
   # (7) Data plane — raw landing bucket (EventBridge notifications on) and the
