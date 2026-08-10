@@ -1,0 +1,37 @@
+# --- Secrets & credentials (NEVER commit — evaluators have read access) ---
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+samconfig.toml
+samconfig-*.toml
+aws.json
+credentials
+**/secrets/**
+
+# --- Build artifacts ---
+.aws-sam/
+frontend/out/
+frontend/.next/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# --- Local / OS ---
+.DS_Store
+*.log
+.venv/
+venv/
+.idea/
+.vscode/
+
+# --- Data (mock data is committed under seed/; real data never is) ---
+*.parquet
+!seed/**/*.parquet
+scratch/
+tmp/
