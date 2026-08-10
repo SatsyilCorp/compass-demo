@@ -35,3 +35,6 @@ venv/
 !seed/**/*.parquet
 scratch/
 tmp/
+
+# Generated status page (contains local paths) — regenerate with scripts/status_dashboard.py
+dashboard.html
