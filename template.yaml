@@ -338,7 +338,7 @@ Resources:
     Properties:
       DBClusterIdentifier: !Sub "${AWS::StackName}-db"
       Engine: aurora-postgresql
-      EngineVersion: "16.4"
+      EngineVersion: "16.9"
       DatabaseName: compass
       MasterUsername: compass_admin
       ManageMasterUserPassword: true
