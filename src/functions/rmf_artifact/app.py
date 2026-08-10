@@ -72,8 +72,13 @@ log = logging.getLogger()
 log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 HERE = Path(__file__).resolve().parent
-# src/functions/rmf_artifact/app.py -> repo root
-REPO_TEMPLATE = HERE.parents[2] / "template.yaml"
+# src/functions/rmf_artifact/app.py -> repo root, when running from a checkout.
+# In Lambda the file is at /var/task/app.py, which has ONE parent, so indexing
+# parents[2] at import time raised IndexError and the module failed to load
+# before the handler ever ran. Resolve defensively and fall back to the copy
+# bundled next to app.py at build time.
+_parents = HERE.parents
+REPO_TEMPLATE = (_parents[2] / "template.yaml") if len(_parents) > 2 else (HERE / "template.yaml")
 BUNDLED_TEMPLATE = HERE / "template.yaml"
 
 ARTIFACT_TITLE = "Compass — Ports, Protocols & Services and System Topology"

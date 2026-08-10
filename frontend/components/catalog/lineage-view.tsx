@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, GitBranch, TriangleAlert } from "lucide-react";
 import { AppShell } from "@/components/shell/app-shell";
 import { PageHeader } from "@/components/shell/page-header";
@@ -13,13 +13,21 @@ import { LineageGraph } from "./lineage-graph";
 import { formatInt } from "./format";
 
 /**
- * Element 4 — end-to-end lineage graph for one dataset (batch). Client
- * component rendered by app/catalog/[id]/page.tsx (a Server Component that
- * owns generateStaticParams — output:'export' requires it).
+ * Element 4 — end-to-end lineage graph for one dataset (batch).
+ *
+ * Batch id resolution order:
+ *   1. `?batch=<id>` query param  — served by the STATIC /catalog/lineage/ page.
+ *      This is the path the catalog table links to, and the only one that works
+ *      for a batch ingested AFTER the frontend was built (e.g. a live demo
+ *      drop): `output: 'export'` pre-renders a fixed set of dynamic segments,
+ *      so a brand-new id under /catalog/<id>/ would 404 at CloudFront.
+ *   2. `/catalog/<id>/` path segment — retained for the pre-rendered batches
+ *      and any existing bookmarks.
  */
 export function LineageView() {
   const params = useParams<{ id: string }>();
-  const id = params?.id ?? "";
+  const searchParams = useSearchParams();
+  const id = searchParams?.get("batch") || params?.id || "";
 
   const [entry, setEntry] = useState<CatalogEntry | null>(null);
   const [lineage, setLineage] = useState<LineageResponse | null>(null);

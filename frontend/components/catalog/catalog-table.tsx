@@ -296,7 +296,7 @@ export function CatalogTable({ rows }: { rows: CatalogEntry[] }) {
                       ))}
                       <td className="px-3 py-2.5 text-right">
                         <Link
-                          href={`/catalog/${encodeURIComponent(row.id)}/`}
+                          href={`/catalog/lineage/?batch=${encodeURIComponent(row.id)}`}
                           onClick={(e) => e.stopPropagation()}
                           className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-semibold text-gov-primary hover:underline"
                         >

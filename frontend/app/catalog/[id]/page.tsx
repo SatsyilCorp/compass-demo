@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { BATCH_IDS } from "@/lib/mock/grants";
 import { LineageView } from "@/components/catalog/lineage-view";
 
@@ -39,5 +40,11 @@ export async function generateStaticParams() {
 export const dynamicParams = false;
 
 export default function CatalogLineagePage() {
-  return <LineageView />;
+  // LineageView reads useSearchParams() (the ?batch= route), which Next
+  // requires to sit under a Suspense boundary when prerendering.
+  return (
+    <Suspense fallback={null}>
+      <LineageView />
+    </Suspense>
+  );
 }
