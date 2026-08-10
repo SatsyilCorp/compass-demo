@@ -526,8 +526,7 @@ Resources:
       CompatibleArchitectures: [arm64]
       RetentionPolicy: Retain
     Metadata:
-      BuildMethod: python3.12
-      BuildArchitecture: arm64
+      BuildMethod: makefile
 
   # ===========================================================================
   # (7) Data plane — raw landing bucket (EventBridge notifications on) and the
