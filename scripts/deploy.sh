@@ -33,6 +33,9 @@ fi
 echo "==> Staging db/migrations into the migrator package"
 "$repo/src/functions/migrator/prepare_migrations.sh"
 
+echo "==> Staging the current SAM template into the RMF artifact package"
+"$repo/src/functions/rmf_artifact/prepare_template.sh"
+
 echo "==> sam build --use-container (config-env: $CONFIG_ENV)"
 sam build --use-container
 

@@ -3,8 +3,9 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   Compass - US Navy/ONR S&T Portfolio Intelligence demo (single stack,
   us-east-1). Everything is created in-template for reproducibility: a minimal
-  VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito (MFA ON,
-  TOTP-only) with a JWT-guarded HttpApi, one Lambda per src/functions dir on a
+  VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito (per-user MFA
+  optional so team accounts stay password-only and a presenter proves TOTP)
+  with a JWT-guarded HttpApi, one Lambda per src/functions dir on a
   shared CommonLayer, an Express intake state machine fired by S3 -> EventBridge,
   an on-demand Kinesis ticker stream, a private S3 + CloudFront web tier behind
   a CLOUDFRONT-scope WAF, and a customer-managed KMS key over data at rest.
@@ -40,6 +41,21 @@ Parameters:
     Description: >
       Deployed web origin for API CORS, e.g. https://dXXXX.cloudfront.net.
       Empty on the first deploy; http://localhost:3000 is always allowed.
+
+  WebCustomDomainName:
+    Type: String
+    Default: ""
+    Description: Optional Route 53 name presented by CloudFront.
+
+  WebCertificateArn:
+    Type: String
+    Default: ""
+    Description: Optional us-east-1 ACM certificate ARN for the custom domain.
+
+  WebHostedZoneId:
+    Type: String
+    Default: ""
+    Description: Optional public Route 53 hosted zone ID for the custom domain.
 
   CognitoDomainPrefix:
     Type: String
@@ -79,6 +95,93 @@ Parameters:
       only one stack per account may own them, so they default off. The KMS key
       and the CloudFront WAF WebACL are NOT behind this flag; they always deploy.
 
+  DeployRevision:
+    Type: String
+    Default: local
+    Description: Short source revision displayed by the protected System Inspector.
+
+  DatabaseResilienceMode:
+    Type: String
+    Default: demo
+    AllowedValues: [demo, ha]
+    Description: Demo keeps one writer; ha adds a cluster reader and deletion protection.
+
+  ScaleFeatureEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Deploy the bounded Scale Run data plane. Disabled by default so the
+      existing demonstration stack keeps its current resource and cost posture.
+
+  ScaleMaxRecords:
+    Type: Number
+    Default: 100000
+    AllowedValues: [1000, 10000, 100000, 1000000]
+    Description: Hard deployment limit applied by the Scale Run Gate.
+
+  ScaleMaxConcurrency:
+    Type: Number
+    Default: 4
+    MinValue: 2
+    MaxValue: 10
+    Description: Maximum concurrent partition-worker Lambda invocations.
+
+  ScaleExportConcurrency:
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 5
+    Description: Maximum concurrent asynchronous Scale Run export jobs.
+
+  ScaleMaxEstimatedCostUsd:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 100
+    Description: Server-enforced maximum estimated incremental cost for one Scale Run.
+
+  ScaleDataRetentionDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 30
+    Description: Retention for generated landing, curated, quarantine, and Parquet objects.
+
+  ScaleEvidenceRetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 7
+    MaxValue: 90
+    Description: Retention for compact Scale Run manifests and evidence receipts.
+
+  ScaleAthenaBytesScannedCutoff:
+    Type: Number
+    Default: 10737418240
+    MinValue: 104857600
+    MaxValue: 107374182400
+    Description: Hard bytes-scanned cutoff applied to every query in the Scale Run workgroup.
+
+  DocumentDataRetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 365
+    Description: Retention for uploaded, bronze, silver, gold, and quarantine document objects.
+
+  MlOpsMode:
+    Type: String
+    Default: demo
+    AllowedValues: [demo, sagemaker]
+    Description: >
+      Demo executes the deterministic classical model in Lambda. SageMaker
+      submits a bounded training job only when an approved image is supplied.
+
+  SageMakerTrainingImage:
+    Type: String
+    Default: ""
+    Description: Optional approved ECR training image URI used only in sagemaker mode.
+
 # -----------------------------------------------------------------------------
 # Conditions
 # -----------------------------------------------------------------------------
@@ -87,7 +190,13 @@ Conditions:
   HasWebCallbackUrl: !Not [!Equals [!Ref WebCallbackUrl, ""]]
   HasWebLogoutUrl: !Not [!Equals [!Ref WebLogoutUrl, ""]]
   HasWebOrigin: !Not [!Equals [!Ref WebOrigin, ""]]
+  HasWebCustomDomain: !And
+    - !Not [!Equals [!Ref WebCustomDomainName, ""]]
+    - !Not [!Equals [!Ref WebCertificateArn, ""]]
+    - !Not [!Equals [!Ref WebHostedZoneId, ""]]
   HasCognitoDomainPrefix: !Not [!Equals [!Ref CognitoDomainPrefix, ""]]
+  EnableDatabaseHa: !Equals [!Ref DatabaseResilienceMode, ha]
+  EnableScaleFeature: !Equals [!Ref ScaleFeatureEnabled, "true"]
 
 # -----------------------------------------------------------------------------
 # Globals - every Lambda: python3.11 on arm64, X-Ray on, DB contract env vars
@@ -103,6 +212,11 @@ Globals:
     Timeout: 30
     MemorySize: 512
     Tracing: Active
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+      LogGroup: !Ref ApplicationFunctionLogGroup
     Environment:
       Variables:
         LOG_LEVEL: INFO
@@ -112,7 +226,11 @@ Globals:
         DB_SCHEMA: compass
         BEDROCK_CHAT_MODEL: amazon.nova-lite-v1:0
         BEDROCK_EMBED_MODEL: amazon.titan-embed-text-v2:0
-        DEPLOY_REV: "2"
+        DEPLOY_REV: !Ref DeployRevision
+        CORS_ALLOW_ORIGINS: !If
+          - HasWebOrigin
+          - !Sub "http://localhost:3000,http://127.0.0.1:3000,${WebOrigin}"
+          - "http://localhost:3000,http://127.0.0.1:3000"
 
 Resources:
 
@@ -288,6 +406,8 @@ Resources:
 
   AppKey:
     Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Description: Compass customer-managed key for DB, buckets, stream, secrets.
       EnableKeyRotation: true
@@ -354,9 +474,9 @@ Resources:
       VpcSecurityGroupIds:
         - !Ref DbSecurityGroup
       Port: 5432
-      BackupRetentionPeriod: 1
+      BackupRetentionPeriod: !If [EnableDatabaseHa, 14, 7]
       CopyTagsToSnapshot: true
-      DeletionProtection: false   # demo stack - must tear down cleanly
+      DeletionProtection: !If [EnableDatabaseHa, true, false]
 
   DbInstance:
     Type: AWS::RDS::DBInstance
@@ -367,8 +487,19 @@ Resources:
       DBInstanceClass: db.serverless
       PubliclyAccessible: false
 
+  DbReaderInstance:
+    Type: AWS::RDS::DBInstance
+    Condition: EnableDatabaseHa
+    Properties:
+      DBInstanceIdentifier: !Sub "${AWS::StackName}-db-reader"
+      DBClusterIdentifier: !Ref DbCluster
+      Engine: aurora-postgresql
+      DBInstanceClass: db.serverless
+      PubliclyAccessible: false
+
   # ===========================================================================
-  # (4) Cognito - MFA ON (TOTP only), 16-char password policy, two demo groups
+  # (4) Cognito - OPTIONAL TOTP. Team accounts remain password-only; the
+  #     dedicated formal presenter account enables TOTP per user.
   #     that map 1:1 to the RLS personas in docs/CONTRACTS.md:
   #       compass-poweruser -> org_unit ONR-Corporate (sees all rows)
   #       compass-viewer    -> org_unit Code-30       (sees Code-30 only)
@@ -380,9 +511,8 @@ Resources:
       UserPoolName: !Sub "${AWS::StackName}-users"
       AutoVerifiedAttributes: [email]
       UsernameAttributes: [email]
-      MfaConfiguration: "ON"
-      EnabledMfas:
-        - SOFTWARE_TOKEN_MFA
+      MfaConfiguration: OPTIONAL
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true   # demo personas are seeded, no self-signup
       Policies:
@@ -479,6 +609,10 @@ Resources:
 
   HttpApi:
     Type: AWS::Serverless::HttpApi
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W1028]
     Properties:
       StageName: prod
       AccessLogSettings:
@@ -490,7 +624,12 @@ Resources:
         # to an origin array, so API Gateway receives no CORS configuration.
         AllowOrigins:
           - http://localhost:3000
+          - http://127.0.0.1:3000
           - !If [HasWebOrigin, !Ref WebOrigin, !Ref "AWS::NoValue"]
+          - !If
+            - HasWebCustomDomain
+            - !Sub "https://${WebCustomDomainName}"
+            - !Ref "AWS::NoValue"
         AllowHeaders: [Content-Type, Authorization]
         AllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
         MaxAge: 600
@@ -559,12 +698,56 @@ Resources:
       NotificationConfiguration:
         EventBridgeConfiguration:
           EventBridgeEnabled: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: [Content-Type]
+            AllowedMethods: [PUT]
+            AllowedOrigins:
+              - http://localhost:3000
+              - http://127.0.0.1:3000
+              - !If [HasWebOrigin, !Ref WebOrigin, !Ref "AWS::NoValue"]
+              - !If
+                - HasWebCustomDomain
+                - !Sub "https://${WebCustomDomainName}"
+                - !Ref "AWS::NoValue"
+            ExposedHeaders: [ETag]
+            MaxAge: 900
       LifecycleConfiguration:
         Rules:
           - Id: expire-incomplete-uploads
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+          - Id: expire-document-inputs
+            Status: Enabled
+            Prefix: documents/incoming/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-bronze
+            Status: Enabled
+            Prefix: documents/bronze/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-silver
+            Status: Enabled
+            Prefix: documents/silver/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-gold
+            Status: Enabled
+            Prefix: documents/gold/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-quarantine
+            Status: Enabled
+            Prefix: documents/quarantine/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
 
   TickerStream:
     Type: AWS::Kinesis::Stream
@@ -577,11 +760,582 @@ Resources:
         EncryptionType: KMS
         KeyId: !Ref AppKey
 
+  DocumentMlTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${AWS::StackName}-document-ml"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: by-type
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt AppKey.Arn
+      Tags:
+        - { Key: compass:data-classification, Value: synthetic-demo }
+        - { Key: compass:component, Value: document-ml }
+
+  DocumentModelPackageGroup:
+    Type: AWS::SageMaker::ModelPackageGroup
+    Properties:
+      ModelPackageGroupName: !Sub "${AWS::StackName}-document-classifier"
+      ModelPackageGroupDescription: Governed model versions for Compass document classification.
+      Tags:
+        - { Key: compass:component, Value: document-ml }
+        - { Key: compass:synthetic-only, Value: "true" }
+
+  DocumentSageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-document-sagemaker"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: sagemaker.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: document-training-artifacts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TrainingArtifactList
+                Effect: Allow
+                Action: [s3:ListBucket, s3:GetBucketLocation]
+                Resource: !GetAtt RawBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: [mlops/*]
+              - Sid: TrainingArtifactObjects
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload]
+                Resource: !Sub "${RawBucket.Arn}/mlops/*"
+              - Sid: TrainingArtifactKms
+                Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+                Resource: !GetAtt AppKey.Arn
+              - Sid: TrainingLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*"
+      Tags:
+        - { Key: compass:component, Value: document-ml }
+
+  # -------------------------------------------------------------------------
+  # Optional Scale Run data plane. Every resource in this section is guarded
+  # so a deployment with ScaleFeatureEnabled=false keeps the existing stack
+  # and its cost posture unchanged.
+  # -------------------------------------------------------------------------
+
+  ScaleDataLakeBucket:
+    Type: AWS::S3::Bucket
+    Condition: EnableScaleFeature
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt AppKey.Arn
+            BucketKeyEnabled: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-landing-data
+            Status: Enabled
+            Prefix: landing/
+            ExpirationInDays: !Ref ScaleDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-curated-data
+            Status: Enabled
+            Prefix: curated/
+            ExpirationInDays: !Ref ScaleDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-quarantine-data
+            Status: Enabled
+            Prefix: quarantine/
+            ExpirationInDays: !Ref ScaleDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-parquet-data
+            Status: Enabled
+            Prefix: parquet/
+            ExpirationInDays: !Ref ScaleDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-partition-receipts
+            Status: Enabled
+            Prefix: receipts/
+            ExpirationInDays: !Ref ScaleEvidenceRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+          - Id: expire-run-evidence
+            Status: Enabled
+            Prefix: evidence/
+            ExpirationInDays: !Ref ScaleEvidenceRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+          - Id: expire-athena-results
+            Status: Enabled
+            Prefix: athena-results/
+            ExpirationInDays: 2
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-export-jobs
+            Status: Enabled
+            Prefix: exports/
+            ExpirationInDays: 2
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: abort-incomplete-scale-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  ScaleDataLakeBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: EnableScaleFeature
+    Properties:
+      Bucket: !Ref ScaleDataLakeBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureScaleLakeTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt ScaleDataLakeBucket.Arn
+              - !Sub "${ScaleDataLakeBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  ScaleRunsTable:
+    Type: AWS::DynamoDB::Table
+    Condition: EnableScaleFeature
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt AppKey.Arn
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expires_at_epoch
+        Enabled: true
+
+  ScaleWorkerDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Condition: EnableScaleFeature
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-scale-worker-dlq"
+      KmsMasterKeyId: !GetAtt AppKey.Arn
+      KmsDataKeyReusePeriodSeconds: 300
+      MessageRetentionPeriod: 1209600
+
+  ScaleWorkerQueue:
+    Type: AWS::SQS::Queue
+    Condition: EnableScaleFeature
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-scale-worker"
+      KmsMasterKeyId: !GetAtt AppKey.Arn
+      KmsDataKeyReusePeriodSeconds: 300
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 960
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ScaleWorkerDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  ScaleExportDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Condition: EnableScaleFeature
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-scale-export-dlq"
+      KmsMasterKeyId: !GetAtt AppKey.Arn
+      KmsDataKeyReusePeriodSeconds: 300
+      MessageRetentionPeriod: 1209600
+
+  ScaleExportQueue:
+    Type: AWS::SQS::Queue
+    Condition: EnableScaleFeature
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-scale-export"
+      KmsMasterKeyId: !GetAtt AppKey.Arn
+      KmsDataKeyReusePeriodSeconds: 300
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 960
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ScaleExportDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  ScaleGlueDatabase:
+    Type: AWS::Glue::Database
+    Condition: EnableScaleFeature
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub "${AWS::StackName}_scale"
+        Description: Projected synthetic Scale Run data lake tables.
+
+  ScaleGrantsTable:
+    Type: AWS::Glue::Table
+    Condition: EnableScaleFeature
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref ScaleGlueDatabase
+      TableInput:
+        Name: scale_grants
+        Description: Curated synthetic grant records projected by Scale Run identifier.
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          EXTERNAL: "TRUE"
+          classification: json
+          compressionType: gzip
+          projection.enabled: "true"
+          projection.run_id.type: injected
+          storage.location.template: !Sub "s3://${ScaleDataLakeBucket}/curated/grants/run_id=${!run_id}/"
+        PartitionKeys:
+          - { Name: run_id, Type: string }
+        StorageDescriptor:
+          Location: !Sub "s3://${ScaleDataLakeBucket}/curated/grants/"
+          Compressed: true
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: schema_version, Type: string }
+            - { Name: synthetic, Type: boolean }
+            - { Name: synthetic_seed, Type: bigint }
+            - { Name: source_system, Type: string }
+            - { Name: grant_id, Type: string }
+            - { Name: grant_no, Type: string }
+            - { Name: title, Type: string }
+            - { Name: program_area, Type: string }
+            - { Name: org_unit, Type: string }
+            - { Name: performer, Type: string }
+            - { Name: fiscal_year, Type: int }
+            - { Name: start_date, Type: string }
+            - { Name: end_date, Type: string }
+            - { Name: award_amount_usd, Type: bigint }
+            - { Name: status, Type: string }
+            - { Name: classification, Type: string }
+            - { Name: scale_run_id, Type: string }
+            - { Name: scale_dataset, Type: string }
+            - { Name: scale_partition_id, Type: string }
+            - { Name: scale_record_index, Type: bigint }
+
+  ScaleFinanceTable:
+    Type: AWS::Glue::Table
+    Condition: EnableScaleFeature
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref ScaleGlueDatabase
+      TableInput:
+        Name: scale_finance
+        Description: Curated synthetic financial transactions projected by Scale Run identifier.
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          EXTERNAL: "TRUE"
+          classification: json
+          compressionType: gzip
+          projection.enabled: "true"
+          projection.run_id.type: injected
+          storage.location.template: !Sub "s3://${ScaleDataLakeBucket}/curated/finance/run_id=${!run_id}/"
+        PartitionKeys:
+          - { Name: run_id, Type: string }
+        StorageDescriptor:
+          Location: !Sub "s3://${ScaleDataLakeBucket}/curated/finance/"
+          Compressed: true
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: schema_version, Type: string }
+            - { Name: synthetic, Type: boolean }
+            - { Name: synthetic_seed, Type: bigint }
+            - { Name: source_system, Type: string }
+            - { Name: transaction_id, Type: string }
+            - { Name: grant_id, Type: string }
+            - { Name: grant_no, Type: string }
+            - { Name: transaction_date, Type: string }
+            - { Name: fiscal_year, Type: int }
+            - { Name: transaction_type, Type: string }
+            - { Name: amount_usd, Type: bigint }
+            - { Name: currency, Type: string }
+            - { Name: status, Type: string }
+            - { Name: appropriation, Type: string }
+            - { Name: scale_run_id, Type: string }
+            - { Name: scale_dataset, Type: string }
+            - { Name: scale_partition_id, Type: string }
+            - { Name: scale_record_index, Type: bigint }
+
+  ScaleMilestonesTable:
+    Type: AWS::Glue::Table
+    Condition: EnableScaleFeature
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref ScaleGlueDatabase
+      TableInput:
+        Name: scale_milestones
+        Description: Curated synthetic milestone records projected by Scale Run identifier.
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          EXTERNAL: "TRUE"
+          classification: json
+          compressionType: gzip
+          projection.enabled: "true"
+          projection.run_id.type: injected
+          storage.location.template: !Sub "s3://${ScaleDataLakeBucket}/curated/milestones/run_id=${!run_id}/"
+        PartitionKeys:
+          - { Name: run_id, Type: string }
+        StorageDescriptor:
+          Location: !Sub "s3://${ScaleDataLakeBucket}/curated/milestones/"
+          Compressed: true
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: schema_version, Type: string }
+            - { Name: synthetic, Type: boolean }
+            - { Name: synthetic_seed, Type: bigint }
+            - { Name: source_system, Type: string }
+            - { Name: milestone_id, Type: string }
+            - { Name: grant_id, Type: string }
+            - { Name: grant_no, Type: string }
+            - { Name: milestone_type, Type: string }
+            - { Name: name, Type: string }
+            - { Name: due_date, Type: string }
+            - { Name: status, Type: string }
+            - { Name: completion_percent, Type: int }
+            - { Name: risk_level, Type: string }
+            - { Name: scale_run_id, Type: string }
+            - { Name: scale_dataset, Type: string }
+            - { Name: scale_partition_id, Type: string }
+            - { Name: scale_record_index, Type: bigint }
+
+  ScaleDocumentsTable:
+    Type: AWS::Glue::Table
+    Condition: EnableScaleFeature
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref ScaleGlueDatabase
+      TableInput:
+        Name: scale_documents
+        Description: Curated synthetic document metadata projected by Scale Run identifier.
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          EXTERNAL: "TRUE"
+          classification: json
+          compressionType: gzip
+          projection.enabled: "true"
+          projection.run_id.type: injected
+          storage.location.template: !Sub "s3://${ScaleDataLakeBucket}/curated/documents/run_id=${!run_id}/"
+        PartitionKeys:
+          - { Name: run_id, Type: string }
+        StorageDescriptor:
+          Location: !Sub "s3://${ScaleDataLakeBucket}/curated/documents/"
+          Compressed: true
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: schema_version, Type: string }
+            - { Name: synthetic, Type: boolean }
+            - { Name: synthetic_seed, Type: bigint }
+            - { Name: source_system, Type: string }
+            - { Name: document_id, Type: string }
+            - { Name: grant_id, Type: string }
+            - { Name: grant_no, Type: string }
+            - { Name: document_type, Type: string }
+            - { Name: title, Type: string }
+            - { Name: mime_type, Type: string }
+            - { Name: size_bytes, Type: bigint }
+            - { Name: content_sha256, Type: string }
+            - { Name: created_at, Type: string }
+            - { Name: classification, Type: string }
+            - { Name: scale_run_id, Type: string }
+            - { Name: scale_dataset, Type: string }
+            - { Name: scale_partition_id, Type: string }
+            - { Name: scale_record_index, Type: bigint }
+
+  ScaleLicensesTable:
+    Type: AWS::Glue::Table
+    Condition: EnableScaleFeature
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref ScaleGlueDatabase
+      TableInput:
+        Name: scale_licenses
+        Description: Curated synthetic license records projected by Scale Run identifier.
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          EXTERNAL: "TRUE"
+          classification: json
+          compressionType: gzip
+          projection.enabled: "true"
+          projection.run_id.type: injected
+          storage.location.template: !Sub "s3://${ScaleDataLakeBucket}/curated/licenses/run_id=${!run_id}/"
+        PartitionKeys:
+          - { Name: run_id, Type: string }
+        StorageDescriptor:
+          Location: !Sub "s3://${ScaleDataLakeBucket}/curated/licenses/"
+          Compressed: true
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: schema_version, Type: string }
+            - { Name: synthetic, Type: boolean }
+            - { Name: synthetic_seed, Type: bigint }
+            - { Name: source_system, Type: string }
+            - { Name: license_id, Type: string }
+            - { Name: data_product, Type: string }
+            - { Name: vendor, Type: string }
+            - { Name: owning_org, Type: string }
+            - { Name: start_date, Type: string }
+            - { Name: renewal_date, Type: string }
+            - { Name: status, Type: string }
+            - { Name: seats, Type: int }
+            - { Name: annual_cost_usd, Type: bigint }
+            - { Name: usage_ratio_basis_points, Type: int }
+            - { Name: permitted_uses, Type: "array<string>" }
+            - { Name: scale_run_id, Type: string }
+            - { Name: scale_dataset, Type: string }
+            - { Name: scale_partition_id, Type: string }
+            - { Name: scale_record_index, Type: bigint }
+
+  ScaleStreamEventsTable:
+    Type: AWS::Glue::Table
+    Condition: EnableScaleFeature
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref ScaleGlueDatabase
+      TableInput:
+        Name: scale_stream_events
+        Description: Curated synthetic activity events projected by Scale Run identifier.
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          EXTERNAL: "TRUE"
+          classification: json
+          compressionType: gzip
+          projection.enabled: "true"
+          projection.run_id.type: injected
+          storage.location.template: !Sub "s3://${ScaleDataLakeBucket}/curated/stream_events/run_id=${!run_id}/"
+        PartitionKeys:
+          - { Name: run_id, Type: string }
+        StorageDescriptor:
+          Location: !Sub "s3://${ScaleDataLakeBucket}/curated/stream_events/"
+          Compressed: true
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: schema_version, Type: string }
+            - { Name: synthetic, Type: boolean }
+            - { Name: synthetic_seed, Type: bigint }
+            - { Name: source_system, Type: string }
+            - { Name: event_id, Type: string }
+            - { Name: grant_id, Type: string }
+            - { Name: grant_no, Type: string }
+            - { Name: event_type, Type: string }
+            - { Name: event_time, Type: string }
+            - { Name: sequence, Type: bigint }
+            - { Name: partition_key, Type: string }
+            - { Name: payload, Type: "struct<metric:string,value:bigint,correlation_id:string>" }
+            - { Name: scale_run_id, Type: string }
+            - { Name: scale_dataset, Type: string }
+            - { Name: scale_partition_id, Type: string }
+            - { Name: scale_record_index, Type: bigint }
+
+  ScaleAthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Condition: EnableScaleFeature
+    Properties:
+      Name: !Sub "${AWS::StackName}-scale"
+      Description: Cost-bounded Scale Run conversion and evidence queries.
+      State: ENABLED
+      RecursiveDeleteOption: true
+      WorkGroupConfiguration:
+        BytesScannedCutoffPerQuery: !Ref ScaleAthenaBytesScannedCutoff
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        RequesterPaysEnabled: false
+        EngineVersion:
+          SelectedEngineVersion: Athena engine version 3
+        ResultConfiguration:
+          OutputLocation: !Sub "s3://${ScaleDataLakeBucket}/athena-results/"
+          EncryptionConfiguration:
+            EncryptionOption: SSE_KMS
+            KmsKey: !GetAtt AppKey.Arn
+
   # ===========================================================================
   # (8) Lambda functions - one per src/functions dir, all on CommonLayer.
   #     DB-touching functions run in the private subnets. Route map follows
   #     docs/CONTRACTS.md exactly (see each function's Events).
   # ===========================================================================
+
+  # All functions use one stack-owned group. Lambda keeps function and version
+  # identity in each custom-group stream, while retention remains centralized.
+  ApplicationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/compass/${AWS::StackName}/lambda"
+      RetentionInDays: 14
 
   # --- authorizer: GET /me + the named Lambda REQUEST authorizer. No VPC/DB:
   #     identity, role and org_unit derive entirely from the Cognito JWT.
@@ -690,6 +1444,130 @@ Resources:
             Schedule: rate(1 minute)
             State: !Ref StreamTickerState
             Input: '{"action": "stream_tick"}'
+
+  # --- document_ml: browser upload, document lake stages, classical model
+  #     training/evaluation, registry promotion, and drift evidence.
+  DocumentMlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-document-ml"
+      CodeUri: src/functions/document_ml/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 120
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          DOCUMENT_LAKE_BUCKET: !Ref RawBucket
+          DOCUMENT_ML_TABLE: !Ref DocumentMlTable
+          MLOPS_MODE: !Ref MlOpsMode
+          SAGEMAKER_EXECUTION_ROLE_ARN: !GetAtt DocumentSageMakerExecutionRole.Arn
+          SAGEMAKER_TRAINING_IMAGE: !Ref SageMakerTrainingImage
+          SAGEMAKER_MODEL_PACKAGE_GROUP: !Ref DocumentModelPackageGroup
+      Policies:
+        - Statement:
+            - Sid: DocumentLakeList
+              Effect: Allow
+              Action: [s3:ListBucket, s3:GetBucketLocation]
+              Resource: !GetAtt RawBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - documents/*
+                    - mlops/*
+            - Sid: DocumentLakeObjects
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+                - s3:AbortMultipartUpload
+              Resource:
+                - !Sub "${RawBucket.Arn}/documents/*"
+                - !Sub "${RawBucket.Arn}/mlops/*"
+            - Sid: DocumentLakeKms
+              Effect: Allow
+              Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+              Resource: !GetAtt AppKey.Arn
+            - Sid: DocumentMlLedger
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt DocumentMlTable.Arn
+                - !Sub "${DocumentMlTable.Arn}/index/by-type"
+            - Sid: SubmitBoundedDocumentTraining
+              Effect: Allow
+              Action:
+                - sagemaker:CreateTrainingJob
+                - sagemaker:DescribeTrainingJob
+                - sagemaker:StopTrainingJob
+              Resource: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:training-job/compass-doc-*"
+            - Sid: ReadDocumentModelPackageGroup
+              Effect: Allow
+              Action:
+                - sagemaker:DescribeModelPackageGroup
+                - sagemaker:ListModelPackages
+              Resource: !GetAtt DocumentModelPackageGroup.ModelPackageGroupArn
+            - Sid: PassDocumentTrainingRole
+              Effect: Allow
+              Action: iam:PassRole
+              Resource: !GetAtt DocumentSageMakerExecutionRole.Arn
+              Condition:
+                StringEquals:
+                  iam:PassedToService: sagemaker.amazonaws.com
+      Events:
+        RequestDocumentUpload:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /documents/uploads
+        ListDocumentRuns:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /documents/runs
+        GetDocumentRun:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /documents/runs/{run_id}
+        TrainDocumentModel:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /ml/train
+        ListDocumentModels:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /ml/models
+        DeployDocumentModel:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /ml/models/{version}/deploy
+        EvaluateDocumentDrift:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /ml/drift/evaluate
+        GetDocumentMlOpsEvidence:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /ml/ops/evidence
 
   # --- quality_gate: rule engine invoked by the intake state machine; writes
   #     grant_quality + lineage. Not routed on the API.
@@ -920,7 +1798,7 @@ Resources:
             Method: POST
             Path: /chat
 
-  # --- approvals: POST /approvals - create/advance an approval.
+  # Approvals: shared pending inbox plus request and decision actions.
   ApprovalsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -930,6 +1808,10 @@ Resources:
       MemorySize: 512
       Timeout: 15
       Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          APPROVAL_REQUIRE_FOUR_EYES: "true"
+          APPROVAL_TTL_SECONDS: "3600"
       VpcConfig:
         SecurityGroupIds: [!Ref LambdaSecurityGroup]
         SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
@@ -944,6 +1826,12 @@ Resources:
               Action: kms:Decrypt
               Resource: !GetAtt AppKey.Arn
       Events:
+        GetApprovals:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /approvals
         PostApprovals:
           Type: HttpApi
           Properties:
@@ -1028,6 +1916,39 @@ Resources:
             Method: GET
             Path: /openapi.json
 
+  # --- evidence: protected read-only projections for the in-app System
+  #     Inspector. The response intentionally excludes infrastructure names,
+  #     secrets, raw claims, source records, SQL, prompts, and exceptions.
+  EvidenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-evidence"
+      CodeUri: src/functions/evidence/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 30
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        GetSystemEvidence:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /system/evidence
+
   # --- rmf_artifact: generates RMF/ATO evidence artifacts from the live stack
   #     (direct invoke; no API route in CONTRACTS).
   RmfArtifactFunction:
@@ -1073,6 +1994,9 @@ Resources:
       MemorySize: 512
       Timeout: 300
       Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          DEMO_FIXTURE_BUCKET: !Ref RawBucket
       VpcConfig:
         SecurityGroupIds: [!Ref LambdaSecurityGroup]
         SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
@@ -1086,10 +2010,385 @@ Resources:
               Effect: Allow
               Action: kms:Decrypt
               Resource: !GetAtt AppKey.Arn
+            - Sid: DemoFixtureRead
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${RawBucket.Arn}/demo-stage/*"
+
+  # --- optional Scale Run control plane: bounded planning, launch, progress,
+  #     Athena conversion, finalization, cancellation, and export requests.
+  ScaleControlFunction:
+    Type: AWS::Serverless::Function
+    Condition: EnableScaleFeature
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-scale-control"
+      CodeUri: src/functions/scale_runs/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 300
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          SCALE_FEATURE_ENABLED: "true"
+          SCALE_MAX_RECORDS: !Ref ScaleMaxRecords
+          SCALE_MAX_ESTIMATED_COST_USD: !Ref ScaleMaxEstimatedCostUsd
+          SCALE_MAX_CONCURRENCY: !Ref ScaleMaxConcurrency
+          SCALE_DATA_RETENTION_DAYS: !Ref ScaleDataRetentionDays
+          SCALE_EVIDENCE_RETENTION_DAYS: !Ref ScaleEvidenceRetentionDays
+          SCALE_ATHENA_BYTES_SCANNED_CUTOFF: !Ref ScaleAthenaBytesScannedCutoff
+          SCALE_RUNS_TABLE: !Ref ScaleRunsTable
+          SCALE_QUEUE_URL: !Ref ScaleWorkerQueue
+          SCALE_DLQ_URL: !Ref ScaleWorkerDeadLetterQueue
+          SCALE_EXPORT_QUEUE_URL: !Ref ScaleExportQueue
+          SCALE_LAKE_BUCKET: !Ref ScaleDataLakeBucket
+          SCALE_GLUE_DATABASE: !Ref ScaleGlueDatabase
+          SCALE_ATHENA_WORKGROUP: !Ref ScaleAthenaWorkGroup
+          # Name-derived ARN avoids a circular dependency: the state machine
+          # invokes this function while this function starts the state machine.
+          SCALE_STATE_MACHINE_ARN: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-scale-run"
+      Policies:
+        - Statement:
+            - Sid: ScaleLedgerReadWrite
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:Query
+                - dynamodb:BatchWriteItem
+                - dynamodb:TransactWriteItems
+              Resource:
+                - !GetAtt ScaleRunsTable.Arn
+                - !Sub "${ScaleRunsTable.Arn}/index/*"
+            - Sid: ScaleQueueDispatchAndEvidence
+              Effect: Allow
+              Action:
+                - sqs:SendMessage
+                - sqs:SendMessageBatch
+                - sqs:GetQueueAttributes
+                - sqs:GetQueueUrl
+              Resource:
+                - !GetAtt ScaleWorkerQueue.Arn
+                - !GetAtt ScaleWorkerDeadLetterQueue.Arn
+                - !GetAtt ScaleExportQueue.Arn
+            - Sid: StartScaleRunWorkflow
+              Effect: Allow
+              Action: states:StartExecution
+              Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-scale-run"
+            - Sid: ScaleLakeList
+              Effect: Allow
+              Action:
+                - s3:ListBucket
+                - s3:GetBucketLocation
+              Resource: !GetAtt ScaleDataLakeBucket.Arn
+            - Sid: ScaleLakeReadWrite
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:AbortMultipartUpload
+                - s3:ListMultipartUploadParts
+              Resource: !Sub "${ScaleDataLakeBucket.Arn}/*"
+            - Sid: ScaleAthenaQueries
+              Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+                - athena:GetWorkGroup
+                - athena:StopQueryExecution
+              Resource: !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${ScaleAthenaWorkGroup}"
+            - Sid: ScaleGlueCatalogRead
+              Effect: Allow
+              Action:
+                - glue:GetDatabase
+                - glue:GetDatabases
+                - glue:GetTable
+                - glue:GetTables
+                - glue:GetTableVersion
+                - glue:GetTableVersions
+                - glue:GetPartition
+                - glue:GetPartitions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ScaleGlueDatabase}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ScaleGlueDatabase}/*"
+            - Sid: ScaleLakeFormationDataAccess
+              Effect: Allow
+              Action: lakeformation:GetDataAccess
+              Resource: "*"
+            - Sid: ScaleDataKeyUse
+              Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:Encrypt
+                - kms:GenerateDataKey
+                - kms:DescribeKey
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        GetScaleProfiles:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /scale/profiles
+        CreateScalePlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /scale/plans
+        ListScaleRuns:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /scale/runs
+        CreateScaleRun:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /scale/runs
+        GetScaleRun:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /scale/runs/{run_id}
+        CancelScaleRun:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /scale/runs/{run_id}/cancel
+        CreateScaleExport:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /scale/runs/{run_id}/exports
+        GetScaleExport:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /scale/runs/{run_id}/exports/{export_id}
+
+  ScaleLakeDatabasePermissions:
+    Type: AWS::LakeFormation::PrincipalPermissions
+    Condition: EnableScaleFeature
+    DependsOn:
+      - ScaleControlFunction
+    Properties:
+      Principal:
+        DataLakePrincipalIdentifier: !GetAtt ScaleControlFunctionRole.Arn
+      Resource:
+        Database:
+          CatalogId: !Ref AWS::AccountId
+          Name: !Ref ScaleGlueDatabase
+      Permissions:
+        - DESCRIBE
+      PermissionsWithGrantOption: []
+
+  ScaleLakeTablePermissions:
+    Type: AWS::LakeFormation::PrincipalPermissions
+    Condition: EnableScaleFeature
+    DependsOn:
+      - ScaleControlFunction
+    Properties:
+      Principal:
+        DataLakePrincipalIdentifier: !GetAtt ScaleControlFunctionRole.Arn
+      Resource:
+        Table:
+          CatalogId: !Ref AWS::AccountId
+          DatabaseName: !Ref ScaleGlueDatabase
+          TableWildcard: {}
+      Permissions:
+        - DESCRIBE
+        - SELECT
+      PermissionsWithGrantOption: []
+
+  # --- optional Scale Run partition worker. It is deliberately outside the
+  #     VPC because it touches only SQS, DynamoDB, S3, KMS, and local scratch.
+  ScaleWorkerFunction:
+    Type: AWS::Serverless::Function
+    Condition: EnableScaleFeature
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-scale-worker"
+      CodeUri: src/functions/scale_worker/
+      Handler: app.handler
+      MemorySize: 2048
+      Timeout: 900
+      ReservedConcurrentExecutions: !Ref ScaleMaxConcurrency
+      EphemeralStorage:
+        Size: 2048
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          SCALE_RUNS_TABLE: !Ref ScaleRunsTable
+          SCALE_LAKE_BUCKET: !Ref ScaleDataLakeBucket
+          SCALE_DATA_RETENTION_DAYS: !Ref ScaleDataRetentionDays
+          SCALE_WORKER_MAX_RECEIVE_COUNT: "3"
+      Policies:
+        - Statement:
+            - Sid: ScalePartitionLedger
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+                - dynamodb:TransactWriteItems
+              Resource: !GetAtt ScaleRunsTable.Arn
+            - Sid: ScalePartitionObjects
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:AbortMultipartUpload
+              Resource: !Sub "${ScaleDataLakeBucket.Arn}/*"
+            - Sid: ConsumeScaleWorkerQueue
+              Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:ChangeMessageVisibility
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt ScaleWorkerQueue.Arn
+            - Sid: ScaleWorkerDataKeyUse
+              Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:Encrypt
+                - kms:GenerateDataKey
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        PartitionQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ScaleWorkerQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig:
+              MaximumConcurrency: !Ref ScaleMaxConcurrency
+
+  # --- optional asynchronous lake export worker. Export messages contain only
+  #     a run identifier and export identifier; the ledger owns every choice.
+  ScaleExportFunction:
+    Type: AWS::Serverless::Function
+    Condition: EnableScaleFeature
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-scale-export"
+      CodeUri: src/functions/scale_export/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 900
+      ReservedConcurrentExecutions: !Ref ScaleExportConcurrency
+      EphemeralStorage:
+        Size: 2048
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          SCALE_RUNS_TABLE: !Ref ScaleRunsTable
+          SCALE_LAKE_BUCKET: !Ref ScaleDataLakeBucket
+      Policies:
+        - Statement:
+            - Sid: ScaleExportLedger
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+                - dynamodb:TransactWriteItems
+              Resource: !GetAtt ScaleRunsTable.Arn
+            - Sid: ScaleExportLakeList
+              Effect: Allow
+              Action:
+                - s3:ListBucket
+                - s3:GetBucketLocation
+              Resource: !GetAtt ScaleDataLakeBucket.Arn
+            - Sid: ScaleExportLakeObjects
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:AbortMultipartUpload
+              Resource: !Sub "${ScaleDataLakeBucket.Arn}/*"
+            - Sid: ConsumeScaleExportQueue
+              Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:ChangeMessageVisibility
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt ScaleExportQueue.Arn
+            - Sid: ScaleExportDataKeyUse
+              Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:Encrypt
+                - kms:GenerateDataKey
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        ExportQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ScaleExportQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig:
+              MaximumConcurrency: !Ref ScaleExportConcurrency
+
+  ScaleRunStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: EnableScaleFeature
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}-scale-run"
+      RetentionInDays: 14
+
+  ScaleRunStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Condition: EnableScaleFeature
+    Properties:
+      Name: !Sub "${AWS::StackName}-scale-run"
+      Type: STANDARD
+      DefinitionUri: statemachines/scale_run.asl.yaml
+      DefinitionSubstitutions:
+        ScaleControlFunctionArn: !GetAtt ScaleControlFunction.Arn
+      Logging:
+        Level: ALL
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt ScaleRunStateMachineLogGroup.Arn
+      Tracing:
+        Enabled: true
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref ScaleControlFunction }
+        - Statement:
+            - Sid: ScaleWorkflowLogDelivery
+              Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: "*"
+            - Sid: ScaleWorkflowTracing
+              Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+                - xray:GetSamplingRules
+                - xray:GetSamplingTargets
+              Resource: "*"
 
   # ===========================================================================
   # (9) Intake pipeline - Express state machine (intake -> quality gate) fired
-  #     by EventBridge whenever an object lands in the raw bucket.
+  #     by EventBridge only for objects under the raw bucket's drops/ prefix.
   # ===========================================================================
 
   IntakeStateMachineLogGroup:
@@ -1109,7 +2408,9 @@ Resources:
         QualityGateFunctionArn: !GetAtt QualityGateFunction.Arn
       Logging:
         Level: ALL
-        IncludeExecutionData: true
+        # Input includes a physical object locator. Stage and outcome logs stay
+        # enabled, while raw execution data stays out of log summaries.
+        IncludeExecutionData: false
         Destinations:
           - CloudWatchLogsLogGroup:
               LogGroupArn: !GetAtt IntakeStateMachineLogGroup.Arn
@@ -1128,6 +2429,90 @@ Resources:
                 - logs:DescribeResourcePolicies
                 - logs:DescribeLogGroups
               Resource: "*"
+
+  DocumentMlStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}-document-ml"
+      RetentionInDays: 14
+
+  DocumentMlStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-document-ml"
+      Type: EXPRESS
+      DefinitionUri: statemachines/document_ml.asl.yaml
+      DefinitionSubstitutions:
+        DocumentMlFunctionArn: !GetAtt DocumentMlFunction.Arn
+      Logging:
+        Level: ALL
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt DocumentMlStateMachineLogGroup.Arn
+      Tracing:
+        Enabled: true
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref DocumentMlFunction }
+        - Statement:
+            - Sid: DocumentWorkflowLogDelivery
+              Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: "*"
+            - Sid: DocumentWorkflowTracing
+              Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+                - xray:GetSamplingRules
+                - xray:GetSamplingTargets
+              Resource: "*"
+
+  DocumentEventsToStatesRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: events.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: start-document-state-machine
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref DocumentMlStateMachine
+
+  DocumentObjectCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-document-object-created"
+      Description: Browser document drop starts inspect, quality, and curation.
+      State: ENABLED
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Ref RawBucket]
+          object:
+            key:
+              - prefix: documents/incoming/
+      Targets:
+        - Id: document-ml-state-machine
+          Arn: !Ref DocumentMlStateMachine
+          RoleArn: !GetAtt DocumentEventsToStatesRole.Arn
 
   EventsToStatesRole:
     Type: AWS::IAM::Role
@@ -1160,13 +2545,439 @@ Resources:
         detail:
           bucket:
             name: [!Ref RawBucket]
+          object:
+            key:
+              - prefix: drops/
       Targets:
         - Id: intake-state-machine
           Arn: !Ref IntakeStateMachine
           RoleArn: !GetAtt EventsToStatesRole.Arn
 
   # ===========================================================================
-  # (10) Web tier - private S3 + OAC + CloudFront (PriceClass_100) with the
+  # (10) Operational evidence: bounded log retention, service alarms, and a
+  #      source-controlled CloudWatch dashboard for live rehearsal checks.
+  # ===========================================================================
+
+  DocumentMlFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-document-ml-function-errors"
+      AlarmDescription: Document intake or MLOps control returned one or more Lambda errors in five minutes.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DocumentMlFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  DocumentMlWorkflowFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-document-ml-workflow-failures"
+      AlarmDescription: Document inspect, quality, curate, or quarantine workflow failed.
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref DocumentMlStateMachine
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ApiServerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-api-server-errors"
+      AlarmDescription: Protected API returned one or more server errors in five minutes.
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApi
+        - Name: Stage
+          Value: prod
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  IntakeFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-intake-errors"
+      AlarmDescription: Intake function reported an invocation error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref IntakeFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  EvidenceFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-evidence-errors"
+      AlarmDescription: System Inspector evidence projection reported an invocation error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref EvidenceFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  IntakeWorkflowFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-workflow-failures"
+      AlarmDescription: Intake state machine reported a failed execution.
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref IntakeStateMachine
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleControlFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableScaleFeature
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-scale-control-errors"
+      AlarmDescription: Scale Run control function reported an invocation error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ScaleControlFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleWorkerFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableScaleFeature
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-scale-worker-errors"
+      AlarmDescription: A Scale Run partition worker reported an invocation error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ScaleWorkerFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleExportFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableScaleFeature
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-scale-export-errors"
+      AlarmDescription: An asynchronous Scale Run export worker reported an invocation error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ScaleExportFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleWorkflowFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableScaleFeature
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-scale-workflow-failures"
+      AlarmDescription: Scale Run Standard workflow reported a failed execution.
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref ScaleRunStateMachine
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleWorkerDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableScaleFeature
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-scale-worker-dlq"
+      AlarmDescription: One or more Scale Run partition messages reached the dead-letter queue.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ScaleWorkerDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleExportDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableScaleFeature
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-scale-export-dlq"
+      AlarmDescription: One or more Scale Run export messages reached the dead-letter queue.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ScaleExportDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleWorkerQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableScaleFeature
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-scale-worker-queue-age"
+      AlarmDescription: Oldest Scale Run partition message exceeded five minutes.
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ScaleWorkerQueue.QueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 300
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  ScaleOperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Condition: EnableScaleFeature
+    Properties:
+      DashboardName: !Sub "${AWS::StackName}-scale-operations"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Scale Run records and invalid records",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "stat": "Sum",
+                "metrics": [
+                  [{"expression": "SEARCH('{Compass/Scale} MetricName=\"Records\"', 'Sum', 60)", "label": "Records", "id": "e1"}],
+                  [{"expression": "SEARCH('{Compass/Scale} MetricName=\"InvalidRecords\"', 'Sum', 60)", "label": "Invalid records", "id": "e2"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Partition and export queue pressure",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "stat": "Maximum",
+                "metrics": [
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${ScaleWorkerQueue.QueueName}"],
+                  [".", "ApproximateNumberOfMessagesNotVisible", ".", "."],
+                  [".", "ApproximateAgeOfOldestMessage", ".", "."],
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${ScaleExportQueue.QueueName}"]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Scale Run function duration and errors",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "stat": "p95",
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${ScaleControlFunction}"],
+                  [".", ".", ".", "${ScaleWorkerFunction}"],
+                  [".", ".", ".", "${ScaleExportFunction}"],
+                  ["AWS/Lambda", "Errors", "FunctionName", "${ScaleControlFunction}", {"stat": "Sum", "yAxis": "right"}],
+                  [".", ".", ".", "${ScaleWorkerFunction}", {"stat": "Sum", "yAxis": "right"}],
+                  [".", ".", ".", "${ScaleExportFunction}", {"stat": "Sum", "yAxis": "right"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Scale Run workflow executions",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  ["AWS/States", "ExecutionsStarted", "StateMachineArn", "${ScaleRunStateMachine}"],
+                  [".", "ExecutionsSucceeded", ".", "."],
+                  [".", "ExecutionsFailed", ".", "."],
+                  [".", "ExecutionsAborted", ".", "."]
+                ]
+              }
+            }
+          ]
+        }
+
+  OperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${AWS::StackName}-operations"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Protected API requests and errors",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiId", "${HttpApi}", "Stage", "prod"],
+                  [".", "4xx", ".", ".", ".", "."],
+                  [".", "5xx", ".", ".", ".", "."]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Critical function errors",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "${IntakeFunction}"],
+                  [".", ".", ".", "${QualityGateFunction}"],
+                  [".", ".", ".", "${ExportFunction}"],
+                  [".", ".", ".", "${EvidenceFunction}"],
+                  [".", ".", ".", "${DocumentMlFunction}"]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Function duration",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "stat": "p95",
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${IntakeFunction}"],
+                  [".", ".", ".", "${AnalyticsFunction}"],
+                  [".", ".", ".", "${DashboardFunction}"],
+                  [".", ".", ".", "${ExportFunction}"],
+                  [".", ".", ".", "${EvidenceFunction}"],
+                  [".", ".", ".", "${DocumentMlFunction}"]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Document workflow executions",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  ["AWS/States", "ExecutionsStarted", "StateMachineArn", "${DocumentMlStateMachine}"],
+                  [".", "ExecutionsSucceeded", ".", "."],
+                  [".", "ExecutionsFailed", ".", "."],
+                  [".", "ExecutionsAborted", ".", "."]
+                ]
+              }
+            }
+          ]
+        }
+
+  # ===========================================================================
+  # (11) Web tier - private S3 + OAC + CloudFront (PriceClass_100) with the
   #      Next.js trailing-slash path-rewrite function (proven pattern from a prior static-export deployment),
   #      fronted by the CLOUDFRONT-scope WAF WebACL below.
   # ===========================================================================
@@ -1201,6 +3012,45 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  WebSecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "${AWS::StackName}-web-security-headers"
+        Comment: Browser security baseline for the Compass static application
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: >-
+              default-src 'self'; base-uri 'self'; object-src 'none';
+              frame-ancestors 'none'; form-action 'self' https://*.amazoncognito.com;
+              script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';
+              img-src 'self' data:; font-src 'self' data:;
+              connect-src 'self' https://*.amazoncognito.com
+              https://cognito-idp.us-east-1.amazonaws.com
+              https://*.execute-api.us-east-1.amazonaws.com;
+              manifest-src 'self'; worker-src 'self' blob:; upgrade-insecure-requests
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 63072000
+            IncludeSubdomains: true
+            Preload: true
+            Override: true
+        CustomHeadersConfig:
+          Items:
+            - Header: Permissions-Policy
+              Value: >-
+                camera=(), microphone=(), geolocation=(), payment=(), usb=(),
+                browsing-topics=()
+              Override: true
+
   # Maps trailing-slash + extensionless URLs (/catalog/, /dashboard) to the
   # underlying /foo/index.html object in S3. Without this, every Next.js
   # static-export route 404s in S3. (Working function proven in a prior static-export deployment.)
@@ -1230,6 +3080,10 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: Compass demo web - Next.js static export
+        Aliases: !If
+          - HasWebCustomDomain
+          - - !Ref WebCustomDomainName
+          - !Ref AWS::NoValue
         DefaultRootObject: index.html
         HttpVersion: http2and3
         PriceClass: PriceClass_100
@@ -1247,6 +3101,7 @@ Resources:
           CachedMethods: [GET, HEAD]
           Compress: true
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          ResponseHeadersPolicyId: !Ref WebSecurityHeadersPolicy
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN: !GetAtt WebPathRewriteFunction.FunctionMetadata.FunctionARN
@@ -1255,8 +3110,24 @@ Resources:
             ResponseCode: 404
             ResponsePagePath: /404.html
             ErrorCachingMinTTL: 60
-        ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+        ViewerCertificate: !If
+          - HasWebCustomDomain
+          - AcmCertificateArn: !Ref WebCertificateArn
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
+
+  WebCustomDomainRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasWebCustomDomain
+    Properties:
+      HostedZoneId: !Ref WebHostedZoneId
+      Name: !Ref WebCustomDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt WebDistribution.DomainName
+        EvaluateTargetHealth: false
+        HostedZoneId: Z2FDTNDATAQYW2
 
   WebBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -1347,12 +3218,19 @@ Resources:
 # Outputs
 # -----------------------------------------------------------------------------
 Outputs:
+  ScaleFeatureStatus:
+    Description: Whether the optional, cost-bounded Scale Run data plane is deployed.
+    Value: !If [EnableScaleFeature, enabled, disabled]
   ApiBaseUrl:
     Description: HttpApi base URL (JWT-guarded, deny-by-default).
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   CloudFrontDomain:
     Description: CloudFront domain - feed back into WebCallbackUrl/WebLogoutUrl/WebOrigin on the second deploy.
     Value: !GetAtt WebDistribution.DomainName
+  CustomDomainUrl:
+    Condition: HasWebCustomDomain
+    Description: Stable custom URL for the Compass web application.
+    Value: !Sub "https://${WebCustomDomainName}"
   UserPoolId:
     Description: Cognito user pool id.
     Value: !Ref UserPool
@@ -1383,6 +3261,41 @@ Outputs:
   IntakeStateMachineArn:
     Description: Express intake pipeline (intake -> quality gate).
     Value: !Ref IntakeStateMachine
+  DocumentMlStateMachineArn:
+    Description: Express document pipeline (inspect -> quality -> silver/gold or quarantine).
+    Value: !Ref DocumentMlStateMachine
+  DocumentMlTableName:
+    Description: Durable document run, model registry, deployment, and drift receipt ledger.
+    Value: !Ref DocumentMlTable
+  DocumentModelPackageGroupName:
+    Description: SageMaker Model Registry group reserved for approved document model packages.
+    Value: !Ref DocumentModelPackageGroup
+  DocumentMlFunctionName:
+    Description: Protected document and MLOps control function.
+    Value: !Ref DocumentMlFunction
   MigratorFunctionName:
     Description: Invoke in-VPC to apply db/migrations against the private cluster.
     Value: !Ref MigratorFunction
+  AnalyticsFunctionName:
+    Description: Direct-invoke function used for controlled baseline analytics preparation.
+    Value: !Ref AnalyticsFunction
+  ScaleRunsFunctionName:
+    Condition: EnableScaleFeature
+    Description: Protected Scale Plan, Scale Run, and evidence control function.
+    Value: !Ref ScaleControlFunction
+  ScaleRunStateMachineArn:
+    Condition: EnableScaleFeature
+    Description: Standard workflow coordinating one bounded Scale Run.
+    Value: !Ref ScaleRunStateMachine
+  ScaleDataLakeBucketName:
+    Condition: EnableScaleFeature
+    Description: Private, encrypted synthetic Scale Run data lake bucket.
+    Value: !Ref ScaleDataLakeBucket
+  ScaleRunsTableName:
+    Condition: EnableScaleFeature
+    Description: Durable Scale Plan, run, partition, and export ledger.
+    Value: !Ref ScaleRunsTable
+  ScaleAthenaWorkGroupName:
+    Condition: EnableScaleFeature
+    Description: Query workgroup with the enforced Scale Run scan cutoff.
+    Value: !Ref ScaleAthenaWorkGroup

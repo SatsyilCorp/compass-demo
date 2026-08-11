@@ -145,6 +145,9 @@ docker info >/dev/null
 echo "==> Staging database migrations"
 "$repo/src/functions/migrator/prepare_migrations.sh"
 
+echo "==> Staging the current SAM template into the RMF artifact package"
+"$repo/src/functions/rmf_artifact/prepare_template.sh"
+
 echo "==> Validating the SAM template"
 sam validate \
   --lint \

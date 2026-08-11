@@ -170,7 +170,14 @@ export function DocumentDropZone() {
           <h2 id="document-intake-title" className="mt-3 text-xl font-bold text-text-strong">Drop a real synthetic document</h2>
           <p className="mt-2 text-xs leading-5 text-text-muted">Select a sanitized file from your computer. Compass validates the file, computes its hash, lands the original, infers its shape, applies quality rules, classifies it, and publishes governed evidence.</p>
 
-          <input ref={inputRef} type="file" accept={ACCEPT} className="sr-only" onChange={(event) => onFiles(event.currentTarget.files)} />
+          <input
+            ref={inputRef}
+            type="file"
+            accept={ACCEPT}
+            aria-label="Choose sanitized documents"
+            className="sr-only"
+            onChange={(event) => onFiles(event.currentTarget.files)}
+          />
           <button
             type="button"
             onClick={choose}

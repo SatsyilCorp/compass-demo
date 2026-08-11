@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -56,6 +57,29 @@ def _tokens(value: str | None) -> set[str]:
     return {token.strip().lower() for token in (value or "").split(",") if token.strip()}
 
 
+def validated_api_base_url(value: str) -> str:
+    """Return a canonical HTTPS API URL or reject the probe target."""
+    candidate = value.rstrip("/")
+    parsed = urlsplit(candidate)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("api-base-url must be an absolute https URL without credentials, query, or fragment")
+    return candidate
+
+
+def _open_https(request: Request):
+    """Open only a request whose URL has already passed the HTTPS boundary."""
+    if urlsplit(request.full_url).scheme != "https":
+        raise ValueError("CORS probes may only open https URLs")
+    return urlopen(request, timeout=15)  # nosec B310
+
+
 def check_preflight(api_base_url: str, origin: str, probe: Probe) -> list[str]:
     request = Request(
         f"{api_base_url.rstrip('/')}{probe.path}",
@@ -68,7 +92,7 @@ def check_preflight(api_base_url: str, origin: str, probe: Probe) -> list[str]:
     )
 
     try:
-        with urlopen(request, timeout=15) as response:
+        with _open_https(request) as response:
             status = response.status
             headers = response.headers
     except HTTPError as error:
@@ -118,7 +142,7 @@ def check_denied_response(api_base_url: str, origin: str, probe: Probe) -> list[
     )
 
     try:
-        with urlopen(request, timeout=15) as response:
+        with _open_https(request) as response:
             status = response.status
             headers = response.headers
     except HTTPError as error:
@@ -153,7 +177,7 @@ def check_unapproved_origin(api_base_url: str) -> list[str]:
         },
     )
     try:
-        with urlopen(request, timeout=15) as response:
+        with _open_https(request) as response:
             actual_origin = response.headers.get("Access-Control-Allow-Origin")
     except HTTPError as error:
         actual_origin = error.headers.get("Access-Control-Allow-Origin")
@@ -170,16 +194,17 @@ def main() -> int:
     parser.add_argument("--api-base-url", required=True)
     parser.add_argument("--origin", required=True)
     args = parser.parse_args()
+    api_base_url = validated_api_base_url(args.api_base_url)
 
     failures = [
         problem
         for probe in PROBES
         for problem in (
-            check_preflight(args.api_base_url, args.origin, probe)
-            + check_denied_response(args.api_base_url, args.origin, probe)
+            check_preflight(api_base_url, args.origin, probe)
+            + check_denied_response(api_base_url, args.origin, probe)
         )
     ]
-    failures.extend(check_unapproved_origin(args.api_base_url))
+    failures.extend(check_unapproved_origin(api_base_url))
     if failures:
         print("CORS contract failed:")
         for failure in failures:

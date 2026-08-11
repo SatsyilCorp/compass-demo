@@ -126,8 +126,12 @@ def _cfn_loader():
 
 
 def parse_template(text: str) -> Dict[str, Any]:
-    yaml, loader = _cfn_loader()
-    doc = yaml.load(text, Loader=loader)
+    _yaml, loader_class = _cfn_loader()
+    loader = loader_class(text)
+    try:
+        doc = loader.get_single_data()
+    finally:
+        loader.dispose()
     if not isinstance(doc, dict) or "Resources" not in doc:
         raise ValueError("not a CloudFormation/SAM template (no Resources block)")
     return doc

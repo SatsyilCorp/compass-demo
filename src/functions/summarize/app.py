@@ -148,10 +148,11 @@ def _portfolio_snapshot(c, *, corporate: bool):
     amount_expr = "SUM(amount_usd)" if corporate else "NULL"
 
     with c.cursor() as cur:
-        cur.execute(
+        by_year_query = (
             f"SELECT fiscal_year, COUNT(*), {amount_expr} FROM {table} "
             "GROUP BY fiscal_year ORDER BY fiscal_year"
         )
+        cur.execute(by_year_query)
         by_fy = [
             {
                 "fiscal_year": r[0],
@@ -161,10 +162,11 @@ def _portfolio_snapshot(c, *, corporate: bool):
             for r in cur.fetchall()
         ]
 
-        cur.execute(
+        by_area_query = (
             f"SELECT program_area, COUNT(*), {amount_expr} FROM {table} "
             "GROUP BY program_area ORDER BY COUNT(*) DESC"
         )
+        cur.execute(by_area_query)
         by_area = [
             {
                 "program_area": r[0],

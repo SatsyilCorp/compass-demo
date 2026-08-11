@@ -86,6 +86,7 @@ jobs:
       - name: Stage migrations and build backend
         run: |
           ./src/functions/migrator/prepare_migrations.sh
+          ./src/functions/rmf_artifact/prepare_template.sh
           sam validate --lint
           sam build --use-container --cached
 

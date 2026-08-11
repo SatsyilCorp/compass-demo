@@ -162,15 +162,13 @@ def list_pending_approvals(
     params.append(APPROVAL_LIST_LIMIT)
 
     with conn.cursor() as cur:
+        query = (
+            f"SELECT {APPROVAL_COLUMNS} "
+            "FROM approvals WHERE state = %s "
+            f"{actor_clause} ORDER BY created_at ASC, id ASC LIMIT %s"
+        )
         cur.execute(
-            f"""
-            SELECT {APPROVAL_COLUMNS}
-              FROM approvals
-             WHERE state = %s
-               {actor_clause}
-             ORDER BY created_at ASC, id ASC
-             LIMIT %s
-            """,
+            query,
             tuple(params),
         )
         approvals = [
@@ -220,15 +218,14 @@ def create_or_advance(
         if action == "request":
             # Idempotent: an identical outstanding request is returned, not
             # duplicated, so a double-click cannot fan out the queue.
+            query = (
+                f"SELECT {APPROVAL_COLUMNS} "
+                "FROM approvals WHERE subject_type = %s AND subject_id = %s "
+                "AND state = 'pending' AND requested_by = %s "
+                "ORDER BY created_at DESC LIMIT 1"
+            )
             cur.execute(
-                f"""
-                SELECT {APPROVAL_COLUMNS}
-                  FROM approvals
-                 WHERE subject_type = %s AND subject_id = %s
-                   AND state = 'pending' AND requested_by = %s
-                 ORDER BY created_at DESC
-                 LIMIT 1
-                """,
+                query,
                 (subject_type, subject_id, actor),
             )
             existing = _approval_row(cur.fetchone())
@@ -249,12 +246,14 @@ def create_or_advance(
                     },
                 }
 
+            query = (
+                "INSERT INTO approvals "
+                "(subject_type, subject_id, state, requested_by, note) "
+                "VALUES (%s, %s, 'pending', %s, %s) "
+                f"RETURNING {APPROVAL_COLUMNS}"
+            )
             cur.execute(
-                f"""
-                INSERT INTO approvals (subject_type, subject_id, state, requested_by, note)
-                VALUES (%s, %s, 'pending', %s, %s)
-                RETURNING {APPROVAL_COLUMNS}
-                """,
+                query,
                 (subject_type, subject_id, actor, note),
             )
             approval = _approval_row(cur.fetchone())
@@ -292,15 +291,13 @@ def create_or_advance(
             }
 
         # FOR UPDATE: two reviewers clicking at once must not both decide.
+        query = (
+            f"SELECT {APPROVAL_COLUMNS} "
+            "FROM approvals WHERE subject_type = %s AND subject_id = %s "
+            "AND state = 'pending' ORDER BY created_at ASC LIMIT 1 FOR UPDATE"
+        )
         cur.execute(
-            f"""
-            SELECT {APPROVAL_COLUMNS}
-              FROM approvals
-             WHERE subject_type = %s AND subject_id = %s AND state = 'pending'
-             ORDER BY created_at ASC
-             LIMIT 1
-             FOR UPDATE
-            """,
+            query,
             (subject_type, subject_id),
         )
         pending = _approval_row(cur.fetchone())
@@ -340,24 +337,17 @@ def create_or_advance(
             else None
         )
 
+        query = (
+            "UPDATE approvals SET state = %s, decided_by = %s, "
+            "decided_at = now(), note = COALESCE(%s, note), "
+            "expires_at = CASE WHEN %s = 'approved' "
+            "THEN now() + (%s * interval '1 second') ELSE NULL END, "
+            "consumed_at = NULL, consumed_by = NULL, capability_hash = %s "
+            "WHERE id = %s "
+            f"RETURNING {APPROVAL_COLUMNS}"
+        )
         cur.execute(
-            f"""
-            UPDATE approvals
-               SET state = %s,
-                   decided_by = %s,
-                   decided_at = now(),
-                   note = COALESCE(%s, note),
-                   expires_at = CASE
-                     WHEN %s = 'approved'
-                     THEN now() + (%s * interval '1 second')
-                     ELSE NULL
-                   END,
-                   consumed_at = NULL,
-                   consumed_by = NULL,
-                   capability_hash = %s
-             WHERE id = %s
-            RETURNING {APPROVAL_COLUMNS}
-            """,
+            query,
             (
                 ACTION_TO_STATE[action],
                 actor,

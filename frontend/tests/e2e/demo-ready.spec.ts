@@ -44,7 +44,7 @@ test("Scale Lab previews, launches, proves, and exports a bounded workload", asy
   await page.getByRole("button", { name: /Quality and quarantine/ }).click();
   await expect(page.getByText("Every rejected record is counted and quarantined with rule-level reasons.", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: /Decision brief/ }).click();
+  await page.getByRole("link", { name: /Unified decision workspace/ }).click();
   await expect(page).toHaveURL(/\/dashboard\/$/);
   await expect(page.getByText("Scale run decision context", { exact: true })).toBeVisible();
   await expect(page.getByText("10,000 synthetic records", { exact: true })).toBeVisible();
@@ -53,7 +53,7 @@ test("Scale Lab previews, launches, proves, and exports a bounded workload", asy
 
   await page.getByRole("button", { name: "Use curated baseline" }).first().click();
   await expect(page.getByText("Curated demo", { exact: true })).toBeVisible();
-  await expect(page.getByText("Portfolio command center", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Decision workspace" })).toBeVisible();
   await expect(page.getByText("Scale run decision context", { exact: true })).toHaveCount(0);
 });
 
@@ -119,25 +119,21 @@ test("architecture explorer maps services and explains production scale flow", a
   await expect(page.getByText("Sensitive-data discovery", { exact: true })).toBeVisible();
 });
 
-test("requirements trace filters the PWS and expands an honest demo workflow", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop-chromium", "interactive requirements trace runs once on desktop");
+test("demo command center walks the scored sequence and strategic prompts", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium", "interactive command center flow runs once on desktop");
 
   await page.goto("/admin/requirements/");
-  await expect(page.getByRole("heading", { name: "Requirements traceability" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Production-scale proving prototype" })).toBeVisible();
-  await expect(page.getByText("Not production-ready or accredited", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Technical Demonstration Command Center" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Seven demonstration elements" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Five mandatory strategic prompts" })).toBeVisible();
 
-  await page.getByPlaceholder("Search requirements, controls, or evidence").fill("model registry");
-  const mlops = page.getByRole("button", { name: /MLOps, model registry, and automated retraining/ });
-  await expect(mlops).toBeVisible();
-  await mlops.click();
-  await expect(page.getByText("Automated retraining, model registry, decay monitoring, validation promotion, and GPU provisioning are not demonstrated.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open Topic intelligence" })).toBeVisible();
+  await page.getByRole("tab", { name: /Element 5 Model and decide/ }).click();
+  await expect(page.getByRole("heading", { name: "Decision-Support Analytics and Modeling" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Model operations" })).toBeVisible();
+  await expect(page.getByText("The classifier uses sanitized synthetic documents", { exact: false })).toBeVisible();
 
-  await page.getByRole("button", { name: "Clear requirements search" }).click();
-  await page.getByLabel("PWS section").selectOption("PWS 6");
-  await expect(page.getByRole("button", { name: /FedRAMP High, IL5, RMF, and ATO/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Diverse S&T data acquisition/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Zero Trust and Cybersecurity Compliance" }).click();
+  await expect(page.getByText("Continuously evaluate source, dependencies, IaC, STIG policy", { exact: false })).toBeVisible();
 });
 
 test("a completed ingest appears in the shared System Inspector evidence", async ({ page }, testInfo) => {

@@ -37,6 +37,7 @@ def test_fresh_ha_deployment_uses_recoverable_then_protected_pass(
     successful_stub = "#!/usr/bin/env sh\nset -eu\nexit 0\n"
     for relative_path in (
         "src/functions/migrator/prepare_migrations.sh",
+        "src/functions/rmf_artifact/prepare_template.sh",
         "scripts/migrate.sh",
         "scripts/build-frontend.sh",
         "scripts/upload-to-cloudfront.sh",

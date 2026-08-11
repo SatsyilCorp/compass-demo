@@ -14,6 +14,7 @@ After editing STATUS.json, re-run this and open dashboard.html.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -31,6 +32,57 @@ CHIP = {
     "required": ("REQUIRED", "#57606a"),
 }
 
+APPROVED_CHECK_STEPS = {
+    (
+        "Repository content policy",
+        "python3 scripts/check_no_em_dash.py",
+    ): ((ROOT, ("python3", "scripts/check_no_em_dash.py"), None),),
+    (
+        "Backend lint and tests",
+        "ruff check src scripts && PYTHONPATH=src/common/python python3 -m pytest -q",
+    ): (
+        (ROOT, ("ruff", "check", "src", "scripts"), None),
+        (ROOT, ("python3", "-m", "pytest", "-q"), {"PYTHONPATH": "src/common/python"}),
+    ),
+    (
+        "Migration package synchronization",
+        "./src/functions/migrator/prepare_migrations.sh && git diff --exit-code -- db/migrations src/functions/migrator/migrations",
+    ): (
+        (ROOT, ("./src/functions/migrator/prepare_migrations.sh",), None),
+        (
+            ROOT,
+            (
+                "git",
+                "diff",
+                "--exit-code",
+                "--",
+                "db/migrations",
+                "src/functions/migrator/migrations",
+            ),
+            None,
+        ),
+    ),
+    (
+        "Infrastructure validation and build",
+        "sam validate --lint && sam build --use-container",
+    ): (
+        (ROOT, ("sam", "validate", "--lint"), None),
+        (ROOT, ("sam", "build", "--use-container"), None),
+    ),
+    (
+        "Frontend type, scenario, build, and browser checks",
+        "cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e2e",
+    ): tuple(
+        (ROOT / "frontend", command, None)
+        for command in (
+            ("pnpm", "typecheck"),
+            ("pnpm", "test:scenario"),
+            ("pnpm", "build"),
+            ("pnpm", "test:e2e"),
+        )
+    ),
+}
+
 
 def run_checks(checks: list) -> list:
     results = []
@@ -38,13 +90,37 @@ def run_checks(checks: list) -> list:
         if "--skip-checks" in sys.argv:
             results.append((c["name"], "skipped", None))
             continue
-        try:
-            r = subprocess.run(
-                c["command"], shell=True, cwd=ROOT,
-                capture_output=True, text=True, timeout=600,
+        steps = APPROVED_CHECK_STEPS.get((c.get("name"), c.get("command")))
+        if steps is None:
+            results.append(
+                (
+                    c["name"],
+                    "not executable: command is not an approved dashboard check",
+                    False,
+                )
             )
-            tail = ((r.stdout or r.stderr).strip().splitlines() or ["(no output)"])[-1]
-            results.append((c["name"], tail, r.returncode == 0))
+            continue
+        try:
+            step_results = []
+            for cwd, command, extra_env in steps:
+                env = {**os.environ, **(extra_env or {})}
+                run = subprocess.run(
+                    list(command),
+                    cwd=cwd,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+                step_results.append(run)
+                if run.returncode != 0:
+                    break
+            last = step_results[-1]
+            tail = (
+                (last.stdout or last.stderr).strip().splitlines()
+                or ["(no output)"]
+            )[-1]
+            results.append((c["name"], tail, all(run.returncode == 0 for run in step_results)))
         except Exception as e:  # noqa: BLE001 - dashboard must render regardless
             results.append((c["name"], f"could not run: {e}", False))
     return results

@@ -824,8 +824,9 @@ def _database_checks(
     _check(checks, "database.baseline_lineage", {"nodes": lineage_nodes, "edges": lineage_edges}, {"nodes": 4, "edges": 3}, lineage_nodes == 4 and lineage_edges == 3)
 
     license_sql, license_params = _license_predicate()
+    # The predicate shape comes only from source-controlled EXPECTED_LICENSES.
     cur.execute(
-        "SELECT count(*) FROM licenses WHERE " + license_sql,
+        "SELECT count(*) FROM licenses WHERE " + license_sql,  # nosec B608
         tuple(license_params),
     )
     licenses = int(cur.fetchone()[0])

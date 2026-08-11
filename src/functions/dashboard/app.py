@@ -190,29 +190,22 @@ def _funding_by_program_area(
     where, params = _grant_where(filters)
     relation = _relation(is_corporate)
     if is_corporate:
-        cur.execute(
-            f"""
-            SELECT g.program_area, count(*), COALESCE(sum(g.amount_usd), 0)
-            FROM {relation} AS g{where}
-            GROUP BY g.program_area
-            ORDER BY count(*) DESC, g.program_area ASC
-            """,
-            params,
+        query = (
+            f"SELECT g.program_area, count(*), COALESCE(sum(g.amount_usd), 0) "
+            f"FROM {relation} AS g{where} GROUP BY g.program_area "
+            "ORDER BY count(*) DESC, g.program_area ASC"
         )
+        cur.execute(query, params)
         return [
             {"program_area": row[0], "grant_count": int(row[1]), "amount_usd": float(row[2])}
             for row in cur.fetchall()
         ]
 
-    cur.execute(
-        f"""
-        SELECT g.program_area, count(*)
-        FROM {relation} AS g{where}
-        GROUP BY g.program_area
-        ORDER BY count(*) DESC, g.program_area ASC
-        """,
-        params,
+    query = (
+        f"SELECT g.program_area, count(*) FROM {relation} AS g{where} "
+        "GROUP BY g.program_area ORDER BY count(*) DESC, g.program_area ASC"
     )
+    cur.execute(query, params)
     return [
         {"program_area": row[0], "grant_count": int(row[1]), "amount_usd": None}
         for row in cur.fetchall()
@@ -227,28 +220,22 @@ def _funding_by_fiscal_year(
     where, params = _grant_where(filters)
     relation = _relation(is_corporate)
     if is_corporate:
-        cur.execute(
-            f"""
-            SELECT g.fiscal_year, COALESCE(sum(g.amount_usd), 0)
-            FROM {relation} AS g{where}
-            GROUP BY g.fiscal_year
-            ORDER BY g.fiscal_year ASC
-            """,
-            params,
+        query = (
+            f"SELECT g.fiscal_year, COALESCE(sum(g.amount_usd), 0) "
+            f"FROM {relation} AS g{where} GROUP BY g.fiscal_year "
+            "ORDER BY g.fiscal_year ASC"
         )
+        cur.execute(query, params)
         return [
             {"fiscal_year": int(row[0]), "amount_usd": float(row[1])}
             for row in cur.fetchall()
         ]
 
-    cur.execute(
-        f"""
-        SELECT DISTINCT g.fiscal_year
-        FROM {relation} AS g{where}
-        ORDER BY g.fiscal_year ASC
-        """,
-        params,
+    query = (
+        f"SELECT DISTINCT g.fiscal_year FROM {relation} AS g{where} "
+        "ORDER BY g.fiscal_year ASC"
     )
+    cur.execute(query, params)
     return [
         {"fiscal_year": int(row[0]), "amount_usd": None}
         for row in cur.fetchall()
@@ -312,15 +299,12 @@ def _quality_trend_for_scope(
         )
         scope_sql = f" WHERE ({curated_scope} OR {quarantined_scope})"
         query_params.extend(raw_params)
-    cur.execute(
-        f"""
-        SELECT q.run_id, MIN(q.created_at) AS run_started, AVG(q.score) AS avg_score
-        FROM grant_quality AS q{scope_sql}
-        GROUP BY q.run_id
-        ORDER BY run_started ASC
-        """,
-        tuple(query_params),
+    query = (
+        f"SELECT q.run_id, MIN(q.created_at) AS run_started, "
+        f"AVG(q.score) AS avg_score FROM grant_quality AS q{scope_sql} "
+        "GROUP BY q.run_id ORDER BY run_started ASC"
     )
+    cur.execute(query, tuple(query_params))
     return [
         {
             "run_id": run_id,
@@ -334,39 +318,27 @@ def _quality_trend_for_scope(
 def _top_topics(cur, filters: DashboardFilters) -> List[Dict[str, Any]]:
     predicates, params = _grant_predicates(filters)
     filter_sql = f" AND {' AND '.join(predicates)}" if predicates else ""
-    cur.execute(
-        f"""
-        SELECT mr.run_id
-        FROM model_runs AS mr
-        WHERE mr.kind = %s
-          AND EXISTS (
-            SELECT 1
-            FROM grant_topics AS visible_gt
-            JOIN grants_curated AS g ON g.id = visible_gt.grant_id
-            WHERE visible_gt.run_id = mr.run_id{filter_sql}
-          )
-        ORDER BY mr.created_at DESC
-        LIMIT 1
-        """,
-        ("topic_model", *params),
+    latest_query = (
+        f"SELECT mr.run_id FROM model_runs AS mr WHERE mr.kind = %s "
+        "AND EXISTS (SELECT 1 FROM grant_topics AS visible_gt "
+        "JOIN grants_curated AS g ON g.id = visible_gt.grant_id "
+        f"WHERE visible_gt.run_id = mr.run_id{filter_sql}) "
+        "ORDER BY mr.created_at DESC LIMIT 1"
     )
+    cur.execute(latest_query, ("topic_model", *params))
     latest = cur.fetchone()
     if not latest:
         return []
     run_id = latest[0]
 
-    cur.execute(
-        f"""
-        SELECT t.topic_id, t.label, count(gt.grant_id) AS grant_count
-        FROM topics AS t
-        JOIN grant_topics AS gt
-          ON gt.run_id = t.run_id AND gt.topic_id = t.topic_id
-        JOIN grants_curated AS g ON g.id = gt.grant_id
-        WHERE t.run_id = %s{filter_sql}
-        GROUP BY t.topic_id, t.label
-        """,
-        (run_id, *params),
+    topics_query = (
+        f"SELECT t.topic_id, t.label, count(gt.grant_id) AS grant_count "
+        "FROM topics AS t JOIN grant_topics AS gt "
+        "ON gt.run_id = t.run_id AND gt.topic_id = t.topic_id "
+        "JOIN grants_curated AS g ON g.id = gt.grant_id "
+        f"WHERE t.run_id = %s{filter_sql} GROUP BY t.topic_id, t.label"
     )
+    cur.execute(topics_query, (run_id, *params))
     rows = cur.fetchall()
     if not rows:
         return []
@@ -390,29 +362,22 @@ def _org_unit_breakdown(
     where, params = _grant_where(filters)
     relation = _relation(is_corporate)
     if is_corporate:
-        cur.execute(
-            f"""
-            SELECT g.org_unit, count(*), COALESCE(sum(g.amount_usd), 0)
-            FROM {relation} AS g{where}
-            GROUP BY g.org_unit
-            ORDER BY count(*) DESC, g.org_unit ASC
-            """,
-            params,
+        query = (
+            f"SELECT g.org_unit, count(*), COALESCE(sum(g.amount_usd), 0) "
+            f"FROM {relation} AS g{where} GROUP BY g.org_unit "
+            "ORDER BY count(*) DESC, g.org_unit ASC"
         )
+        cur.execute(query, params)
         return [
             {"org_unit": row[0], "grant_count": int(row[1]), "amount_usd": float(row[2])}
             for row in cur.fetchall()
         ]
 
-    cur.execute(
-        f"""
-        SELECT g.org_unit, count(*)
-        FROM {relation} AS g{where}
-        GROUP BY g.org_unit
-        ORDER BY count(*) DESC, g.org_unit ASC
-        """,
-        params,
+    query = (
+        f"SELECT g.org_unit, count(*) FROM {relation} AS g{where} "
+        "GROUP BY g.org_unit ORDER BY count(*) DESC, g.org_unit ASC"
     )
+    cur.execute(query, params)
     return [
         {"org_unit": row[0], "grant_count": int(row[1]), "amount_usd": None}
         for row in cur.fetchall()
@@ -433,24 +398,19 @@ def _open_anomalies_count(
     )
     include_unbound = is_corporate and not filters.has_portfolio_filter
     scope_sql = f"(a.grant_id IS NULL OR {bound_scope})" if include_unbound else bound_scope
-    cur.execute(
-        f"""
-        SELECT count(*)
-        FROM anomalies AS a
-        WHERE a.status = %s AND {scope_sql}
-        """,
-        ("open", *params),
+    query = (
+        f"SELECT count(*) FROM anomalies AS a "
+        f"WHERE a.status = %s AND {scope_sql}"
     )
+    cur.execute(query, ("open", *params))
     return int(cur.fetchone()[0])
 
 
 def _pending_approvals_count(cur, *, is_corporate: bool, actor: str) -> int:
     actor_scope = "" if is_corporate else " AND requested_by = %s"
     params: Tuple[Any, ...] = ("pending",) if is_corporate else ("pending", actor)
-    cur.execute(
-        f"SELECT count(*) FROM approvals WHERE state = %s{actor_scope}",
-        params,
-    )
+    query = f"SELECT count(*) FROM approvals WHERE state = %s{actor_scope}"
+    cur.execute(query, params)
     return int(cur.fetchone()[0])
 
 

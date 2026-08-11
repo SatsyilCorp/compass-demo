@@ -81,6 +81,7 @@ jobs:
           python -m pip install pytest ruff==0.15.12 cfn-lint pip-audit
           python -m pip install -r src/common/requirements.txt
           python -m pip install -r src/functions/analytics/requirements.txt
+          python -m pip install -r src/functions/document_ml/requirements.txt
 
       - name: Enforce content policy
         run: python scripts/check_no_em_dash.py
@@ -109,6 +110,11 @@ jobs:
         run: |
           ./src/functions/migrator/prepare_migrations.sh
           git diff --exit-code -- db/migrations src/functions/migrator/migrations
+
+      - name: Verify bundled RMF template matches the deploy template
+        run: |
+          ./src/functions/rmf_artifact/prepare_template.sh
+          git diff --exit-code -- template.yaml src/functions/rmf_artifact/template.yaml
 
       - name: Validate infrastructure
         run: sam validate --lint

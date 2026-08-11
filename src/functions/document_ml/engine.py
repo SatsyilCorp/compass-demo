@@ -24,7 +24,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
 
 
 MODEL_CONTRACT = "compass.document-classifier.v1"
