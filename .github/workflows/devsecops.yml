@@ -40,7 +40,7 @@ jobs:
             -r src/functions/document_ml/requirements.txt
 
       - name: Secret scan
-        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.2 detect --source=/repo --no-banner --redact
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.2 detect --source=/repo --config=/repo/.gitleaks.toml --no-banner --redact
 
       - name: Generate CycloneDX SBOM
         uses: anchore/sbom-action@v0
