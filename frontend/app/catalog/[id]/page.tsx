@@ -21,7 +21,7 @@ async function listCatalogIdsForBuild(): Promise<string[]> {
         if (json.datasets?.length) return json.datasets.map((d) => d.id);
       }
     } catch {
-      // Network/auth failure at build time — fall through to the mock ids.
+      // Network/auth failure at build time - fall through to the mock ids.
     }
   }
 

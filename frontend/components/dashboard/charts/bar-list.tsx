@@ -9,7 +9,7 @@ import { SERIES_PRIMARY } from "../chart-theme";
  *
  * Why not Recharts here: these categories have long names (program areas, org
  * units, topic labels). A ranked list of long-named categories is the one form
- * where an SVG chart reliably goes wrong — tick labels get truncated and
+ * where an SVG chart reliably goes wrong because tick labels get truncated and
  * value labels at the bar tip get clipped by the plot area. HTML bars measure
  * themselves, wrap nothing, clip nothing, and stay readable at any width.
  * Recharts is still used for the two time-series charts, where an axis is

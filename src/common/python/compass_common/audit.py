@@ -1,8 +1,8 @@
-"""Immutable audit trail — append one row to ``compass.audit_log``.
+"""Immutable audit trail - append one row to ``compass.audit_log``.
 
 Every export and every aggregation-guard decision writes here (the ``/export``
 route's tamper-evidence story). The insert is unqualified: the ``search_path``
-db.py pins to the ``compass`` schema routes it to ``compass.audit_log`` — never
+db.py pins to the ``compass`` schema routes it to ``compass.audit_log`` - never
 ``public``.
 
 ``detail`` is serialized with ``json.dumps`` and cast to ``jsonb`` in SQL

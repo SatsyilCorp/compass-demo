@@ -12,7 +12,7 @@ Compass's IL5 story depends on:
    an owner/superuser would silently bypass CLS and, without FORCE, RLS.
 
 2. **Apply the request's org context per transaction.** ``set_org(conn, org)``
-   opens a real transaction and issues ``SET LOCAL compass.org_unit = %s`` — the
+   opens a real transaction and issues ``SET LOCAL compass.org_unit = %s`` - the
    exact GUC the ``grants_curated`` policies read via
    ``current_setting('compass.org_unit', true)``. ``SET LOCAL`` is scoped to the
    transaction, so the context can never leak to the next request on a warm,
@@ -45,7 +45,7 @@ _secrets_client = None
 def _default_secret_loader() -> dict:
     """Fetch the DB credential secret ({"username","password"}) from Secrets Manager."""
     global _secrets_client
-    import boto3  # lazy — not needed when a fake loader is injected
+    import boto3  # lazy - not needed when a fake loader is injected
 
     if _secrets_client is None:
         _secrets_client = boto3.client("secretsmanager", region_name=config.aws_region())
@@ -69,7 +69,7 @@ def _default_connect(secret: dict):
 
 
 def _apply_session_settings(conn, schema: str) -> None:
-    """Assume ``compass_app`` and pin the search_path — re-run after any reconnect.
+    """Assume ``compass_app`` and pin the search_path - re-run after any reconnect.
 
     Both are session-level settings that Postgres resets to the role default if
     the connection drops, so they are re-applied on every (re)connect. ``SET``
@@ -94,7 +94,7 @@ def get_conn(
     Three cold-start connect attempts with 20s/40s/60s backoff. On warm reuse,
     roll back a connection left in a non-READY state and re-assert the session
     settings; on a dead socket, drop and reconnect. ``autocommit`` is True at
-    rest — ``set_org`` opens the explicit transactions that RLS needs.
+    rest - ``set_org`` opens the explicit transactions that RLS needs.
     """
     global _db_conn
     import psycopg2
@@ -137,7 +137,7 @@ def set_org(conn, org_unit: str) -> Iterator[object]:
     ``SET LOCAL compass.org_unit = %s`` so the ``grants_curated`` policies filter
     to the caller's org (or, for ``ONR-Corporate``, all rows), yields the
     connection for the caller's queries, then commits. Any exception rolls the
-    transaction back — nothing partial, and the org GUC is discarded with the
+    transaction back - nothing partial, and the org GUC is discarded with the
     transaction so it cannot bleed into the next invocation on a warm connection.
 
     Yields the connection; open cursors off it inside the ``with`` block::

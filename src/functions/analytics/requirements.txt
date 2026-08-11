@@ -1,4 +1,4 @@
-# AnalyticsFunction-only dependency — deliberately NOT in the shared
+# AnalyticsFunction-only dependency - deliberately NOT in the shared
 # CommonLayer (see src/common/requirements.txt for the layer policy).
 #
 # The topic model is a self-contained TF-IDF + NMF written against numpy alone
@@ -6,7 +6,7 @@
 # scikit-learn was considered and rejected: sklearn + scipy would add ~170 MB
 # unzipped and slower cold starts for two routines that are ~150 lines of
 # transparent linear algebra. numpy's manylinux aarch64 wheel is ~40 MB
-# unzipped — comfortably inside Lambda's 250 MB budget next to the psycopg2
+# unzipped - comfortably inside Lambda's 250 MB budget next to the psycopg2
 # CommonLayer. Build with `sam build --use-container` on macOS so pip resolves
 # the linux/arm64 wheel.
 numpy==2.2.6

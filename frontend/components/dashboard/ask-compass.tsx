@@ -9,12 +9,12 @@ import type { ChatCitation, ChatMessage } from "@/lib/types";
 import { useCompassAction } from "./use-compass-query";
 
 /**
- * Natural-language Q&A over the curated portfolio — `POST /chat` (element 6).
+ * Natural-language Q&A over the curated portfolio: `POST /chat` (element 6).
  *
  * Three things this deliberately shows an evaluator:
  *   1. **Citations, always.** Every answer renders the rows it was grounded in
  *      (grant_no + title + snippet). An answer with no citations renders as an
- *      answer with no citations — the UI never implies sourcing that isn't in
+ *      answer with no citations. The UI never implies sourcing that isn't in
  *      the response.
  *   2. **Same security scope as everything else.** Retrieval runs over rows the
  *      caller can see; switching persona changes what the assistant can cite.
@@ -127,7 +127,7 @@ export function AskCompass({ scopeLabel }: { scopeLabel: string }) {
                   </ul>
                 ) : (
                   <p className="mt-2 rounded border border-dashed border-border px-2.5 py-1.5 text-[11px] text-text-subtle">
-                    No grants were retrieved for this question — the answer is not grounded in a
+                    No grants were retrieved for this question. The answer is not grounded in a
                     citation.
                   </p>
                 )}
@@ -188,7 +188,7 @@ export function AskCompass({ scopeLabel }: { scopeLabel: string }) {
         </div>
         <p className="mt-2 text-[10.5px] leading-snug text-text-subtle">
           Generation runs in-boundary on Amazon Bedrock; retrieval is limited to rows your role can
-          read. Synthetic portfolio — answers are about mock data only.
+          read. Synthetic portfolio: answers are about mock data only.
         </p>
       </form>
     </section>

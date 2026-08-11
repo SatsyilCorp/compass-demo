@@ -1,5 +1,5 @@
 /**
- * Quality/health score chip — the compact score badge used in the catalog
+ * Quality/health score chip - the compact score badge used in the catalog
  * table and reused (larger) at the top of the expandable quality panel.
  * Tone thresholds mirror the 3-tier status palette already defined in
  * app/globals.css (success / warn / danger) so a reader learns the mapping

@@ -3,32 +3,32 @@
 
 Generates a MOCK ONR S&T grants portfolio and writes it, plus a set of
 ingest-pipeline demo fixtures and license records, as plain JSON files under
-``seed/``. Everything here is **fully synthetic** — invented program names,
+``seed/``. Everything here is **fully synthetic** - invented program names,
 invented fictional performer organizations, invented dollar amounts. No real
 CUI/PII, no real people, no real award numbers.
 
 Design notes (adapted from the ``demo-seed-toolkit`` block in
-satsyil-blocks/code/py/satsyil_demokit — same spirit of "caller describes the
+satsyil-blocks/code/py/satsyil_demokit - same spirit of "caller describes the
 shape, generator renders it, everything is offline and deterministic", but
 grants/portfolio tabular data isn't in that block's surface, so the domain
 generator here is purpose-built. This script intentionally has **zero**
 third-party dependencies (no faker, no AWS SDK) so it runs anywhere with
-Python 3.11+ and nothing to `pip install` — a deliberate deviation from the
+Python 3.11+ and nothing to `pip install` - a deliberate deviation from the
 block's `faker` dependency, made because tabular demo rows don't need
 Faker-quality names, just plausible, clearly-fictional ones).
 
 Output (all under ``seed/``):
-  grants_portfolio.json              — ~400 grants, curated-table shape (the
+  grants_portfolio.json              - ~400 grants, curated-table shape (the
                                         baseline portfolio already "in" Compass)
-  drops/drop_good.json               — new incoming batch, canonical field
-                                        names, all valid — demos a clean ingest
-  drops/drop_compatible_variant.json — same kind of batch, renamed/reshaped
-                                        columns a real exporter would use — the
+  drops/drop_good.json               - new incoming batch, canonical field
+                                        names, all valid - demos a clean ingest
+  drops/drop_compatible_variant.json - same kind of batch, renamed/reshaped
+                                        columns a real exporter would use - the
                                         pipeline is expected to normalize this
-  drops/drop_incompatible_bad.json   — new batch with missing required fields
-                                        and malformed rows — must be quarantined
-  licenses.json                      — 8 data-vendor license records
-  SYNTHETIC-DATA-MANIFEST.md         — every fixture, counts, and the explicit
+  drops/drop_incompatible_bad.json   - new batch with missing required fields
+                                        and malformed rows - must be quarantined
+  licenses.json                      - 8 data-vendor license records
+  SYNTHETIC-DATA-MANIFEST.md         - every fixture, counts, and the explicit
                                         "no real CUI/PII" assertion
 
 Run: `python3 scripts/seed_data.py` from anywhere (paths are resolved off
@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 SEED = 20260810  # fixed -> reproducible output (except license renewal dates)
+FIXTURE_CONTRACT = "compass.synthetic.v1"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SEED_DIR = REPO_ROOT / "seed"
@@ -59,7 +60,7 @@ PROGRAM_AREAS = [
     "Quantum", "Cyber", "Materials", "Biotech",
 ]
 
-# Grant-number program code — deliberately NOT the real N00014 ONR contract
+# Grant-number program code - deliberately NOT the real N00014 ONR contract
 # format, so nothing here can be mistaken for an actual award identifier.
 PROGRAM_CODE = {
     "AI/ML": "AIML", "Autonomy": "AUTO", "Undersea": "USEA",
@@ -267,7 +268,7 @@ COMPANY_SUFFIXES = [
 
 
 def fictional_org_name(rng: random.Random) -> str:
-    """A clearly-invented performer org name — no real university or company."""
+    """A clearly-invented performer org name - no real university or company."""
     prefix = rng.choice(ORG_PREFIXES)
     if rng.random() < 0.45:
         if rng.random() < 0.4:
@@ -338,7 +339,7 @@ def fy_created_at(rng: random.Random, fiscal_year: int) -> str:
 
 
 class SeqCounter:
-    """Global grant_no sequence — guarantees uniqueness across every file this
+    """Global grant_no sequence - guarantees uniqueness across every file this
     script writes in one run (main portfolio + all three drop batches)."""
 
     def __init__(self) -> None:
@@ -387,7 +388,7 @@ def build_main_portfolio(rng: random.Random, seq: SeqCounter) -> List[Dict[str, 
 
 
 # --------------------------------------------------------------------------- #
-# Drop 1: good — canonical field names, all valid
+# Drop 1: good - canonical field names, all valid
 # --------------------------------------------------------------------------- #
 
 def build_drop_good(rng: random.Random, seq: SeqCounter, n: int = 40) -> List[Dict[str, Any]]:
@@ -396,10 +397,10 @@ def build_drop_good(rng: random.Random, seq: SeqCounter, n: int = 40) -> List[Di
 
 
 # --------------------------------------------------------------------------- #
-# Drop 2: compatible schema variant — renamed/reshaped columns a real legacy
+# Drop 2: compatible schema variant - renamed/reshaped columns a real legacy
 # exporter would produce. Fully recoverable by the ingest normalizer via a
 # straightforward field-rename + light type coercion (currency string, "FYnnnn"
-# string fiscal year) — no data is actually missing or wrong.
+# string fiscal year) - no data is actually missing or wrong.
 # --------------------------------------------------------------------------- #
 
 def to_compatible_variant(rec: Dict[str, Any]) -> Dict[str, Any]:
@@ -424,9 +425,9 @@ def build_drop_compatible(rng: random.Random, seq: SeqCounter, n: int = 40) -> L
 
 
 # --------------------------------------------------------------------------- #
-# Drop 3: incompatible/bad — missing required fields + malformed rows that a
+# Drop 3: incompatible/bad - missing required fields + malformed rows that a
 # real quality gate must quarantine. Field names match canonical (the defect
-# here is bad/missing VALUES, not renamed columns — that scenario is covered
+# here is bad/missing VALUES, not renamed columns - that scenario is covered
 # by drop 2).
 # --------------------------------------------------------------------------- #
 
@@ -582,7 +583,7 @@ def build_licenses(rng: random.Random) -> List[Dict[str, Any]]:
             "product": v["product"],
             "datasets": v["datasets"],
             "entitlements": (
-                f"Enterprise site license — full-text/API access "
+                f"Enterprise site license - full-text/API access "
                 f"({rng.choice([2000, 5000, 10000])} calls/day), bibliometric export"
             ),
             "seats_used": seats_used,
@@ -622,19 +623,23 @@ def build_manifest(
         f"| {d['index']} | {d['defect']} | {d['grant_no']} | {d['note']} |" for d in defect_log
     )
     license_rows = "\n".join(
-        f"| {l['vendor']} | {l['product']} | {l['renews_on']} | {', '.join(l['datasets'])} |"
-        for l in licenses
+        f"| {license_item['vendor']} | {license_item['product']} | {license_item['renews_on']} | {', '.join(license_item['datasets'])} |"
+        for license_item in licenses
     )
     soon_cutoff = dt.date.today() + dt.timedelta(days=46)
-    soon_licenses = [l for l in licenses if dt.date.fromisoformat(l["renews_on"]) <= soon_cutoff]
+    soon_licenses = [
+        license_item
+        for license_item in licenses
+        if dt.date.fromisoformat(license_item["renews_on"]) <= soon_cutoff
+    ]
 
-    return f"""# Synthetic Data Manifest — Compass demo
+    return f"""# Synthetic Data Manifest - Compass demo
 
 Generated by `scripts/seed_data.py` at `{generated_at}`. This document lists
 **every** fixture under `seed/` and is the single place to check when asking
 "is any of this real?"
 
-## Assertion — no real CUI/PII
+## Assertion - no real CUI/PII
 
 Every record in every file listed below is machine-generated from templates
 and word lists in `scripts/seed_data.py`. There is no real person, no real
@@ -648,24 +653,24 @@ Specifically:
   actual award identifier.
 - **Performer organizations** (`awardee`) are built from an invented
   prefix/suffix word list (`ORG_PREFIXES` × `UNIV_SUFFIXES`/`COMPANY_SUFFIXES`
-  in `scripts/seed_data.py`) — no real university or company name is used.
+  in `scripts/seed_data.py`) - no real university or company name is used.
 - **Titles and abstracts** are assembled from templated technical vocabulary
-  per program area — plausible-sounding S&T language, not copied from any
+  per program area - plausible-sounding S&T language, not copied from any
   real solicitation, award, or publication.
 - **Dollar amounts** are randomly drawn from bands between $50,000 and
-  $8,000,000 — not tied to any real budget line.
+  $8,000,000 - not tied to any real budget line.
 - **License vendor names** (Clarivate Web of Science, Dimensions, Crunchbase,
   Lens.org, Elsevier, PitchBook Data, CB Insights, GovTribe) ARE real
   commercial data-vendor/product names, used the way an internal IT asset
   registry would name a SaaS subscription ("we hold a Web of Science site
   license, N seats, renews on D"). No specific contract, invoice, price, or
-  individual is fabricated — only generic administrative fields (seat counts,
+  individual is fabricated - only generic administrative fields (seat counts,
   renewal date, an internal owning team). This was an explicit instruction
   from the build spec; flag for override if a fully fictional vendor list is
   preferred instead.
 - **License owners** are internal team labels (e.g. "Portfolio Intelligence
   Team"), never a named person.
-- `classification_band` values are `CUI-Mock` / `Public-Mock` — the `-Mock`
+- `classification_band` values are `CUI-Mock` / `Public-Mock` - the `-Mock`
   suffix is intentional and permanent; this is demo data staged to *look like*
   a CUI-handling workflow, not actual CUI.
 
@@ -679,12 +684,12 @@ Specifically:
 | `seed/drops/drop_incompatible_bad.json` | Ingest demo: missing/malformed rows that must be quarantined | {len(drop_bad)} |
 | `seed/licenses.json` | Data-vendor license lifecycle records | {len(licenses)} |
 
-Regenerate any time with `python3 scripts/seed_data.py` (zero dependencies —
+Regenerate any time with `python3 scripts/seed_data.py` (zero dependencies:
 stdlib only). Output is deterministic (`SEED = {SEED}`) except license
 `renews_on` dates, which are intentionally computed relative to the run date
 so the demo always looks current.
 
-## `grants_portfolio.json` — distribution
+## `grants_portfolio.json` - distribution
 
 By fiscal year:
 
@@ -718,7 +723,7 @@ metadata: `source_file`, `schema_variant: "canonical"`.
 ## `drops/drop_compatible_variant.json`
 
 The same kind of batch as above ({len(drop_compat)} new FY2026 grants) but
-shaped like a real legacy exporter's file — renamed columns and two light
+shaped like a real legacy exporter's file - renamed columns and two light
 type differences the normalizer must handle:
 
 | canonical field | variant field | transform needed |
@@ -732,16 +737,16 @@ type differences the normalizer must handle:
 | `awardee` | `performer_org` | rename only |
 | `org_unit` | `command_code` | rename only |
 | `classification_band` | `marking` | rename only |
-| — | `source_system` | extra field not in canonical schema — normalizer should drop it |
+| - | `source_system` | extra field not in canonical schema - normalizer should drop it |
 
-Every record in this file is logically valid once normalized — nothing is
+Every record in this file is logically valid once normalized - nothing is
 missing or corrupt, only differently named/shaped. `batch_id =
 "drop-compat-2026-08"`.
 
 ## `drops/drop_incompatible_bad.json`
 
 {len(drop_bad)} FY2026 rows using canonical field names (same names as
-`drop_good.json` — the defect here is bad *values*, not renamed columns).
+`drop_good.json` - the defect here is bad *values*, not renamed columns).
 {len(defect_log)} rows carry a deliberate defect; the remaining
 {len(drop_bad) - len(defect_log)} rows are clean. Expect a quality gate to
 pass the clean rows and quarantine the defective ones (~{round(100 * (len(drop_bad) - len(defect_log)) / len(drop_bad))}% pass rate).
@@ -782,6 +787,15 @@ def write_json(path: Path, obj: Any) -> None:
         f.write("\n")
 
 
+def fixture_header() -> Dict[str, Any]:
+    """Machine-verifiable marker required by the bounded demo loader."""
+    return {
+        "fixture_contract": FIXTURE_CONTRACT,
+        "synthetic_only": True,
+        "generator_seed": SEED,
+    }
+
+
 def main() -> None:
     rng = random.Random(SEED)
     seq = SeqCounter()
@@ -795,6 +809,7 @@ def main() -> None:
     licenses = build_licenses(rng)
 
     write_json(SEED_DIR / "grants_portfolio.json", {
+        **fixture_header(),
         "dataset": "ONR S&T Grants Portfolio",
         "description": "Synthetic mock ONR Science & Technology grants portfolio for the Compass demo. No real CUI/PII.",
         "generated_at": now,
@@ -804,6 +819,7 @@ def main() -> None:
     })
 
     write_json(DROPS_DIR / "drop_good.json", {
+        **fixture_header(),
         "source_file": "gms_export_2026_08.json",
         "batch_id": "drop-good-2026-08",
         "dropped_at": now,
@@ -813,6 +829,7 @@ def main() -> None:
     })
 
     write_json(DROPS_DIR / "drop_compatible_variant.json", {
+        **fixture_header(),
         "source_file": "legacy_gms_export_2026_08.json",
         "batch_id": "drop-compat-2026-08",
         "dropped_at": now,
@@ -822,6 +839,7 @@ def main() -> None:
     })
 
     write_json(DROPS_DIR / "drop_incompatible_bad.json", {
+        **fixture_header(),
         "source_file": "partner_upload_2026_08_batch.json",
         "batch_id": "drop-bad-2026-08",
         "dropped_at": now,
@@ -831,6 +849,7 @@ def main() -> None:
     })
 
     write_json(SEED_DIR / "licenses.json", {
+        **fixture_header(),
         "generated_at": now,
         "record_count": len(licenses),
         "licenses": licenses,

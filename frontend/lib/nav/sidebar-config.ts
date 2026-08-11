@@ -1,50 +1,59 @@
-/**
- * Sidebar navigation — single source of truth consumed by
- * `components/shell/sidebar.tsx`. Routes map 1:1 to the elements in
- * docs/CONTRACTS.md "Frontend". Icon values are Lucide icon NAMES
- * (kebab-case strings) so this stays plain, JSON-shaped config.
- */
 import type { Role } from "@/lib/types";
 
 export type NavItem = {
   href: string;
   label: string;
+  shortLabel: string;
   icon: string;
-  /** Element number from docs/CONTRACTS.md, shown as a hint in the UI. */
+  stage?: string;
   element: number;
 };
 
 export type NavSection = {
   label: string;
   items: NavItem[];
-  /** Section hidden unless the current role is in this list. Omit = all roles. */
   roles?: Role[];
 };
 
+/**
+ * Navigation follows the product's decision flow. Requirement element numbers
+ * remain in metadata for presenter tooling, but do not appear in product copy.
+ */
 export const SIDEBAR_SECTIONS: NavSection[] = [
   {
-    label: "Portfolio",
+    label: "Mission flow",
     items: [
-      { href: "/dashboard/", label: "Executive Dashboard", icon: "layout-dashboard", element: 6 },
-      { href: "/catalog/", label: "Data Catalog", icon: "database", element: 4 },
-      { href: "/analytics/", label: "Topic Analytics", icon: "network", element: 5 },
+      { href: "/ingest/", label: "Ingest and quality", shortLabel: "Ingest", icon: "upload-cloud", stage: "01", element: 3 },
+      { href: "/catalog/", label: "Governed catalog", shortLabel: "Govern", icon: "database", stage: "02", element: 4 },
+      { href: "/analytics/", label: "Topic intelligence", shortLabel: "Discover", icon: "network", stage: "03", element: 5 },
+      { href: "/dashboard/", label: "Decision brief", shortLabel: "Decide", icon: "layout-dashboard", stage: "04", element: 6 },
+      { href: "/export/", label: "Governed release", shortLabel: "Release", icon: "download", stage: "05", element: 7 },
     ],
   },
   {
-    label: "Operations",
+    label: "Governance",
     items: [
-      { href: "/ingest/", label: "Ingest & Quality", icon: "upload-cloud", element: 3 },
-      { href: "/export/", label: "Export", icon: "download", element: 7 },
-      { href: "/licenses/", label: "Licenses", icon: "key-round", element: 6 },
+      { href: "/licenses/", label: "License posture", shortLabel: "Licenses", icon: "key-round", element: 6 },
     ],
   },
   {
-    label: "Admin",
+    label: "System",
     roles: ["poweruser"],
-    items: [{ href: "/admin/pipeline/", label: "Pipeline Config", icon: "settings-2", element: 7 }],
+    items: [
+      { href: "/admin/requirements/", label: "Requirements trace", shortLabel: "Requirements", icon: "clipboard-check", element: 7 },
+      { href: "/admin/architecture/", label: "Architecture", shortLabel: "Architecture", icon: "workflow", element: 7 },
+      { href: "/admin/scale/", label: "Scale Lab", shortLabel: "Scale", icon: "radio-tower", element: 7 },
+      { href: "/admin/pipeline/", label: "Mission control", shortLabel: "System", icon: "settings-2", element: 7 },
+    ],
   },
 ];
 
 export function sidebarFor(role: Role | null): NavSection[] {
-  return SIDEBAR_SECTIONS.filter((s) => !s.roles || (role && s.roles.includes(role)));
+  return SIDEBAR_SECTIONS.filter((section) => !section.roles || (role && section.roles.includes(role)));
+}
+
+export function navItemForPath(pathname: string, role: Role | null): NavItem | undefined {
+  return sidebarFor(role)
+    .flatMap((section) => section.items)
+    .find((item) => pathname === item.href || pathname.startsWith(`${item.href.replace(/\/$/, "")}/`));
 }

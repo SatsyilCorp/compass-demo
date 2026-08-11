@@ -8,7 +8,7 @@
 # `format: "parquet"` requires pyarrow. It is NOT installed by default: the
 # arm64 manylinux wheel is roughly 90 MB unpacked and would dominate this
 # function's package for a format the demo rarely exercises. With pyarrow
-# absent, POST /export does not fail on a parquet request — it returns real CSV
+# absent, POST /export does not fail on a parquet request. It returns real CSV
 # with `requested_format: "parquet"` and a `note` saying the parquet layer is
 # not installed (see PARQUET_MISSING_NOTE in app.py).
 #

@@ -1,4 +1,4 @@
--- 002_rls.sql — Row-Level Security done correctly (idempotent)
+-- 002_rls.sql - Row-Level Security done correctly (idempotent)
 -- Codex finding #16: table owners bypass RLS unless FORCE; runtime must use a
 -- non-owner least-privilege role and set org context per transaction.
 

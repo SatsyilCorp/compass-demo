@@ -1,229 +1,432 @@
-# Compass — Architecture
+# Compass architecture
 
-Companion to `docs/CONTRACTS.md` (the locked interface contracts). This
-document explains **what the pieces are, how data flows through them, and
-where the portability seams sit**. Every claim here is checkable against
-`template.yaml`, `db/migrations/`, and `src/`.
+This document describes the current demonstration candidate. Claims are tied
+to `template.yaml`, `db/migrations/`, `src/`, `frontend/`, and the two GitHub
+Actions workflows.
 
-## 1. System overview
+## 1. System context
 
-One AWS SAM stack (`compass-demo`, us-east-1) plus a statically exported
-Next.js front end. All data-touching compute runs in private subnets; the only
-inbound paths are three TLS edges (CloudFront+WAF for the UI, the JWT-guarded
-HTTP API, and the Cognito hosted UI).
+Compass is one AWS SAM stack in `us-east-1` plus a statically exported Next.js
+application. The web application is public at the CloudFront edge, but every
+application API route requires a Cognito token. Data-touching functions and
+Aurora are in private subnets.
 
 ```mermaid
-graph LR
-  User[Browser]
-  User -->|443 TLS| CF[CloudFront + WAF<br/>private S3 web bucket via OAC]
-  User -->|443 OIDC| COG[Cognito user pool<br/>MFA ON · TOTP only<br/>groups: poweruser / viewer]
-  User -->|443 + JWT| API[HTTP API<br/>JWT authorizer = default<br/>deny-by-default]
+flowchart LR
+  U["User browser"]
+  CF["CloudFront and WAF\nPrivate S3 origin through OAC"]
+  COG["Cognito hosted UI\nTOTP MFA and OIDC"]
+  API["HTTP API\n25 JWT-protected operations when Scale Run is enabled"]
 
-  subgraph VPC["VPC 10.42.0.0/16 — private subnets ×2 AZ"]
-    L[Lambda functions<br/>one per src/functions dir<br/>shared CommonLayer]
-    DB[(Aurora Serverless v2<br/>PostgreSQL 16 + pgvector<br/>RLS FORCE + CLS)]
-    NAT[NAT gateway]
-    L -->|5432 TLS<br/>as role compass_app| DB
-    L -->|443 via NAT| AWSAPIs[Secrets Manager · KMS · S3<br/>Kinesis · Step Functions · Bedrock]
+  subgraph VPC["Private application boundary across two AZs"]
+    L["Application Lambdas\nShared identity, HTTP, DB, AI, and audit layer"]
+    DB[("Aurora PostgreSQL 16\nFORCE RLS and column policy")]
+    L -->|"TLS 5432, compass_app"| DB
   end
 
+  RAW[("KMS-encrypted raw bucket")]
+  EB["EventBridge"]
+  SFN["Express Step Functions\nFetch, validate, gate, persist or quarantine"]
+  KIN["Kinesis activity stream"]
+  BR["Amazon Bedrock"]
+  CW["CloudWatch logs, alarms, dashboard, and X-Ray"]
+
+  U -->|"HTTPS"| CF
+  U -->|"OIDC"| COG
+  U -->|"JWT over HTTPS"| API
   API --> L
-  S3RAW[(Raw landing bucket<br/>SSE-KMS)] -->|EventBridge<br/>Object Created| SFN[Express Step Function<br/>intake → quality gate]
-  SFN --> L
-  KIN[(Kinesis ticker stream)] --- L
-  KMS[Customer-managed KMS key<br/>rotation ON] -.encrypts.-> DB
-  KMS -.encrypts.-> S3RAW
-  KMS -.encrypts.-> KIN
+  RAW --> EB --> SFN --> L
+  L <--> KIN
+  L --> BR
+  API --> CW
+  L --> CW
+  SFN --> CW
 ```
 
-Stack inventory (all in `template.yaml`, in this order): VPC (2 public +
-2 private subnets, 1 NAT), customer-managed KMS key, Aurora Serverless v2
-PostgreSQL (RDS-managed secret), Cognito (MFA ON, admin-create-only, two
-groups), HTTP API with Cognito JWT authorizer as the **default** authorizer,
-shared `CommonLayer` (`compass_common` + psycopg2), raw S3 bucket
-(EventBridge notifications) and on-demand Kinesis stream, twelve Lambda
-functions, the express intake state machine + EventBridge rule, the private
-web bucket + CloudFront (OAC, path-rewrite function) behind a
-CLOUDFRONT-scope WAF, and optional account-singleton detectors
-(GuardDuty/Security Hub/Macie) behind `DeploySecurityBaseline`.
+## 2. Deployable inventory
 
-## 2. Data flow — the life of a grant record
+The template provisions:
 
-1. **Drop.** A JSON batch lands in the raw bucket (`aws s3 cp`, or
-   `POST /ingest/simulate` which writes/points at an object). S3 emits an
-   EventBridge `Object Created` event.
-2. **Orchestrate.** `RawObjectCreatedRule` starts the express state machine
-   (`statemachines/intake.asl.yaml`): `Fetch → FetchGate → Validate →
-   QualityGate → Persist | Quarantine`. `FetchGate` skips non-ingest objects
-   (exports, RMF artifacts land in the same bucket). Stages exchange only a
-   small manifest (batch_id, run_id, counts) — never records.
-3. **Land + normalize.** The intake function reads the object, detects the
-   schema variant (canonical vs. legacy-renamed columns per
-   `src/functions/intake/normalize.py`), and upserts rows into
-   `compass.grants_raw`.
-4. **Gate.** The quality-gate function runs the rule set
-   (`src/functions/quality_gate/rules.py`: required fields, types, ranges,
-   duplicate grant numbers …), writes per-rule pass/fail counts and a scored
-   result to `grant_quality`, and marks per-row verdicts. Batch pass-rate ≥
-   `QUALITY_PASS_THRESHOLD` (default 90%) → curate; below → the whole batch is
-   quarantined (rows retained with verdicts + a batch anomaly).
-5. **Curate.** Passing rows are inserted into `grants_curated` — the
-   RLS-protected portfolio — with Titan-v2 abstract embeddings
-   (`vector(1024)`) for RAG retrieval. The run emits its own lineage
-   (`lineage_nodes`/`lineage_edges`).
-6. **Analyze.** `POST /analytics/run` executes the numpy TF-IDF + NMF topic
-   model and the per-program-area funding z-score screen
-   (`src/functions/analytics/topic_model.py` — deterministic per
-   (corpus, k, seed)), persisting `model_runs`, `topics`, `grant_topics`,
-   `anomalies`, and lineage in one transaction.
-7. **Serve.** `GET /dashboard` assembles KPIs + all chart series + a Bedrock
-   executive summary in one round trip; `POST /chat` answers NL questions via
-   RAG over the curated rows *under the caller's RLS context*.
-8. **Export.** `POST /export` re-enforces RLS/CLS in the database, applies the
-   aggregation guard, audits, and delivers CSV/JSON/parquet via KMS-encrypted
-   S3 + presigned URL.
+- A VPC with two public and two private subnets across two availability zones
+- One NAT gateway for the cost-controlled demonstration mode
+- A customer-managed KMS key with rotation enabled
+- An Aurora Serverless v2 PostgreSQL 16.9 cluster and managed master secret
+- Cognito with TOTP MFA, admin-created users, and poweruser and viewer groups
+- An HTTP API with the JWT authorizer as its default
+- Fourteen Lambda functions and one shared Lambda layer
+- A KMS-encrypted raw S3 bucket with EventBridge notifications
+- An on-demand Kinesis stream
+- An Express Step Functions intake workflow
+- A private S3 web bucket, CloudFront OAC, path rewrite function, and WAF
+- Explicit 14-day API and centralized Lambda log groups
+- Four service alarms and one CloudWatch operations dashboard
+- Optional account-level GuardDuty, Security Hub, and Macie resources
 
-A parallel streaming path: a once-a-minute scheduled producer publishes
-pipeline activity onto the Kinesis stream; `GET /stream/recent` feeds the
-ingest-page ticker. Ingestion velocities modeled: scheduled batch, interval
-micro-batch, on-demand (the three Exhibit-B velocities).
+When `ScaleFeatureEnabled=true`, the same template adds three Lambda functions,
+one Standard Step Functions workflow, one DynamoDB run and partition ledger,
+one encrypted Scale Run S3 lake, worker and Export Job SQS queues with dead
+letter queues, six Glue tables, one bounded Athena workgroup, scale-specific
+alarms, and scale dashboard widgets. The enabled stack therefore has seventeen
+functions. These resources are conditional and their presence in source does
+not establish that a live deployment or measured Scale Run exists.
 
-## 3. Seven-element mapping
+The fourteen functions are authorizer, intake, quality gate, catalog,
+analytics, dashboard, summarize, RAG chat, approvals, license, export, evidence,
+RMF artifact, and migrator.
 
-| L 11.3 element | What is demonstrated | API routes (CONTRACTS) | Frontend | Backing code |
-|---|---|---|---|---|
-| 1 — Secure access, MFA, Zero Trust | Hosted-UI login with TOTP MFA; deny-by-default API; role/org identity; DB-enforced RLS personas | `GET /me` | `/login`, shell auth guard | `template.yaml` (UserPool, HttpApi Auth), `src/functions/authorizer/`, `002_rls.sql` |
-| 2 — IaC & automation | Single-template provisioning; versioned SQL migrations; validate/build/deploy stages; RMF artifact generated from the template | — (direct invokes) | — | `template.yaml`, `db/migrations/`, `src/functions/migrator/`, `src/functions/rmf_artifact/` |
-| 3 — Ingestion, DataOps, streaming | Event-driven pipeline; schema-variant normalization; quality gate + quarantine; Kinesis ticker | `POST /ingest/simulate`, `GET /ingest/status`, `GET /stream/recent` | `/ingest`, `/admin/pipeline` | `statemachines/intake.asl.yaml`, `src/functions/intake/`, `src/functions/quality_gate/` |
-| 4 — Governance, quality, catalog | Dataset registry; explainable quality scores; run-emitted end-to-end lineage | `GET /catalog`, `GET /catalog/{id}/lineage` | `/catalog`, `/catalog/[id]` | `src/functions/catalog/`, lineage tables |
-| 5 — Decision-support analytics | Live topic-model run; FY share trends; funding anomalies; stored recommendation | `POST /analytics/run`, `GET /analytics/{run_id}` | `/analytics` | `src/functions/analytics/` |
-| 6 — Dashboard & process automation | One-round-trip exec dashboard; Bedrock summary; RAG Q&A; anomaly→approval routing; license registry | `GET /dashboard`, `POST /chat`, `GET /anomalies`, `POST /approvals`, `GET /licenses` | `/dashboard`, `/licenses` | `src/functions/dashboard/`, `src/functions/summarize/`, `src/functions/rag_chat/`, `src/functions/approvals/`, `src/functions/license/` |
-| 7 — Interoperability & secure export | CSV/JSON/parquet export under RLS/CLS; aggregation guard + audit; served OpenAPI 3.1 | `POST /export`, `GET /openapi.json` | `/export` | `src/functions/export/` |
+## 3. Record life cycle
 
-Strategic prompts (L 11.4) map onto the same build: (a) legacy sustainment ↔
-the schema-variant normalizer + strangler-fig approach (Element 3); (b)
-financial analytics ↔ the anomaly/trend engine + budget-execution dashboard
-view (Element 5/6); (c) IL5 Zero Trust ↔ §5 of `docs/SECURITY.md`; (d) DR ↔
-IaC rebuildability + the isolated `[dev]` stack config; (e) license lifecycle
-↔ the `licenses` table/page linked to catalog datasets (Element 6).
+1. A sanitized JSON drop lands under the raw bucket ingest prefix.
+2. S3 emits an object-created event through EventBridge.
+3. The Express workflow runs Fetch, FetchGate, Validate, QualityGate, and one
+   of Persist or Quarantine.
+4. The intake adapter detects canonical or compatible legacy fields and writes
+   raw records.
+5. Deterministic rules score required fields, types, ranges, and duplicates.
+6. A passing batch writes curated records and run-specific lineage. A failing
+   batch remains quarantined and writes no curated rows.
+7. Analytics reads governed records, persists topics and model-run evidence,
+   and emits downstream lineage.
+8. The dashboard and RAG service query inside the caller's row-policy context.
+9. Export rechecks row and column policy, evaluates the aggregation guard,
+   atomically consumes any required approval, appends audit evidence, and
+   delivers the selected format.
 
-## 4. Database design
+The activity ticker is projection-first. Its authoritative ordering comes from
+the governed database projection. The service merges recent Kinesis transport
+receipts by stable event identifier when present. A receipt with no
+organization scope is corporate-only, so missing transport metadata cannot
+widen a scoped viewer's feed.
 
-Schema `compass` (DDL: `db/migrations/001_schema.sql`). Highlights:
+Workers exchange batch and run manifests. They do not pass the complete
+record set through Step Functions state.
 
-- `grants_raw` — landing zone, one row per source record, full raw JSONB.
-- `grants_curated` — the portfolio. **RLS ENABLED + FORCE**; policy keys on
-  `org_unit = current_setting('compass.org_unit', true)` with an
-  `ONR-Corporate` read-all branch (`002_rls.sql`). `amount_usd` is REVOKEd
-  from the runtime role (CLS); powerusers read it via the owner-owned
-  `grants_curated_corp` view (FORCE keeps the row policy in force there too).
-  `abstract_embedding vector(1024)` (pgvector) backs RAG retrieval.
-- `grant_quality` (per-rule, per-run scores), `lineage_nodes`/`lineage_edges`
-  (run-emitted lineage), `topics`/`grant_topics`/`model_runs` (analytics),
-  `anomalies`, `approvals`, `licenses`, and the append-only `audit_log`.
-- Two-role model: the migrator connects as the owner and applies DDL; every
-  application Lambda runs `SET ROLE compass_app` (NOLOGIN, non-owner) at
-  connect and binds `SET LOCAL compass.org_unit` per transaction
-  (`src/common/python/compass_common/db.py`). This is what makes FORCE RLS
-  and the column REVOKE actually bind at runtime.
+## 4. Identity and data authorization
 
-## 5. Identity and request path
+API Gateway validates the Cognito token first. The shared identity module then
+normalizes native JWT and request-authorizer event shapes. Cognito groups are
+authoritative:
 
-Cognito user pool (MFA **ON**, TOTP only, 16-char passwords,
-admin-create-only) with two groups mapping 1:1 to the RLS personas:
-`compass-poweruser` → org_unit `ONR-Corporate`; `compass-viewer` → `Code-30`.
-The HTTP API's **default** authorizer verifies the Cognito JWT on every route
-— there is no unauthenticated route. Handlers derive `{role, org_unit}` from
-the token's group claims (`compass_common.http` + per-function mapping); a
-named Lambda REQUEST authorizer additionally serves `GET /me` and can inject
-context for routes that opt in. The org_unit then travels into the database as
-the per-transaction RLS GUC — identity is enforced end to end, gateway →
-handler → row.
+| Group | Application role | Database organization context |
+|---|---|---|
+| `compass-poweruser` | `poweruser` | `ONR-Corporate` |
+| `compass-viewer` | `viewer` | `Code-30` |
 
-## 6. LLM boundary
+A token with no recognized Compass group is denied. A forwarded role cannot
+override the verified group mapping, and a supplied organization that
+conflicts with the resolved role is denied. The resolved organization is bound
+with `SET LOCAL` inside each database transaction. The runtime assumes
+`compass_app`, which is not the table owner.
 
-All model traffic goes through `compass_common/llm.py` — a Bedrock-only
-gateway (adapted from the `satsyil_llm` `bedrock_transport` block) with cached
-client, explicit timeouts, and adaptive retry:
+Forward migrations 003 and 004 provide five database safeguards:
 
-- chat / summaries: `amazon.nova-lite-v1:0` (Converse API)
-- embeddings: `amazon.titan-embed-text-v2:0` (1024-dim, matching the pgvector
-  column)
+1. Explicit runtime grants replace broad grants on every table.
+2. The base curated relation omits funding-column permission.
+3. The corporate view requires the `ONR-Corporate` transaction GUC.
+4. Runtime audit access is insert and read only, and a trigger rejects update
+   or delete even for an accidental elevated write path.
+5. Migration 004 adds the verifier column with a narrow update grant, so an
+   approval stores a SHA-256 verifier for its opaque capability, not the raw
+   capability returned to the reviewer.
 
-No public AI API appears in any narrated/recorded path — inference stays
-inside the cloud boundary (the IL5 story), and RAG retrieval runs under the
-caller's RLS context so generated answers inherit data-access policy
-(AI TRiSM alignment per Exhibit B). The `rmf_artifact` generator deliberately
-uses **no LLM**: ATO evidence must be byte-reproducible.
+## 5. API and CORS boundary
 
-## 7. Frontend
+The 25 method-and-path operations across 23 URL paths are listed in
+`docs/CONTRACTS.md`. The default JWT authorizer protects every operation,
+including the eight conditional Scale Run operations, OpenAPI document, and
+System Inspector. Scale Run operations apply an additional corporate
+poweruser policy.
 
-Next.js 15 App Router, **static export** (`out/`) synced to the private web
-bucket and served by CloudFront (OAC; a CloudFront function rewrites
-trailing-slash/extensionless paths to `/index.html`). Pages map 1:1 to the
-element routes (§3). Auth is `oidc-client-ts`/`react-oidc-context` against the
-Cognito hosted UI. Two env-driven modes (`frontend/.env.example`):
+API Gateway CORS and Lambda response CORS share the configured web origin. The
+backend reflects only a normalized origin in `CORS_ALLOW_ORIGINS`; local
+development is explicitly listed. No wildcard origin is returned.
 
-- `NEXT_PUBLIC_USE_MOCK=true` — every route renders from `lib/mock/*`
-  fixtures, `NEXT_PUBLIC_AUTH_DISABLED=true` swaps login for a persona
-  switcher. Zero AWS. This is the dev path and the reviewer-quickstart path.
-- Both flags false + real `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_COGNITO_*` —
-  the deployed path used in the recording.
+## 6. Evidence architecture
 
-## 8. Portability seams (the open-architecture posture, concretely)
+The mission UI separates product decisions from system proof and scale proof.
 
-Posture: **portable data + standard contracts + replaceable adapters** — not
-"everything open". Managed services are chosen deliberately; each sits behind
-a seam with a documented exit:
+```mermaid
+flowchart LR
+  P["Product view\nIngest, catalog, analytics, dashboard, export"]
+  C["Mission Evidence context\nTab-scoped curated or Scale Run selection"]
+  D["Decision Brief\nContext-specific decision workspace"]
+  B["Curated Adapter\nRecord-level governed projection"]
+  S["System view\nMission Control and System Inspector"]
+  L["Scale Lab\nBounded production Scale Run Mission Workspace"]
+  E["GET /system/evidence\nPoweruser only"]
+  A["Scale Adapter\nEight protected operations"]
+  Q["App-owned projections\nQuality, curated counts, model runs, audit"]
 
-| Layer | Today | The seam | Exit path |
-|---|---|---|---|
-| Data store | Aurora Serverless v2 (PostgreSQL 16) | Plain SQL DDL in `db/migrations/`; no Aurora-only features; pgvector is standard Postgres extension | Any PostgreSQL 16 + pgvector (RDS, self-hosted, on-prem); `pg_dump` restores everything including policies |
-| Model inference | Bedrock (Nova Lite, Titan v2) | `compass_common/llm.py` is the single chokepoint | Swap the transport module; callers are unchanged (the gateway was lifted from a block that already supports alternates) |
-| Identity | Cognito | OIDC/JWT; app trusts the issuer, maps group claims | Any OIDC IdP (Navy ICAM/CAC-fronted) by re-pointing issuer/audience config |
-| Ingestion formats | Canonical + legacy-variant JSON | `intake/normalize.py` schema-variant adapter | New source formats are new adapter mappings, not pipeline changes |
-| Streaming | Kinesis (on-demand) | Producer/consumer isolated in the intake function | Kafka/MSK or any log with the same publish/read seam |
-| Orchestration | Step Functions (express) | Lambdas are plain `handler(event)` workers; ASL holds only sequencing/retry | Any orchestrator that can invoke the same workers with the same manifest |
-| API contract | API Gateway HTTP API | OpenAPI 3.1 served by the system itself (`GET /openapi.json`) | Any gateway or ingress serving the same contract |
-| Web delivery | S3 + CloudFront | Fully static export | Any static host / GFE web tier |
-| Export formats | CSV / JSON / parquet | Non-proprietary by contract | Consumers (Advana, Cloud One, spreadsheets) need nothing from us |
+  P -->|"User chooses System view"| S
+  S -->|"Poll every five seconds in live mode"| E
+  E --> Q
+  P -->|"Corporate poweruser chooses Scale Lab"| L
+  L -->|"Plan, launch, poll, cancel, export"| A
+  L -->|"Select exact run identifier"| C
+  P --> D
+  C -->|"Curated demo"| D
+  D -->|"Record-level dashboard"| B
+  C -->|"Selected Scale Run"| D
+  D -->|"Aggregate receipt only"| A
+  P -->|"Other mission pages remain record-level"| B
+```
 
-## 9. The two Exhibit-B differentiators
+The System Inspector exposes only application-owned, allowlisted projections.
+It includes deploy revision, generation time, correlation ID, request latency,
+policy decision, recent runs, a stage trace derived from quality and curated
+records, sanitized audit events, latest model-run metadata, and service
+posture.
 
-1. **Aggregation guard** (Exhibit B: "automated thresholds/alerting to prevent
-   the mass extraction of unclassified discrete datasets"). Implemented in
-   `src/functions/export/app.py`: exports whose *filter-matched* row count
-   exceeds `EXPORT_MAX_ROWS` return HTTP 428 naming the count, the cap, and a
-   SHA-256 **fingerprint of the exact query**; an approval
-   (`POST /approvals`) bound to that fingerprint clears it; every decision
-   (blocked / denied / allowed / delivered) appends to `audit_log`, with the
-   allow-row written in the same transaction as the read — before bytes leave.
-2. **RMF-as-code** (Exhibit B: "Technical RMF artifacts … auto-generated from
-   IaC repositories to ensure eMASS reflects the true state of the
-   environment"). Implemented in `src/functions/rmf_artifact/app.py`: a
-   deterministic, LLM-free parser of `template.yaml` producing the PPS tables
-   (boundary-crossing / internal / outbound-by-IAM-action), a
-   resource-derived topology diagram, data-protection and identity
-   inventories, and a NIST SP 800-53 candidate mapping where every row cites
-   its template evidence — stamped with the template's SHA-256 and an explicit
-   "what this artifact cannot assert" section.
+It excludes account IDs, ARNs, resource names, storage keys, database
+endpoints, secrets, tokens, full claims, usernames, emails, IP addresses, SQL,
+prompts, abstracts, raw records, presigned URLs, exceptions, and stack traces.
 
-## 10. Honest demo-vs-production deltas
+Live and replay adapters implement the same frontend contract. The mode badge
+is part of the evidence, not decorative chrome. The Mission Evidence context
+stores only a validated selection in the current browser tab. A Scale
+selection changes Decision Brief to the exact aggregate Scale receipt and
+prevents the curated dashboard request from mounting. It does not fabricate
+row-level filters, funding charts, citations, or dispositions. Other mission
+pages continue to use their curated adapters and show the selection as context
+until they gain an explicit Scale-specific projection.
 
-Called out here once, and narrated on camera where relevant:
+## 7. Responsive mission application
 
-- **Region/enclave.** The demo deploys to commercial us-east-1 configured to
-  security-baseline *equivalents* (per L 11.2(c)). An IL5 deployment targets
-  the Government-furnished NRE/NRDE landing zone; the template is the
-  portable artifact.
-- **One NAT gateway** (not per-AZ) and **1-day backup retention** — demo cost
-  choices, noted in `template.yaml` comments; production sets per-AZ NAT and
-  ≥35-day PITR.
-- **`DeploySecurityBaseline=false` by default** — GuardDuty/Security
-  Hub/Macie are account singletons; the resources exist in-template and
-  enable with one flag.
-- **Parquet** requires opting the ~90 MB pyarrow wheel into the export
-  function (`src/functions/export/requirements.txt`); when absent the API
-  says so honestly and returns CSV.
-- **`DeletionProtection: false`** on the DB — the demo must tear down
-  cleanly.
+The Next.js 15 App Router application is exported as static assets. It provides
+a public mission landing page, responsive authenticated shell, mobile drawer,
+accessible skip navigation and focus states, role gates, reduced-motion
+support, and a rehearsal-only Presenter Guide. The decision workspace adds
+server-backed search and portfolio filters whose options and results remain
+inside the caller's row-policy scope.
+
+Primary routes follow the decision flow:
+
+`/ingest/ -> /catalog/ -> /analytics/ -> /dashboard/ -> /export/`
+
+Supporting routes are `/licenses/`, `/admin/pipeline/`, `/admin/scale/`, and
+`/catalog/lineage/?batch=<id>`. The query-based lineage route works with
+newly created batch IDs in a static export, so a post-build live ingest does
+not require a new pre-rendered dynamic page.
+
+## 8. Persistent deterministic replay
+
+When `NEXT_PUBLIC_USE_MOCK=true`, state-changing portfolio adapters read one
+versioned scenario store. State is persisted in the browser and distributed
+to all subscribers. A fixed logical clock keeps screenshots and rehearsals
+stable. Reference-only fixtures such as the license register remain static.
+
+Important invariants are tested:
+
+- Quality scores stay within valid bounds.
+- Failed rows never become negative.
+- A quarantined batch curates zero rows.
+- A quarantined batch emits no curated, model, or dashboard lineage.
+- Catalog, dashboard, stream, analytics, approvals, exports, and System
+  Inspector derive from the same mutations.
+- Export approval uses the same exact-fingerprint, expiry, separate-persona,
+  and single-use behavior as the live contract.
+
+Replay is deliberately labeled. It is a deterministic rehearsal adapter, not
+an AWS execution emulator.
+
+## 9. Delivery architecture
+
+`.github/workflows/quality.yml` runs on pull requests and main-branch pushes.
+It checks repository text policy, Python lint, production dependency audits,
+offline tests, migration package synchronization, SAM validation and build,
+frontend type safety, replay invariants, static build, and responsive browser
+accessibility smoke tests.
+
+`.github/workflows/deploy.yml` is manually dispatched against a protected
+GitHub environment. It uses GitHub OIDC to assume an AWS role, stamps the short
+source revision, and detects whether the stack already exists. For an existing
+stack, it sends the additive source migrations to the deployed migrator before
+switching application code. It derives the CloudFront origin and Cognito
+callback values from stack outputs. A fresh stack uses an automatic two-phase
+deployment so the generated domain is bound without operator-supplied web URL
+variables. It then invokes the newly bundled migrator with
+`{"migrate":"all"}`, builds the live frontend, publishes it, invalidates
+CloudFront, and verifies the public UI and protected 401 boundary. Both
+migration passes require an `ok` response and a `granted` runtime-role
+bootstrap. The workflow also validates and passes the protected
+export-threshold and database-resilience values, so the recorded policy is not
+an implicit template default. It does not store long-lived AWS access keys in
+the repository.
+
+The recording baseline has a separate operator-only preparation path.
+`scripts/prepare_demo.py` validates five fixed synthetic fixtures, verifies the
+three MFA identities, stages fixtures under non-triggering `.fixture` keys,
+invokes the private migrator for a bounded transactional reseed, runs the
+deployed Analytics Lambda under service actor `compass-demo-preparer`, and
+emits a redacted readiness receipt. The reset refuses to run beside any
+unexpected UI-driving state. Live Element 3 drops are one-shot, hash-bound
+releases from fixed staged keys into the `drops/` trigger prefix. The protected
+API relies on EventBridge as the single workflow starter. No caller can choose
+a table, batch, user, license identity, or object key for this path.
+
+## 10. Production Scale Run architecture
+
+Scale Run is a separate Module with a narrow Interface and a production-shaped
+AWS Implementation. Its Depth is in the deterministic workload, durable
+receipts, idempotent state transitions, and cost controls behind that small
+Interface. The HTTP and logical locator contracts are the Seam. The frontend
+uses a Scale Adapter for the live service and a clearly labeled Rehearsal
+Adapter for deterministic browser practice. Shared identity, HTTP, KMS, audit,
+and SAM capabilities provide Leverage. Scale-specific control, worker, export,
+and evidence code stays together to preserve Locality.
+
+```mermaid
+flowchart LR
+  UI["Scale Lab Mission Workspace\n/admin/scale/"]
+  API["JWT API\nScale Adapter Interface"]
+  GATE["Scale Plan and Run Gate\nprofile, price, cost, concurrency"]
+  LEDGER[("DynamoDB\nrun and partition ledger")]
+  SFN["Standard Step Functions\nrun_id only"]
+  WQ["SQS worker queue\nand dead letter queue"]
+  WORK["Bounded Lambda workers\ndeterministic generator"]
+  LAKE[("S3 Scale Run lake\nlanding, curated, quarantine")]
+  CAT["Six Glue tables"]
+  ATH["Athena workgroup\n10 GiB per-query cutoff"]
+  XQ["SQS Export Job queue\nand dead letter queue"]
+  EXP["Lambda export worker"]
+
+  UI --> API --> GATE
+  GATE --> LEDGER
+  GATE --> SFN --> WQ --> WORK
+  WORK --> LAKE
+  WORK --> LEDGER
+  LAKE --> CAT --> ATH
+  ATH --> LEDGER
+  API --> XQ --> EXP --> LAKE
+  EXP --> LEDGER
+  LEDGER -->|"Serving Projection and receipts"| API
+```
+
+The Standard workflow passes only `run_id` between states. Durable state lives
+in DynamoDB. It dispatches partition work, waits and checks completion, starts
+six Athena conversions, waits and checks query state, finalizes the receipt
+chain, and enters guarded failure or cooperative cancellation when required.
+The Scale Worker runs outside the VPC because it needs only SQS, DynamoDB, S3,
+KMS, and local scratch. Aurora remains the identity, approval, audit, and
+Serving Projection boundary for the broader Compass product.
+
+The fixed Workload Profiles represent total physical records across six linked
+datasets:
+
+| Profile | Records | Partition size | Exact partitions |
+|---|---:|---:|---:|
+| `1k` | 1,000 | 1,000 | 6 |
+| `10k` | 10,000 | 5,000 | 6 |
+| `100k` | 100,000 | 10,000 | 11 |
+| `1m` | 1,000,000 | 25,000 | 41 |
+
+Every profile uses grants 20%, finance 30%, milestones 20%, documents 10%,
+licenses 2%, and stream events 18%. All child records link to a generated
+grant. `synthetic_only=true`, the generator version, seed, and fixed as-of time
+are sealed in the Run Manifest. The `1m` profile requires both a deployed
+maximum of at least 1,000,000 records and a successful `100k` proof receipt
+that remains in DynamoDB.
+
+The Run Gate consumes an actor-bound Scale Plan once and enforces a 15-minute
+expiry, launch idempotency, one active run by default, deployed concurrency,
+the profile cost envelope, the deployment cost cap, and price freshness. The
+official AWS Price List Query API snapshot has a server-calculated 30-day
+maximum age with a bounded one-day clock-skew tolerance. Missing or stale
+evidence fails closed, as does evidence dated more than one day in the future.
+Profile cost envelopes are $0.10,
+$0.25, $1.00, and $10.00 for `1k`, `10k`, `100k`, and `1m`, respectively. The
+Cost Estimate includes a 25% contingency. Later evidence distinguishes
+estimated, metered, and billed-reconciliation-pending amounts.
+
+Each successful terminal path seals a Run Manifest plus Partition, Quality,
+Intelligence, Performance, and Cost Receipts. Generated totals reconcile to
+curated plus quarantined records unless a receipt explicitly records records
+held at a batch boundary. Every data part and terminal receipt has a SHA-256
+checksum. The Intelligence Receipt declares full-corpus or sampled coverage.
+The Performance Receipt reports observed values, never modeled throughput as a
+measurement. A completed asynchronous Export Job records exact rows, bytes,
+Parquet format, checksum, expiry, and audit evidence.
+
+Browser receipts expose logical `lake://scale-runs/...` and `run://...`
+locators. They do not expose bucket names, object keys, ARNs, queue URLs, table
+names, workflow execution IDs, or other physical infrastructure identifiers.
+A ready Export Job may return a short-lived download action, but the physical
+identifier is not rendered as receipt evidence.
+
+The [production architecture](PRODUCTION_ARCHITECTURE.md) contains the full
+invariants and lifecycle. The [cost model](COST_MODEL.md) compares the
+pre-deployment demo and HA fixed monthly estimates and the incremental profile
+estimates. These are architectural and planning claims, not evidence of a live
+deployment or measured run.
+
+## 11. Seven required elements
+
+| Element | Running proof | Principal implementation |
+|---|---|---|
+| 1. Secure access | TOTP login, viewer and poweruser policy contrast, protected API | Cognito, API authorizer, shared identity, RLS and CLS migrations |
+| 2. IaC and automation | Source template, CI gates, OIDC deploy, revision receipt, RMF artifact | `template.yaml`, `.github/workflows/`, migrator, RMF function |
+| 3. Ingestion and streaming | Clean, legacy, and defective drops with curate or quarantine evidence | S3, EventBridge, Step Functions, intake, quality gate, Kinesis |
+| 4. Governance and lineage | Catalog scores and run-emitted graph for the new batch | Catalog function and lineage relations |
+| 5. Analytics | Governed NMF run with metrics, topics, trends, and recommendation | Analytics function and model relations |
+| 6. Dashboard and automation | Scoped decision brief, RAG, anomaly approval, license register | Dashboard, RAG, approvals, and license functions |
+| 7. Interoperability and export | HTTP 428, bound approval, one release, audit receipt, OpenAPI | Export, approvals, audit log, evidence route |
+
+## 12. Open architecture and portability
+
+The posture is portable data, standard contracts, and replaceable adapters.
+
+| Layer | Current implementation | Portability seam |
+|---|---|---|
+| Data | Aurora PostgreSQL 16 plus pgvector | Plain versioned SQL can target another PostgreSQL 16 environment |
+| Identity | Cognito | OIDC issuer, audience, and group mapping can point to an approved IdP |
+| API | API Gateway HTTP API | Served OpenAPI 3.1 contract is independent of the gateway |
+| Models | Bedrock | `compass_common/llm.py` isolates transport from callers |
+| Ingestion | S3 and EventBridge | Source normalizers isolate schema variation from the pipeline |
+| Workflow | Step Functions | Plain worker event contracts isolate the orchestration engine |
+| Stream | Ordered database projection plus Kinesis transport receipts | Stable event identifiers and the intake API isolate transport from presentation |
+| Web | S3 and CloudFront | Static output can be hosted on another approved web tier |
+| Export | CSV, JSON, optional parquet | Standard non-proprietary delivery formats |
+
+Managed AWS services are deliberate for the demonstration. Portability does
+not mean that the current stack has no cloud dependencies.
+
+## 13. Resilience modes and production target
+
+`DatabaseResilienceMode=demo` is the default. It provisions one Aurora writer,
+seven-day backup retention, and no deletion protection. The cluster can place
+that writer in either configured subnet, but there is no second database
+instance to take over. This mode must not be described as database failover.
+
+`DatabaseResilienceMode=ha` adds one cluster reader, sets backup retention to
+14 days, and enables deletion protection. Aurora can promote the reader if the
+writer fails. This is a stronger demonstration posture, but it is still a
+single-region architecture with one NAT gateway.
+
+The cluster subnet group spans two availability zones, but the template does
+not pin an availability zone on either instance. Verify actual instance
+placement in the deployed stack before narrating an AZ-specific claim.
+
+The production target is separate from both demo modes. Recovery time and
+recovery point objectives must be approved from the mission impact analysis,
+then validated by exercises. A production design would add approved
+cross-region backup copy or replication, per-AZ egress, longer retention,
+restore automation, DNS or traffic failover, SIEM integration, service
+quotas, capacity tests, and recurring restore and failover drills. Compass
+does not claim a production RTO, RPO, ATO, IL4 accreditation, or IL5
+accreditation from this demonstration.
+
+## 14. Additional honest boundaries
+
+- The deployment is in commercial `us-east-1` with security-baseline
+  equivalents. It is not a Government accredited enclave.
+- Account-level GuardDuty, Security Hub, and Macie default off because they
+  are singleton services that should be owned by the landing zone.
+- The default one-NAT topology is a cost choice, not a production availability
+  design.
+- Parquet requires the optional pyarrow dependency. CSV and JSON are the
+  default portable formats.
+- The budget chart shows obligated award values against a computed even-spend
+  baseline. No appropriation or authoritative budget-authority feed is
+  ingested.
+- License renewal urgency is computed in the browser from `renews_on`. No
+  scheduled notification service is implemented.

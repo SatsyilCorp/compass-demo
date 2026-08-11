@@ -1,5 +1,5 @@
 /**
- * GET /me — fixture. Element 1 (current identity/role/org_unit).
+ * GET /me fixture. Element 1 (current identity, role, and org unit).
  */
 import type { MeResponse, Role } from "@/lib/types";
 import { ORG_UNIT_LABELS } from "./grants";
@@ -14,11 +14,11 @@ export function getMe(role: Role | null, orgUnit: string | null): MeResponse {
   const effectiveOrgUnit = orgUnit ?? ORG_UNIT_FOR_ROLE[effectiveRole];
   return {
     sub: `demo-${effectiveRole}`,
-    email: `${effectiveRole}@compass.mock`,
+    email: `${effectiveRole}@compass.demo`,
     display_name:
       effectiveRole === "poweruser"
-        ? "Power User — ONR Corporate"
-        : `Viewer — ${ORG_UNIT_LABELS[effectiveOrgUnit] ?? effectiveOrgUnit}`,
+        ? "Power User | ONR Corporate"
+        : `Viewer | ${ORG_UNIT_LABELS[effectiveOrgUnit] ?? effectiveOrgUnit}`,
     role: effectiveRole,
     org_unit: effectiveOrgUnit,
     groups: [effectiveRole],

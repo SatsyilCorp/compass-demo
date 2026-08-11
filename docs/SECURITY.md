@@ -1,182 +1,300 @@
-# Compass — Security Design
+# Compass security design
 
-This document states what the demo stack enforces, **where each control lives
-in code**, and — explicitly — what is a production-approach statement rather
-than a demonstrated control. Companion: `docs/ARCHITECTURE.md` §10 (honest
-deltas) and the generated RMF artifact (`src/functions/rmf_artifact/app.py`).
+This document distinguishes implemented demonstration controls from production
+targets. Compass processes synthetic data only. It does not claim an ATO or an
+IL4 or IL5 accreditation.
 
-Threat framing (from Exhibit B): a platform aggregating command S&T,
-financial, and operational data is a **high-value target**; the required
-posture is a data-centric Zero Trust strategy at the application layer, with
-aggregation-risk controls and immutable auditing. Compass is built to that
-framing on synthetic data.
+## 1. Request authorization
 
-## 1. Zero Trust, mapped to mechanisms
+Every HTTP route uses the Cognito JWT authorizer as the default API authorizer.
+The gateway verifies issuer and audience before a handler runs. The shared
+identity module then handles both supported API Gateway event shapes:
 
-| ZT principle | Mechanism in Compass | Where |
-|---|---|---|
-| Verify explicitly, every request | Cognito JWT authorizer is the **default** authorizer on the HTTP API — no route exists without it; 401 before any handler runs | `template.yaml` → `HttpApi.Auth` |
-| Strong authentication | MFA **ON** (not optional), TOTP software tokens only; 16-char password policy; self-signup disabled (admin-create-only) | `template.yaml` → `UserPool` |
-| Least privilege — compute | Per-function IAM statements scoped to named ARNs (secret, key, bucket prefixes, specific model IDs); no wildcard data access | `template.yaml` → each function's `Policies` |
-| Least privilege — data | App runs as `compass_app`, a NOLOGIN, **non-owner** role; `SET ROLE` at connect; the role cannot create objects and cannot read `amount_usd` | `002_rls.sql`, `compass_common/db.py` |
-| Continuous authorization | 1-hour access/ID tokens; JWT re-verified per request; org context re-bound **per transaction** via `SET LOCAL` (cannot leak across warm-connection reuse) | `template.yaml` → `WebClient`; `db.set_org()` |
-| Micro-segmentation | All data-touching Lambdas in private subnets; DB security group admits 5432 **only** from the Lambda security group; DB not publicly accessible; egress only via NAT | `template.yaml` → SGs, subnets, `DbInstance` |
-| Policy at the data layer | RLS + FORCE on `grants_curated`; the database refuses out-of-org rows regardless of application code | `002_rls.sql` |
-| Assume breach / audit | Append-only `audit_log`; export allow-decisions written in the same transaction as the read; API access logs; X-Ray on all functions; state-machine logging ALL | `compass_common/audit.py`, `export/app.py`, `template.yaml` |
+- native `requestContext.authorizer.jwt.claims`
+- optional request-authorizer context
 
-## 2. Row-Level Security — done so it is real
+`cognito:groups` is authoritative. `compass-poweruser` maps to the poweruser
+role and `ONR-Corporate`; `compass-viewer` maps to the viewer role and
+`Code-30`. A token with no recognized Compass group is denied. A forwarded
+role cannot override a verified group. If a supplied organization conflicts
+with the resolved role, resolution fails closed.
 
-The three failure modes that make most RLS demos decorative are each closed:
+Cognito configuration requires TOTP MFA, 16-character passwords, and
+administrator-created users. Tokens expire after one hour.
 
-1. **Owner bypass.** Postgres table owners bypass RLS *unless FORCE*. Compass:
-   `ALTER TABLE grants_curated FORCE ROW LEVEL SECURITY` (`002_rls.sql`), and
-   the runtime role is not the owner anyway — the migrator owns, the app runs
-   as `compass_app`.
-2. **Context leakage.** The org context is a per-**transaction** GUC
-   (`SET LOCAL compass.org_unit`), set inside `db.set_org()` which opens a
-   real transaction and discards the GUC on commit/rollback — it cannot bleed
-   into the next request on a warm pooled connection.
-3. **App-layer filtering.** There is no `WHERE org_unit = …` in application
-   read paths; the policy
-   (`org_unit = current_setting('compass.org_unit', true)` with an
-   `ONR-Corporate` read-all branch) is the only row filter. A compromised or
-   buggy handler still cannot read out-of-org rows.
+The activity endpoint applies the same persona boundary to transport metadata.
+Its database projection is authoritative. Recent Kinesis receipts merge by
+stable event identifier, and any receipt missing organization scope is
+corporate-only rather than visible to the scoped viewer.
 
-Personas: `compass-poweruser` → `ONR-Corporate` (corporate branch, all rows);
-`compass-viewer` → `Code-30` (own rows only). Group claims come from the
-verified JWT; handlers map groups → role → org_unit.
+## 2. Cross-origin policy
 
-## 3. Column-Level Security
+The API does not return `Access-Control-Allow-Origin: *`. API Gateway lists the
+local development origin and, after deployment, the exact CloudFront origin.
+Lambda response helpers use the same allowlist through
+`CORS_ALLOW_ORIGINS`. An unrecognized or missing origin is not reflected.
 
-`SELECT (amount_usd)` is REVOKEd from `compass_app`; the remaining columns are
-granted explicitly (`002_rls.sql`). Powerusers read the dollar column through
-the owner-owned `grants_curated_corp` view — FORCE RLS keeps the same row
-policy in force through the view. Two deliberate behaviors in the export path
-(`src/functions/export/app.py`):
+This is browser-origin protection, not authentication. JWT authorization still
+applies to every route.
 
-- A viewer requesting `columns: ["amount_usd"]` gets **403**, not a silently
-  dropped column — a filter/column the caller believes was applied but wasn't
-  is treated as a governance bug.
-- A viewer filtering `min_amount_usd`/`max_amount_usd` is also refused —
-  filtering on a hidden column is reading it by binary search.
-- Entitlement is **probed against the database** (SAVEPOINT-wrapped
-  `SELECT amount_usd … LIMIT 1`), not assumed from the role name — if the
-  grant is missing, the poweruser is masked rather than failed open.
+The 2026-08-11 live CORS verification passed all 25 protected operations. A
+separate authenticated browser pass used the exact deployed origin.
 
-## 4. Aggregation guard (mass-extraction control)
+## 3. Network and encryption boundary
 
-Exhibit B requires automated thresholds/alerting against mass extraction of
-discrete datasets. Implementation (`src/functions/export/app.py`):
+- The web bucket is private and served through CloudFront OAC.
+- WAF applies the AWS managed common rule set and an IP rate rule.
+- Data-touching functions and Aurora run in private subnets.
+- The database security group accepts PostgreSQL traffic only from the Lambda
+  security group.
+- Database sessions require TLS.
+- A customer-managed KMS key encrypts Aurora, its managed secret, the raw and
+  web buckets, and Kinesis. Key rotation is enabled.
+- RDS creates and stores the master credential. No database secret is committed
+  to the repository.
 
-- `POST /export` counts the rows the **filter matched** (not the requested
-  page — lowering `limit` cannot page under the control). Above
-  `EXPORT_MAX_ROWS` (deploy parameter, default 5000) → **HTTP 428** naming
-  the row count, the cap, and `subject_id` — a SHA-256 fingerprint of
-  `{org_unit, format, columns, filters}` for *this exact query*.
-- Clearing it requires an `approval_token` from `POST /approvals` whose
-  approval is `approved`, of `subject_type: export`, and — when the subject
-  was issued by this endpoint — **bound to the same fingerprint**. An
-  approval for one query does not clear a different one; an approval issued
-  to one org cannot be replayed by another (org_unit is inside the hash).
-- Every outcome writes `audit_log`: `export_blocked`, `export_denied`,
-  `export` (allowed — written in the same transaction as the read, before
-  bytes leave the boundary), `export_delivered` / `export_delivery_failed`.
-  The trail can over-record, never under-record.
-- A separate `HARD_MAX_ROWS` materialization cap (413) bounds worst-case
-  memory regardless of approvals.
+The single NAT gateway in demonstration mode is an availability and cost
+tradeoff. A production design uses approved per-AZ egress or private service
+endpoints as required by the landing zone.
 
-## 5. Boundary, edge, and encryption
+## 4. Real row-level security
 
-- **Edges (only three, all TLS):** CloudFront (viewer TLS, private S3 origin
-  via OAC — the bucket blocks all public access) fronted by a
-  CLOUDFRONT-scope WAF (AWS managed common rule set + per-IP rate rule,
-  `WafRateLimit` default 2000/5min); the HTTP API (JWT default authorizer);
-  the Cognito hosted UI.
-- **Encryption at rest:** one customer-managed KMS key, rotation enabled,
-  over the Aurora cluster **and its RDS-managed master secret**, both S3
-  buckets (SSE-KMS + bucket key), and the Kinesis stream.
-- **Encryption in transit:** TLS at every edge; database sessions
-  `sslmode=require` (`compass_common/db.py`); AWS SDK calls TLS 1.2+.
-- **Secrets:** none in the repository or in `samconfig`. The DB credential is
-  created and rotated by RDS (`ManageMasterUserPassword: true`); functions
-  read it at runtime with a `secretsmanager:GetSecretValue` grant scoped to
-  that one ARN.
-- **Optional detectors:** GuardDuty, Security Hub, and Macie are in-template
-  behind `DeploySecurityBaseline` (default false — they are account
-  singletons; enable with one flag on the stack that owns them).
+Three mechanisms prevent RLS from being a UI-only filter:
 
-## 6. In-boundary AI (IL5 story + AI TRiSM)
+1. `grants_curated` has RLS enabled and forced.
+2. The migrator owns the table; application functions assume the non-owner
+   `compass_app` role.
+3. Organization context is set with `SET LOCAL` inside each transaction, so it
+   is discarded on commit or rollback and cannot leak through a warm
+   connection.
 
-All inference goes through `compass_common/llm.py`, a Bedrock-only gateway:
-`amazon.nova-lite-v1:0` (chat/summary) and `amazon.titan-embed-text-v2:0`
-(embeddings). **No public AI API appears in any narrated/recorded path.**
-IAM grants name those two model ARNs only. RAG (`src/functions/rag_chat/`)
-retrieves from `grants_curated` **inside the caller's RLS transaction**, so
-generated answers inherit row policy — the model cannot surface rows the user
-cannot read. The RMF generator uses no LLM at all: ATO evidence must be
-deterministic and byte-reproducible.
+Application reads do not rely on a caller-supplied organization filter. The
+database policy determines visible rows.
 
-## 7. RMF-as-code
+## 5. Column-level funding control
 
-`src/functions/rmf_artifact/app.py` parses `template.yaml` and emits: PPS
-registration tables (boundary-crossing inbound, internal, and outbound flows
-derived from the IAM actions actually granted), a resource-derived topology
-(Mermaid), data-protection/identity/audit inventories, and a candidate NIST
-SP 800-53 Rev 5 mapping in which **every row cites the template property that
-evidences it**. The artifact stamps the template SHA-256 and closes with
-"what this artifact cannot assert" (runtime drift, transform-time expansion,
-conditional resources, non-technical controls, categorization). Because it
-regenerates from the same file that provisions the environment, security
-documentation cannot drift from the infrastructure — the Exhibit B
-"eMASS reflects the true state" requirement as a build property.
+Migration `003_security_hardening.sql` revokes broad runtime grants and then
+grants only the columns and operations each relation needs. The base curated
+table does not grant the funding column to `compass_app`.
 
-## 8. Audit and monitoring
+Corporate funding reads use a security-barrier view that also requires
+`current_setting('compass.org_unit', true) = 'ONR-Corporate'`. Because both
+personas share the runtime role, this GUC gate is necessary. A viewer receives
+no corporate view rows and cannot read the funding column from the base table.
 
-- `compass.audit_log` — append-only application trail (exports, approvals,
-  RMF generation). No update/delete path exists in application code.
-- API Gateway access logs (JSON, includes authorizer errors), 14-day demo
-  retention; Step Functions logging `ALL` with execution data; X-Ray tracing
-  on every function (`Globals.Function.Tracing: Active`).
-- Production statement (not demonstrated here): log/audit forwarding to the
-  Government SIEM, IAVA patch automation, and SAST/DAST + container +
-  IaC scanning in the delivery pipeline are production-pipeline items per
-  Exhibit B; the demo's equivalent hooks are the lint/validate stages and
-  the deterministic RMF evidence.
+The export service refuses viewer requests that select or filter on
+`amount_usd`. It does not silently drop the restricted field. Corporate
+entitlement is probed against the database inside a savepoint and fails closed.
 
-## 9. What this demo does NOT claim
+## 6. Explicit runtime grants
 
-Stated plainly so the security story stays honest:
+The forward migration removes inherited table-wide `SELECT`, `INSERT`,
+`UPDATE`, and `DELETE` rights. It then grants the required operations per
+relation and, where needed, per column. Future tables do not automatically
+inherit broad runtime access.
 
-- It runs in **commercial us-east-1**, configured to security-baseline
-  *equivalents* (L 11.2(c)) — it is not an IL4/IL5 accredited environment,
-  and no ATO is implied. The IL5 approach is: same template, deployed into
-  the Government-furnished NRE/NRDE landing zone under the shared
-  responsibility model.
-- FIPS-validated endpoints, eMASS/A&A integration, STIG application via
-  Compliance-as-Code, and SIEM forwarding are **approach statements**
-  narrated in the demo, not features of this stack.
-- Demo-cost deltas a production baseline changes: single NAT gateway, 1-day
-  backup retention, `DeletionProtection: false`, 14-day log retention,
-  detectors off by default.
-- All data is synthetic (`seed/SYNTHETIC-DATA-MANIFEST.md`); the
-  `CUI-Mock`/`Public-Mock` classification bands are deliberately fake labels
-  for demonstrating classification-aware behavior, not real markings.
+This keeps the shared application role usable while making its database
+permissions auditable in the versioned migration set.
 
-## 10. Verifying the claims (evaluator crib sheet)
+Migration `004_opaque_approval_capability.sql` is deliberately separate from
+the already-deployable hardening migration. It adds the approval verifier with
+`ADD COLUMN IF NOT EXISTS` and grants `compass_app` update access to that column
+only. A stack that has already recorded migration 003 therefore still applies
+the opaque capability upgrade.
+
+## 7. Append-only audit
+
+The application role has `SELECT` and `INSERT` on `audit_log`, but no update or
+delete permission. A database trigger rejects update and delete attempts even
+if an operational session accidentally receives a broader grant later.
+
+Approval and export writes occur in the same transaction as their decision.
+The export allow receipt is committed before the delivery step returns a
+download reference.
+
+## 8. Aggregation guard and approval capability
+
+`POST /export` counts all rows matched by the normalized request, independent
+of a client limit. When the count exceeds `EXPORT_MAX_ROWS`, it returns HTTP
+428 with a subject identifier based on the exact organization, format,
+columns, and filters.
+
+A clearing approval must be:
+
+- type `export`
+- bound to the exact `exp-` query fingerprint
+- approved by an authorized persona other than the requester
+- unexpired
+- unused
+
+The reviewer receives a short-lived opaque one-time token. Only its SHA-256
+verifier is stored. The export transaction locks the approval row, verifies
+the presented capability, and conditionally writes `consumed_at` and
+`consumed_by`. Two concurrent requests cannot spend the same capability, and
+a later retry is denied. A separate hard materialization cap cannot be
+overridden by approval.
+
+The demonstration stack enforces the separate-persona decision through
+`APPROVAL_REQUIRE_FOUR_EYES=true`. Production would map request and decision
+rights to approved organizational roles and retain the same evidence fields.
+
+## 9. AI boundary
+
+All model calls use the shared Bedrock gateway. The only declared models are
+Nova Lite for text generation and Titan Embed Text v2 for embeddings. No
+public AI API is used in the recorded path.
+
+RAG retrieves curated rows inside the caller's database policy context. A
+generated answer cannot cite a row that retrieval was not allowed to return.
+The RMF generator is deterministic and does not use an LLM.
+
+The commercial demonstration deployment does not make Bedrock or the stack an
+IL5 service. The production approach is to deploy the template and approved
+model services inside the Government landing zone, apply enclave controls,
+and complete the required authorization process.
+
+## 10. Protected System Inspector
+
+`GET /system/evidence` is poweruser-only and read-only. It projects only
+allowlisted application evidence. The UI shows its live or replay mode,
+generation time, revision, correlation ID, request latency, identity decision,
+quality and workflow receipts, model metadata, portfolio counts, and sanitized
+audit fields.
+
+The projection excludes:
+
+- AWS account IDs, ARNs, resource names, and bucket keys
+- database hosts, secret identifiers, secret values, and credentials
+- bearer tokens, raw claims, email addresses, usernames, and source IPs
+- SQL, prompts, abstracts, raw portfolio rows, and presigned URLs
+- exception text, stack traces, and internal infrastructure errors
+
+Server failures return a generic unavailable response while structured logs
+record only the correlation ID and exception class.
+
+## 11. Delivery security
+
+The quality workflow checks source policy, Python lint, Python and frontend
+production dependencies, offline contracts, migration synchronization, SAM
+validation and build, frontend type safety, deterministic scenario invariants,
+static build, and responsive browser accessibility.
+
+The deployment workflow is manually dispatched into a protected GitHub
+environment. It receives short-lived AWS credentials through GitHub OIDC,
+stamps the source revision into the deployment, applies additive migrations
+before code when updating an existing stack, deploys the reviewed revision,
+and reruns the bundled migration set. Each applicable migration pass requires
+an `ok` result and a `granted` runtime-role bootstrap. The workflow fails when
+the protected export threshold or database-resilience mode is missing or
+invalid, and passes both values into the reviewed change set. It then publishes
+the live frontend and verifies expected public security headers and that the
+System Inspector endpoint returns 401 without a token. The exact CloudFront
+origin and Cognito callback values come from stack outputs. A fresh stack uses
+an automatic second deployment pass for that binding, so public web URLs are
+not operator-supplied environment inputs. No long-lived AWS key is required in
+the repository.
+
+Environment approval rules, the OIDC trust policy, branch protections, and
+repository evaluator access are deployment-owner responsibilities and must be
+verified before recording.
+
+The 2026-08-11 Satsyil pass verified CSP, Permissions Policy, HSTS, WAF, a real
+Cognito password and TOTP session, all nine product screens, and the Scale
+controls. It observed no `Failed to fetch` result and no browser command error.
+This live check does not replace an exact-commit protected-environment workflow
+record.
+
+Demo preparation is an operator-only direct-invoke path. It requires an exact
+synthetic-reset confirmation, validates fixed fixture content and hashes, and
+stages non-ingestible `.fixture` objects outside the EventBridge `drops/`
+prefix. Before a reset, the private migrator checks every UI-driving data scope
+and refuses the transaction if unexpected state is present. Deletes are
+limited to source-controlled batch, run, license, and demo-actor scopes. Audit
+history is preserved. Baseline analytics uses the fixed service actor
+`compass-demo-preparer`. Live fixture release revalidates bytes against the
+latest immutable preparation hash receipt, and EventBridge alone starts the
+workflow. The receipt exposes logical locators and hashes, not a physical
+bucket name.
+
+The bounded identity utility creates or updates only the three fixed synthetic
+demo users, assigns only their expected Compass group, and completes distinct
+software-token MFA factors. It uses a temporary no-secret password-auth client
+and always deletes that client. It does not print credentials, sessions, AWS
+identifiers, or TOTP values. The ignored private credential artifact and its
+directory use restrictive local permissions. The separate demo preparation
+tool is verification-only for identity state and cannot change users, groups,
+passwords, or MFA.
+
+Scale acceptance uses AWS IAM to invoke the deployed Scale Control Lambda with
+a staged API Gateway event. It exercises the live route handler and data plane
+but bypasses Cognito, API Gateway transport, WAF, and the browser. Saved
+receipts disclose this transport and omit the export download URL. The real
+Cognito and browser boundaries are verified separately.
+
+## 12. Monitoring and retention
+
+Implemented demonstration observability includes:
+
+- JSON API access logging with 14-day retention
+- One explicit stack-owned 14-day application log group with function-specific streams
+- Step Functions logging at `ALL`
+- Active X-Ray tracing for Lambda functions
+- Eleven alarms covering API, functions, queues, workflow, and database signals
+- Two source-controlled CloudWatch dashboards for operations and Scale Run evidence
+
+No alarm notification target is configured in the demonstration template.
+Production would route alarms and audit logs to approved operations and SIEM
+services with retention based on policy.
+
+## 13. Resilience truth
+
+The default database mode has one writer, seven-day backups, and deletion
+protection disabled. It does not demonstrate database instance failover.
+
+The optional `ha` mode adds a cluster reader, uses 14-day backups, and enables
+deletion protection. It demonstrates a stronger single-region database
+posture. It does not provide cross-region disaster recovery or validate a
+production RTO or RPO.
+
+The Satsyil stack was deployed in `ha` mode on 2026-08-11. Its writer and
+reader were available, private, and encrypted; 14-day backups and deletion
+protection were enabled. This is a deployed configuration check, not a
+failover, restore, RTO, or RPO exercise.
+
+The production target requires approved recovery objectives, cross-region
+backup copy or replication, tested restore and promotion procedures, service
+quota and capacity validation, per-AZ egress, traffic failover, and recurring
+exercises. Those are design and operational commitments, not controls proven
+by this single-region demonstration.
+
+## 14. Claims not made
+
+Compass does not claim:
+
+- an ATO
+- IL4 or IL5 accreditation
+- validated FIPS endpoint coverage
+- eMASS integration
+- STIG application to a Government enclave
+- Government SIEM forwarding
+- tested production RTO or RPO
+- authoritative appropriation or budget-authority ingestion
+- scheduled license-renewal notification
+- unlimited-load or sustained-concurrency capacity certification
+- multi-terabyte validation
+- Government-data processing evidence
+- Exhibit B capacity certification
+
+## 15. Verification pointers
 
 ```bash
-# RLS is forced, and the app role is a non-owner with a column REVOKE:
-grep -n "FORCE ROW LEVEL SECURITY\|REVOKE SELECT (amount_usd)" db/migrations/002_rls.sql
-# The app assumes the least-privilege role and binds org per transaction:
-grep -n "SET ROLE\|SET LOCAL compass.org_unit" src/common/python/compass_common/db.py
-# Every route defaults to the JWT authorizer:
-grep -n "DefaultAuthorizer" template.yaml
-# MFA is ON, TOTP only:
-grep -n "MfaConfiguration\|SOFTWARE_TOKEN_MFA" template.yaml
-# The aggregation guard and its audit calls:
-grep -n "428\|EXPORT_MAX_ROWS\|write_audit" src/functions/export/app.py | head
-# Bedrock-only model access (the only model ARNs any function may invoke):
-grep -n "foundation-model" template.yaml
-# Regenerate the RMF evidence yourself:
+rg -n "DefaultAuthorizer|MfaConfiguration|SOFTWARE_TOKEN_MFA" template.yaml
+rg -n "CORS_ALLOW_ORIGINS|cors_allow_origins" src/common/python/compass_common/http.py template.yaml
+rg -n "FORCE ROW LEVEL SECURITY" db/migrations/002_rls.sql
+rg -n "REVOKE SELECT|grants_curated_corp|audit_log_append_only" db/migrations/003_security_hardening.sql
+rg -n "capability_hash|GRANT UPDATE" db/migrations/004_opaque_approval_capability.sql
+rg -n "expires_at|consumed_at|FOR UPDATE|exact export fingerprint" src/functions/export/app.py
+rg -n "system/evidence|SAFE_DETAIL_KEYS" src/functions/evidence/app.py
+rg -n "AWS::CloudWatch::Alarm|AWS::CloudWatch::Dashboard|RetentionInDays" template.yaml
 python3 src/functions/rmf_artifact/app.py | head -60
 ```

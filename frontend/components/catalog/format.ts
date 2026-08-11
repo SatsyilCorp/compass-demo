@@ -1,12 +1,12 @@
 /**
  * Small formatting helpers shared by the catalog table + quality panel.
- * Kept local to components/catalog (not lib/) — this module's build owns
+ * Kept local to components/catalog (not lib/) - this module's build owns
  * only frontend/app/catalog*, frontend/app/analytics, and
  * frontend/components/{catalog,analytics}.
  */
 
 export function formatUsd(n: number | null): string {
-  if (n === null) return "—"; // em dash — masked by CLS for this role
+  if (n === null) return " - "; // em dash - masked by CLS for this role
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

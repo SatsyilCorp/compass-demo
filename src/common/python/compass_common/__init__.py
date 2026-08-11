@@ -1,4 +1,4 @@
-"""compass_common — the shared Python layer for every Compass Lambda.
+"""compass_common - the shared Python layer for every Compass Lambda.
 
 Five domain-free modules that carry the platform's cross-cutting concerns:
 
@@ -22,6 +22,6 @@ Typical handler::
             rows = cur.fetchall()
         return http.ok({"grants": rows})
 """
-from . import audit, config, db, http, llm
+from . import audit, config, db, disclosure, http, llm
 
-__all__ = ["config", "db", "llm", "http", "audit"]
+__all__ = ["config", "db", "disclosure", "llm", "http", "audit"]

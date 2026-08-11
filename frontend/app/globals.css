@@ -1,96 +1,72 @@
 @import "tailwindcss";
 
-/* ============================================================================
-   COMPASS — S&T PORTFOLIO INTELLIGENCE — DESIGN TOKENS
-   ----------------------------------------------------------------------------
-   USWDS-ish federal look, Navy/ONR-branded: a deep Navy blue primary (the
-   service's own color), a brushed-brass secondary accent, and USWDS's cool
-   neutral gray scale. Restrained radii and shadows — credible and
-   government-grade, not a bespoke consumer-SaaS look.
-
-   All components draw ONLY from these semantic tokens (--color-bg,
-   --color-surface, --color-text*, --color-accent*, --color-gov-*) so the
-   palette is a single edit point.
-   ============================================================================ */
-
+/* Compass visual system: naval authority, editorial clarity, and operational proof. */
 @theme {
-  /* ---- Ground + elevation --------------------------------------------- */
-  --color-bg: #f7f8fa;
+  --color-bg: #f4f6f8;
   --color-surface: #ffffff;
-  --color-surface-2: #eef1f4;
-  --color-border: #dfe3e8;
-  --color-border-2: #eceff2;
-  --color-border-strong: #c3cad2;
+  --color-surface-2: #edf1f4;
+  --color-border: #d9e0e6;
+  --color-border-2: #e8edf1;
+  --color-border-strong: #b8c3cd;
 
-  --color-text: #1b2430;
-  --color-text-strong: #0d141d;
-  --color-text-muted: #57626f;
-  --color-text-subtle: #6b7684;
+  --color-text: #1a2733;
+  --color-text-strong: #091723;
+  --color-text-muted: #4f5f6d;
+  --color-text-subtle: #52626f;
 
-  /* ---- Navy primary (the Department of the Navy's own blue) ----------- */
-  --color-gov-primary: #0a2540;
-  --color-gov-primary-dark: #071a2e;
-  --color-gov-primary-darker: #04111d;
-  --color-gov-primary-light: #c3d3e3;
-  --color-gov-primary-lighter: #e9eff5;
-  --color-gov-primary-vivid: #123a63;
+  --color-gov-primary: #082b46;
+  --color-gov-primary-dark: #061f34;
+  --color-gov-primary-darker: #031522;
+  --color-gov-primary-light: #b9cedd;
+  --color-gov-primary-lighter: #e7eff4;
+  --color-gov-primary-vivid: #10496f;
 
-  /* ---- Brass/gold secondary accent (Navy service colors) --------------- */
-  --color-gov-secondary: #a8842f;
-  --color-gov-secondary-dark: #7d6222;
-  --color-gov-secondary-light: #f3ead2;
+  --color-gov-secondary: #8c6a22;
+  --color-gov-secondary-dark: #6e5016;
+  --color-gov-secondary-light: #f5edd9;
 
-  /* ---- Semantic accent aliases (used by chrome + interactive elements) - */
-  --color-accent: #0a2540;
-  --color-accent-ink: #071a2e;
-  --color-accent-soft: #e9eff5;
-  --color-gold: #a8842f;
-  --color-gold-ink: #7d6222;
-  --color-gold-soft: #f3ead2;
+  --color-accent: #082b46;
+  --color-accent-ink: #061f34;
+  --color-accent-soft: #e7eff4;
+  --color-gold: #8c6a22;
+  --color-gold-ink: #745415;
+  --color-gold-light: #d5b665;
+  --color-gold-soft: #f5edd9;
 
-  /* ---- Status palette (USWDS-restrained) -------------------------------- */
-  --color-success: #16794f;
-  --color-success-dark: #0e5a3a;
-  --color-success-soft: #e3f3ea;
-  --color-warn: #9a6a12;
-  --color-warn-dark: #74500d;
-  --color-warn-soft: #faf0d9;
+  --color-success: #13704a;
+  --color-success-dark: #0d5538;
+  --color-success-soft: #dff2e8;
+  --color-warn: #93630d;
+  --color-warn-dark: #704b08;
+  --color-warn-soft: #faefd3;
   --color-danger: #a3312a;
   --color-danger-dark: #7c231d;
   --color-danger-soft: #f7e3e1;
   --color-info: #205a8a;
   --color-info-soft: #e4eef8;
 
-  /* Severity ramp used by the anomalies surfaces (element 6). */
   --color-severity-low: #56626e;
-  --color-severity-medium: #9a6a12;
+  --color-severity-medium: #93630d;
   --color-severity-high: #b5541f;
   --color-severity-critical: #a3312a;
 
-  --color-link: #0a2540;
-  --color-action-bg: #0a2540;
-  --color-action-bg-hover: #123a63;
+  --color-link: #082b46;
+  --color-action-bg: #082b46;
+  --color-action-bg-hover: #10496f;
 
-  /* ---- Type scale --------------------------------------------------------
-     Public Sans (USWDS's own typeface) end to end — the credible federal
-     look. Source Code Pro for figures, run ids, and grant numbers. */
   --font-sans: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
   --font-display: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
   --font-mono: var(--font-mono-compass), "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
-  /* ---- Radius / shadow — small radii, subtle elevation (federal, not SaaS) */
-  --radius-sm: 3px;
-  --radius-md: 5px;
-  --radius-lg: 9px;
-  --radius-xl: 9px;
-  --shadow-soft: 0 1px 2px rgba(13, 20, 29, 0.06), 0 1px 1px rgba(13, 20, 29, 0.04);
-  --shadow-card: 0 1px 2px rgba(13, 20, 29, 0.06), 0 3px 8px -3px rgba(13, 20, 29, 0.10);
-  --shadow-elevated: 0 6px 16px -4px rgba(10, 37, 64, 0.22), 0 2px 4px rgba(13, 20, 29, 0.08);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --shadow-soft: 0 1px 2px rgba(9, 23, 35, 0.06), 0 1px 1px rgba(9, 23, 35, 0.03);
+  --shadow-card: 0 1px 2px rgba(9, 23, 35, 0.06), 0 8px 22px -16px rgba(8, 43, 70, 0.35);
+  --shadow-elevated: 0 18px 48px -24px rgba(3, 21, 34, 0.55), 0 3px 8px rgba(9, 23, 35, 0.1);
 }
 
-/* ---------------------------------------------------------------------------
-   Semantic utility aliases — the vocabulary every page/component reaches for.
-   --------------------------------------------------------------------------- */
 @layer utilities {
   .bg-bg { background-color: var(--color-bg); }
   .bg-surface { background-color: var(--color-surface); }
@@ -119,58 +95,64 @@
   .shadow-elevated { box-shadow: var(--shadow-elevated); }
 }
 
-html,
-body {
-  font-family: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
-  color: var(--color-text);
-  background-color: var(--color-bg);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-width: 320px;
+    font-family: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
+
+  button,
+  a,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
-h1, h2, h3 {
-  letter-spacing: -0.01em;
-  color: var(--color-text-strong);
-}
-
-code, kbd, .font-mono {
+code,
+kbd,
+.font-mono {
   font-family: var(--font-mono-compass), "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 *:focus-visible {
-  outline: 3px solid var(--color-gold);
-  outline-offset: 1px;
+  outline: 3px solid var(--color-gold-light);
+  outline-offset: 2px;
 }
 
 ::selection {
   background: var(--color-gov-primary);
-  color: #fff;
+  color: #ffffff;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0ms !important;
-    transition-duration: 0ms !important;
-  }
-}
-
-/* ---------------------------------------------------------------------------
-   Compass brand surfaces used by the shell.
-   --------------------------------------------------------------------------- */
-
-/* Navy sidebar rail — flat Navy field, subtle top-to-bottom deepen. */
 .compass-rail {
-  background: linear-gradient(180deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 100%);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(180deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 68%, var(--color-gov-primary-darker) 100%);
+  background-size: 32px 32px, 32px 32px, 100% 100%;
 }
 
-/* Landing page atmosphere — deep Navy field with a restrained brass aura. */
 .compass-aurora {
   background:
-    radial-gradient(65% 55% at 82% 10%, rgba(168, 132, 47, 0.14) 0%, transparent 55%),
-    linear-gradient(160deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 60%, var(--color-gov-primary-darker) 100%);
+    radial-gradient(65% 55% at 82% 10%, rgba(213, 182, 101, 0.14) 0%, transparent 55%),
+    linear-gradient(160deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 62%, var(--color-gov-primary-darker) 100%);
 }
+
 .compass-grid-overlay {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
@@ -178,18 +160,45 @@ code, kbd, .font-mono {
   background-size: 44px 44px;
 }
 
-/* The persistent "Prototype · synthetic data" marker in the chrome. */
-.compass-proto-pill {
-  background: var(--color-warn-soft);
-  border: 1px solid rgba(154, 106, 18, 0.4);
-  color: var(--color-warn-dark);
+.compass-radar {
+  opacity: 0.72;
+  background:
+    radial-gradient(circle at 82% 50%, transparent 0 8%, rgba(213, 182, 101, 0.12) 8.2% 8.35%, transparent 8.55% 16%, rgba(213, 182, 101, 0.09) 16.2% 16.35%, transparent 16.55% 24%, rgba(255, 255, 255, 0.055) 24.2% 24.35%, transparent 24.55% 33%, rgba(255, 255, 255, 0.04) 33.2% 33.35%, transparent 33.55%),
+    linear-gradient(118deg, transparent 0 67%, rgba(213, 182, 101, 0.07) 67.1% 67.25%, transparent 67.35%),
+    linear-gradient(28deg, transparent 0 72%, rgba(255, 255, 255, 0.035) 72.1% 72.25%, transparent 72.35%);
 }
 
-/* Skeleton loader shimmer. */
+.compass-proof-panel::before {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, var(--color-gold-light), transparent);
+}
+
+@media (max-width: 359px) {
+  .compass-adaptive-wordmark-label {
+    display: none;
+  }
+}
+
+@media (min-width: 360px) and (max-width: 479px) {
+  .compass-adaptive-wordmark-label .compass-adaptive-wordmark-subtitle {
+    display: none;
+  }
+}
+
+.compass-proto-pill {
+  color: var(--color-text-strong);
+  background: var(--color-warn-soft);
+  border: 1px solid color-mix(in srgb, var(--color-warn) 40%, transparent);
+}
+
 @keyframes shimmer {
   from { background-position: -200% 0; }
   to { background-position: 200% 0; }
 }
+
 .skeleton {
   background: linear-gradient(90deg, var(--color-surface-2) 0%, var(--color-border) 50%, var(--color-surface-2) 100%);
   background-size: 200% 100%;
@@ -197,9 +206,34 @@ code, kbd, .font-mono {
 }
 
 @keyframes compass-rise {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
 .compass-rise {
-  animation: compass-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: compass-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes compass-drawer-enter {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.compass-drawer-enter {
+  animation: compass-drawer-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

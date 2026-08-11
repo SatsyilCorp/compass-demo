@@ -6,7 +6,7 @@ import "./globals.css";
 import { Providers } from "@/lib/auth/providers";
 
 /**
- * Compass type system — the federal USWDS stack (Public Sans), Navy-branded.
+ * Compass type system - the federal USWDS stack (Public Sans), Navy-branded.
  *
  *   Public Sans     → --font-public-sans   (body, UI, headings, display)
  *   Source Code Pro → --font-mono-compass  (grant numbers, run ids, figures)
@@ -27,11 +27,11 @@ const sourceCodePro = Source_Code_Pro({
 
 export const metadata: Metadata = {
   title: {
-    default: "Compass — S&T Portfolio Intelligence",
+    default: "Compass - S&T Portfolio Intelligence",
     template: "%s · Compass",
   },
   description:
-    "Compass — a Navy/ONR S&T Portfolio Intelligence prototype: ingest, quality-gate, catalog/lineage, topic-model analytics, and an executive dashboard over a research-grant portfolio. Synthetic data; not a production system.",
+    "Compass - a Navy/ONR S&T Portfolio Intelligence prototype: ingest, quality-gate, catalog/lineage, topic-model analytics, and an executive dashboard over a research-grant portfolio. Synthetic data; not a production system.",
 };
 
 export default function RootLayout({

@@ -1,9 +1,9 @@
 /**
- * Shared synthetic ONR S&T portfolio — the single base dataset every other
+ * Shared synthetic ONR S&T portfolio, the single base dataset every other
  * `lib/mock/*` fixture derives from, so numbers agree across the catalog,
  * dashboard, and analytics pages (a demo where the KPI tile and the chart
  * below it disagree is worse than no demo). Mirrors `grants_curated` in
- * db/migrations/001_schema.sql. All records are synthetic — no real ONR
+ * db/migrations/001_schema.sql. All records are synthetic. No real ONR
  * program, award, or awardee data.
  */
 import type { Role } from "@/lib/types";
@@ -25,7 +25,7 @@ export type MockGrant = {
 
 /** The two demo personas' org_units (docs/CONTRACTS.md "RLS") plus sibling
  * units so the "poweruser sees all / viewer sees only its own" story reads
- * clearly. ONR-Corporate itself owns no grant rows — it's the "sees all"
+ * clearly. ONR-Corporate itself owns no grant rows. It is the "sees all"
  * branch, not a line unit. */
 export const ORG_UNITS = ["Code-30", "Code-31", "Code-32", "Code-34", "Code-35"] as const;
 
@@ -64,7 +64,7 @@ const AWARDEES = [
   "Sandia National Laboratories",
 ] as const;
 
-/** Deterministic PRNG (mulberry32) — same fixture data on every render/build. */
+/** Deterministic PRNG (mulberry32), with the same fixture data on every render and build. */
 function mulberry32(seed: number) {
   let a = seed;
   return function () {
@@ -259,13 +259,13 @@ function makeGrants(): MockGrant[] {
   return grants;
 }
 
-/** The full synthetic portfolio — every grant, every org_unit. Poweruser sees this. */
+/** The full synthetic portfolio with every grant and org unit. Poweruser sees this. */
 export const ALL_GRANTS: MockGrant[] = makeGrants();
 
 export const BATCH_IDS: string[] = Array.from(new Set(ALL_GRANTS.map((g) => g.batch_id))).sort();
 
 /** RLS simulation: poweruser (ONR-Corporate) sees every row; a unit persona
- * (viewer/Code-30, or any other org_unit) sees only its own — mirrors
+ * (viewer/Code-30, or any other org unit) sees only its own. This mirrors
  * db/migrations/002_rls.sql `grants_rls_read`. */
 export function visibleGrants(role: Role | null, orgUnit: string | null): MockGrant[] {
   if (role === "poweruser" || orgUnit === "ONR-Corporate") return ALL_GRANTS;

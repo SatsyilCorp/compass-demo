@@ -1,4 +1,4 @@
-"""Compass intake Lambda — the ingest path's front door (element 3).
+"""Compass intake Lambda - the ingest path's front door (element 3).
 
 One function, four callers:
 
@@ -28,28 +28,21 @@ that application-layer filter is doing the work, the code says so.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from compass_common import config, db, http
+from compass_common import audit, config, db, disclosure, http
 
 import normalize
 import pipeline
 
 # --------------------------------------------------------------------------- #
-# Identity. Mirrors src/functions/authorizer/app.py, which is the source of
-# truth for the group→role→org_unit map. The duplication exists because the API
-# is fronted by the *native* HttpApi JWT authorizer (see template.yaml), which
-# forwards raw Cognito claims without deriving anything — so each handler must
-# do the derivation itself. Promoting this into compass_common would remove the
-# copy; that file belongs to the shared layer, not this module.
+# Identity. Cognito group normalization and role mapping live in the shared
+# HTTP module so every native JWT route applies the same deny-by-default rules.
 # --------------------------------------------------------------------------- #
-GROUP_ROLE = {"compass-poweruser": "poweruser", "compass-viewer": "viewer"}
-ROLE_ORG_UNIT = {"poweruser": "ONR-Corporate", "viewer": "Code-30"}
-ROLE_PRECEDENCE = ("poweruser", "viewer")
-
-
 class Identity:
     __slots__ = ("role", "org_unit", "actor", "groups")
 
@@ -64,13 +57,9 @@ class Identity:
 def resolve_identity(event: Dict[str, Any]) -> Optional[Identity]:
     """Caller identity from the authorizer context, or ``None`` (→ 401)."""
     claims = http.get_claims(event)
-    role = claims.role
-    if role not in ROLE_ORG_UNIT:
-        roles = {GROUP_ROLE[g] for g in claims.groups if g in GROUP_ROLE}
-        role = next((r for r in ROLE_PRECEDENCE if r in roles), None)
-    if role not in ROLE_ORG_UNIT:
+    role, org_unit = http.resolve_identity(claims)
+    if role is None or org_unit is None:
         return None
-    org_unit = claims.org_unit or ROLE_ORG_UNIT[role]
     actor = claims.username or claims.email or claims.sub or role
     return Identity(role, org_unit, actor, claims.groups)
 
@@ -101,7 +90,7 @@ def _quality_by_run(cur, run_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
 
 
 def _gate_nodes(cur, run_ids: List[str]) -> Dict[str, Dict[str, Any]]:
-    """The ``quality-gate`` lineage node per run — where the gate verdict lives."""
+    """The ``quality-gate`` lineage node per run - where the gate verdict lives."""
     if not run_ids:
         return {}
     cur.execute(
@@ -187,8 +176,11 @@ def ingest_status(identity: Identity) -> Dict[str, Any]:
             {
                 "batch_id": batch_id,
                 "run_id": run_id,
-                "source_file": (raw_info or {}).get("source_file")
-                or f"(loaded directly into grants_curated) {batch_id}",
+                "source_file": (
+                    disclosure.logical_source_locator(raw_info.get("source_file"))
+                    if raw_info
+                    else disclosure.logical_curated_locator(batch_id)
+                ),
                 "ingested_at": ingested_at,
                 "status": status,
                 "rows_raw": (raw_info or {}).get("rows_raw", 0),
@@ -221,7 +213,7 @@ def _kinesis():
 
 
 def _visible_to(identity: Identity, org_unit: Optional[str]) -> bool:
-    return identity.is_corporate or not org_unit or org_unit == identity.org_unit
+    return identity.is_corporate or bool(org_unit and org_unit == identity.org_unit)
 
 
 def _activity_from_db(identity: Identity, limit: int) -> List[Dict[str, Any]]:
@@ -340,25 +332,36 @@ def _activity_from_kinesis(identity: Identity, limit: int) -> List[Dict[str, Any
     seen: Dict[str, Dict[str, Any]] = {}
     try:
         shards = client.list_shards(StreamName=stream).get("Shards", [])
+        read_window = max(60, int(os.environ.get("STREAM_READ_WINDOW_SECONDS", "900")))
+        start_at = datetime.now(timezone.utc) - timedelta(seconds=read_window)
+        page_limit = min(10_000, max(limit * 20, 500))
+        max_pages = max(1, min(8, int(os.environ.get("STREAM_READ_MAX_PAGES", "4"))))
         for shard in shards[: int(os.environ.get("STREAM_MAX_SHARDS", "4"))]:
             it = client.get_shard_iterator(
                 StreamName=stream,
                 ShardId=shard["ShardId"],
-                ShardIteratorType="TRIM_HORIZON",
+                ShardIteratorType="AT_TIMESTAMP",
+                Timestamp=start_at,
             )["ShardIterator"]
-            resp = client.get_records(ShardIterator=it, Limit=max(limit * 4, 50))
-            for rec in resp.get("Records", []):
-                try:
-                    item = json.loads(rec["Data"].decode("utf-8"))
-                except (ValueError, UnicodeDecodeError):
-                    continue
-                # Kinesis has no row-level security; the org filter is enforced
-                # here so a unit viewer never sees another unit's activity.
-                if not _visible_to(identity, item.get("org_unit")):
-                    continue
-                if item.get("id"):
-                    seen[item["id"]] = item
-    except Exception as exc:  # noqa: BLE001 — the DB feed is the fallback
+            for _page in range(max_pages):
+                if not it:
+                    break
+                resp = client.get_records(ShardIterator=it, Limit=page_limit)
+                for rec in resp.get("Records", []):
+                    try:
+                        item = json.loads(rec["Data"].decode("utf-8"))
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    # Kinesis has no row-level security. A missing scope is
+                    # corporate-only, never a wildcard for a unit viewer.
+                    if not _visible_to(identity, item.get("org_unit")):
+                        continue
+                    if item.get("id"):
+                        seen[item["id"]] = item
+                it = resp.get("NextShardIterator")
+                if not resp.get("Records"):
+                    break
+    except Exception as exc:  # noqa: BLE001 - the DB feed is the fallback
         print(json.dumps({"event_type": "stream_read_failed", "error": str(exc)}))
         return []
     out = sorted(seen.values(), key=lambda r: str(r.get("at", "")), reverse=True)
@@ -368,18 +371,26 @@ def _activity_from_kinesis(identity: Identity, limit: int) -> List[Dict[str, Any
 def stream_recent(identity: Identity, limit: int = 25) -> Dict[str, Any]:
     """``GET /stream/recent`` → the activity ticker.
 
-    Reads the Kinesis ticker first; when the stream has nothing for this caller
-    (an idle demo, or the schedule switched off via ``StreamTickerState``) it
-    falls back to the same activity read directly from the database. The
-    response labels which one answered in ``source`` — the ticker never shows
-    invented traffic.
+    The ordered database projection is authoritative so the latest committed
+    event cannot be hidden by an old stream page. Recent Kinesis transport
+    receipts are merged by stable id when present. The response labels whether
+    both sources contributed, and the ticker never invents traffic.
     """
-    records = _activity_from_kinesis(identity, limit)
-    source = "kinesis"
-    if not records:
-        records = _activity_from_db(identity, limit)
-        source = "database"
-    return {"records": records, "source": source}
+    stream_records = _activity_from_kinesis(identity, limit)
+    database_records = _activity_from_db(identity, limit)
+    merged = {str(item["id"]): item for item in stream_records if item.get("id")}
+    for item in database_records:
+        if item.get("id"):
+            merged[str(item["id"])] = item
+    records = sorted(
+        merged.values(),
+        key=lambda record: str(record.get("at", "")),
+        reverse=True,
+    )[:limit]
+    return {
+        "records": records,
+        "source": "database+kinesis" if stream_records else "database",
+    }
 
 
 def stream_tick() -> Dict[str, Any]:
@@ -416,35 +427,55 @@ def stream_tick() -> Dict[str, Any]:
                 }
             )
         cur.execute(
-            "SELECT run_id, rule, score, batch_id, created_at FROM grant_quality "
-            "WHERE created_at > now() - make_interval(secs => %s) "
-            "ORDER BY created_at DESC LIMIT %s",
+            """
+            WITH batch_scope AS (
+              SELECT batch_id,
+                     CASE WHEN COUNT(DISTINCT org_unit) = 1 THEN MIN(org_unit) END AS org_unit
+              FROM (
+                SELECT batch_id, org_unit
+                  FROM grants_curated
+                 WHERE batch_id IS NOT NULL
+                UNION ALL
+                SELECT batch_id, raw_jsonb ->> 'org_unit' AS org_unit
+                  FROM grants_raw
+                 WHERE NULLIF(raw_jsonb ->> 'org_unit', '') IS NOT NULL
+              ) scoped
+              GROUP BY batch_id
+            )
+            SELECT q.run_id, q.rule, q.score, q.batch_id, q.created_at, s.org_unit
+              FROM grant_quality q
+              LEFT JOIN batch_scope s ON s.batch_id = q.batch_id
+             WHERE q.created_at > now() - make_interval(secs => %s)
+             ORDER BY q.created_at DESC
+             LIMIT %s
+            """,
             (window, limit),
         )
-        for run_id, rule, score, batch_id, created_at in cur.fetchall():
+        for run_id, rule, score, batch_id, created_at, org_unit in cur.fetchall():
             items.append(
                 {
                     "id": f"quality:{run_id}:{rule}",
                     "at": created_at.isoformat(),
                     "kind": "quality",
                     "message": f"Quality rule {rule} scored {float(score):.1f} on batch {batch_id}",
-                    "org_unit": None,
+                    "org_unit": org_unit,
                 }
             )
         cur.execute(
-            "SELECT id, kind, severity, reason, created_at FROM anomalies "
-            "WHERE created_at > now() - make_interval(secs => %s) "
-            "ORDER BY created_at DESC LIMIT %s",
+            "SELECT a.id, a.kind, a.severity, a.reason, a.created_at, g.org_unit "
+            "FROM anomalies a LEFT JOIN grants_curated g ON g.id = a.grant_id "
+            "WHERE a.created_at > now() - make_interval(secs => %s) "
+            "ORDER BY a.created_at DESC LIMIT %s",
             (window, limit),
         )
-        for aid, kind, severity, reason, created_at in cur.fetchall():
+        for aid, kind, severity, reason, created_at, org_unit in cur.fetchall():
             items.append(
                 {
                     "id": f"anomaly:{aid}",
                     "at": created_at.isoformat(),
                     "kind": "anomaly",
                     "message": f"[{severity}] {kind}: {reason}",
-                    "org_unit": None,
+                    "org_unit": org_unit,
                 }
             )
 
@@ -454,7 +485,7 @@ def stream_tick() -> Dict[str, Any]:
     entries = [
         {
             "Data": json.dumps(item, default=str).encode("utf-8"),
-            "PartitionKey": item.get("org_unit") or "compass",
+            "PartitionKey": item.get("org_unit") or "corporate-only",
         }
         for item in items[:limit]
     ]
@@ -474,6 +505,154 @@ def stream_tick() -> Dict[str, Any]:
 # POST /ingest/simulate
 # --------------------------------------------------------------------------- #
 DEFAULT_SIMULATE_PREFIX = "drops/"
+FIXTURE_CONTRACT = "compass.synthetic.v1"
+FIXTURE_RELEASES = {
+    "good": {
+        "staged_key": "demo-stage/drops/drop_good.fixture",
+        "target_key": "drops/drop_good.json",
+        "batch_id": "drop-good-2026-08",
+        "schema_variant": "canonical",
+        "record_count": 40,
+        "hash_field": "drop_good_sha256",
+    },
+    "compatible": {
+        "staged_key": "demo-stage/drops/drop_compatible_variant.fixture",
+        "target_key": "drops/drop_compatible_variant.json",
+        "batch_id": "drop-compat-2026-08",
+        "schema_variant": "compatible-renamed",
+        "record_count": 40,
+        "hash_field": "drop_compatible_sha256",
+    },
+    "bad": {
+        "staged_key": "demo-stage/drops/drop_incompatible_bad.fixture",
+        "target_key": "drops/drop_incompatible_bad.json",
+        "batch_id": "drop-bad-2026-08",
+        "schema_variant": "incompatible-malformed",
+        "record_count": 60,
+        "hash_field": "drop_bad_sha256",
+    },
+}
+MAX_STAGED_FIXTURE_BYTES = 8 * 1024 * 1024
+
+
+def _release_prepared_fixture(identity: Identity, bucket: str, name: str, now: str):
+    spec = FIXTURE_RELEASES.get(name)
+    if spec is None:
+        return http.bad_request(
+            "fixture must be one of: good, compatible, bad",
+            allowed_fixtures=sorted(FIXTURE_RELEASES),
+        )
+
+    try:
+        staged = pipeline._s3().get_object(Bucket=bucket, Key=spec["staged_key"])
+        body = staged["Body"].read(MAX_STAGED_FIXTURE_BYTES + 1)
+    except Exception:  # noqa: BLE001 - return a logical operational error only
+        return http.error_response(
+            409,
+            "the fixed synthetic fixture is not staged; run demo preparation first",
+            fixture=name,
+        )
+    if len(body) > MAX_STAGED_FIXTURE_BYTES:
+        return http.error_response(409, "the staged fixture exceeds the release limit")
+
+    digest = hashlib.sha256(body).hexdigest()
+    metadata = staged.get("Metadata") or {}
+    try:
+        envelope = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return http.error_response(409, "the staged fixture is not valid UTF-8 JSON")
+    valid_contract = (
+        isinstance(envelope, dict)
+        and envelope.get("fixture_contract") == FIXTURE_CONTRACT
+        and envelope.get("synthetic_only") is True
+        and envelope.get("generator_seed") == 20260810
+        and envelope.get("batch_id") == spec["batch_id"]
+        and envelope.get("schema_variant") == spec["schema_variant"]
+        and envelope.get("record_count") == spec["record_count"]
+        and isinstance(envelope.get("records"), list)
+        and len(envelope["records"]) == spec["record_count"]
+        and metadata.get("fixture-sha256") == digest
+        and metadata.get("synthetic-only") == "true"
+    )
+    if not valid_contract:
+        return http.error_response(409, "the staged fixture failed its synthetic contract")
+
+    conn = db.get_conn()
+    with db.set_org(conn, identity.org_unit) as c, c.cursor() as cur:
+        cur.execute(
+            "SELECT detail_jsonb->>%s FROM audit_log "
+            "WHERE actor = 'compass-demo-preparer' AND action = 'demo_reseed' "
+            "ORDER BY at DESC LIMIT 1",
+            (spec["hash_field"],),
+        )
+        row = cur.fetchone()
+        approved_digest = row[0] if row else None
+    if approved_digest != digest:
+        return http.error_response(
+            409,
+            "the staged fixture does not match the latest preparation receipt",
+            fixture=name,
+        )
+
+    try:
+        pipeline._s3().put_object(
+            Bucket=bucket,
+            Key=spec["target_key"],
+            Body=body,
+            ContentType="application/json",
+            Metadata={
+                "fixture-sha256": digest,
+                "synthetic-only": "true",
+                "fixture-contract": FIXTURE_CONTRACT,
+            },
+            IfNoneMatch="*",
+        )
+    except Exception as exc:  # noqa: BLE001 - botocore is a runtime-only dependency
+        error = getattr(exc, "response", {}).get("Error", {})
+        if str(error.get("Code")) in {"409", "412", "ConditionalRequestConflict", "PreconditionFailed"}:
+            return http.error_response(
+                409,
+                "this fixed fixture was already released; reset before releasing it again",
+                fixture=name,
+            )
+        return http.server_error("the fixed fixture could not be released")
+
+    try:
+        with db.set_org(conn, identity.org_unit) as c:
+            audit.write_audit(
+                c,
+                actor=identity.actor,
+                action="fixture_released",
+                resource=f"grants_raw:{spec['batch_id']}",
+                detail={
+                    "fixture": name,
+                    "batch_id": spec["batch_id"],
+                    "source_file": disclosure.logical_source_locator(spec["target_key"]),
+                    "status": "queued",
+                },
+            )
+    except Exception:  # noqa: BLE001 - intake itself writes the durable receipt next
+        print(
+            json.dumps(
+                {
+                    "event_type": "fixture_release_audit_deferred",
+                    "fixture": name,
+                    "batch_id": spec["batch_id"],
+                }
+            )
+        )
+    return http.json_response(
+        202,
+        {
+            "batch_id": spec["batch_id"],
+            "run_id": pipeline.run_id_for(spec["batch_id"]),
+            "source_file": disclosure.logical_source_locator(spec["target_key"]),
+            "status": "queued",
+            "triggered_at": now,
+            "trigger": "s3-object-created",
+            "fixture": name,
+        },
+    )
 
 
 def _strip_s3_uri(value: str, bucket: str) -> str:
@@ -503,28 +682,36 @@ def _start_execution(bucket: str, key: str, size: Optional[int]) -> Optional[str
 
 
 def ingest_simulate(identity: Identity, body: Dict[str, Any]) -> Dict[str, Any]:
-    """``POST /ingest/simulate`` — fire the real pipeline, three ways.
+    """``POST /ingest/simulate``: release or trigger the real pipeline.
 
-    * ``{"records": [...]}`` writes the batch to ``s3://<raw>/incoming/<batch>.json``
-      and lets the bucket's EventBridge notification start the pipeline — the
-      full production path, no shortcuts.
+    * ``{"fixture": "good|compatible|bad"}`` atomically copies one fixed,
+      preparation-receipted synthetic fixture into the live drop prefix. The
+      resulting object-created event is the sole workflow starter.
+    * ``{"records": [...]}`` writes the batch under ``drops/simulated/``
+      and lets the bucket's EventBridge notification start the pipeline. This
+      is the full production path, with no shortcut.
     * ``{"source_file": "drops/drop_good.json"}`` (a key or an ``s3://`` URI for
       an object already in the raw bucket) starts the state machine on it.
     * An empty body picks the most recently modified object under ``drops/``.
 
-    Requires ``poweruser`` — triggering ingest is a write action.
+    Requires ``poweruser`` because triggering ingest is a write action.
     """
     bucket = os.environ.get("RAW_BUCKET")
     if not bucket:
         return http.server_error("RAW_BUCKET is not configured")
 
-    records = body.get("records")
     now = normalize.utc_now_iso()
+
+    fixture = body.get("fixture")
+    if fixture is not None:
+        return _release_prepared_fixture(identity, bucket, str(fixture), now)
+
+    records = body.get("records")
 
     if isinstance(records, list) and records:
         stamp = now[:19].replace("-", "").replace(":", "")
         batch_id = str(body.get("batch_id") or f"batch-sim-{stamp}")
-        key = f"incoming/{batch_id}.json"
+        key = f"drops/simulated/{batch_id}.json"
         envelope = {
             "source_file": body.get("source_file") or key,
             "batch_id": batch_id,
@@ -545,7 +732,7 @@ def ingest_simulate(identity: Identity, body: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "batch_id": batch_id,
                 "run_id": pipeline.run_id_for(batch_id),
-                "source_file": f"s3://{bucket}/{key}",
+                "source_file": disclosure.logical_source_locator(key),
                 "status": "queued",
                 "triggered_at": now,
                 "trigger": "s3-object-created",
@@ -564,24 +751,28 @@ def ingest_simulate(identity: Identity, body: Dict[str, Any]) -> Dict[str, Any]:
             if pipeline.is_ingestible(o["Key"], o.get("Size"))[0]
         ]
         if not candidates:
+            logical_prefix = disclosure.safe_label(prefix, fallback="drops")
             return http.bad_request(
-                f"no ingestible object under s3://{bucket}/{prefix}. Upload a drop file "
+                f"no ingestible object under landing://{logical_prefix}. Upload a drop file "
                 "there (seed/drops/*.json), pass {\"source_file\": \"<key>\"}, or post "
                 "{\"records\": [...]} to synthesize a batch.",
-                bucket=bucket,
-                prefix=prefix,
+                source_scope=f"landing://{logical_prefix}",
             )
         key = max(candidates, key=lambda o: o["LastModified"])["Key"]
 
     try:
         head = pipeline._s3().head_object(Bucket=bucket, Key=key)
-    except Exception:  # noqa: BLE001 — a bad key is a client error, not a 500
-        return http.not_found(f"no such object: s3://{bucket}/{key}")
+    except Exception:  # noqa: BLE001 - a bad key is a client error, not a 500
+        return http.not_found(
+            f"no such object: {disclosure.logical_source_locator(key)}"
+        )
     size = head.get("ContentLength")
 
     ok, reason = pipeline.is_ingestible(key, size)
     if not ok:
-        return http.bad_request(f"s3://{bucket}/{key} is not ingestible: {reason}")
+        return http.bad_request(
+            f"{disclosure.logical_source_locator(key)} is not ingestible: {reason}"
+        )
 
     # Read the envelope so the reported batch_id is the one the run will really
     # use, rather than a guess from the filename.
@@ -594,11 +785,10 @@ def ingest_simulate(identity: Identity, body: Dict[str, Any]) -> Dict[str, Any]:
         {
             "batch_id": envelope.batch_id,
             "run_id": pipeline.run_id_for(envelope.batch_id),
-            "source_file": f"s3://{bucket}/{key}",
+            "source_file": disclosure.logical_source_locator(key),
             "status": "running" if execution_arn else "queued",
             "triggered_at": now,
             "trigger": "state-machine" if execution_arn else "none",
-            "execution_arn": execution_arn,
             "record_count": len(envelope.records),
             "schema_variant": envelope.schema_variant,
         },

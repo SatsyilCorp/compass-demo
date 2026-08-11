@@ -8,7 +8,7 @@ import { USE_MOCK, getOpenApiSpec } from "@/lib/api";
 import { useCompassAction } from "@/components/dashboard/use-compass-query";
 
 /**
- * `GET /openapi.json` (element 7) — the served contract.
+ * `GET /openapi.json` (element 7), the served contract.
  *
  * In mock mode there is no deployed API to serve the document, and the client
  * says so rather than rendering a fabricated spec: `lib/api.ts` returns a stub
@@ -42,7 +42,7 @@ export function OpenApiPanel() {
             <h2 className="text-[14.5px] font-semibold text-text-strong">Served API contract</h2>
             <p className="mt-0.5 max-w-xl text-[11.5px] leading-snug text-text-muted">
               The API serves its own OpenAPI 3.1 document at{" "}
-              <code className="font-mono text-[11px]">/openapi.json</code> — the same contract this
+              <code className="font-mono text-[11px]">/openapi.json</code>, the same contract this
               page is built against, including the 428 response the aggregation guard returns.
             </p>
           </div>

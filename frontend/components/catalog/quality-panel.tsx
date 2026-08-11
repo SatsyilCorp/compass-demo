@@ -20,7 +20,7 @@ const RULE_BAR_CLASSES: Record<string, string> = {
  * The expandable panel every catalog row opens into: the score formula
  * (spelled out, not just a bare number), a rule-by-rule breakdown with
  * rejected-row counts, freshness, curated-schema version, and the
- * originating pipeline run_id — linking through to the lineage graph.
+ * originating pipeline run_id - linking through to the lineage graph.
  */
 export function QualityPanel({ entry }: { entry: CatalogEntry }) {
   const totalRejected = entry.quality_rules.reduce((acc, r) => acc + r.failed_rows, 0);
@@ -37,7 +37,7 @@ export function QualityPanel({ entry }: { entry: CatalogEntry }) {
               Overall quality score
             </p>
             <p className="text-xs leading-snug text-text-muted">
-              Average of each rule&apos;s pass rate — <code className="font-mono text-[11px]">passed_rows ÷ (passed_rows + failed_rows) × 100</code>,
+              Average of each rule&apos;s pass rate - <code className="font-mono text-[11px]">passed_rows ÷ (passed_rows + failed_rows) × 100</code>,
               rounded to 1 decimal across all {entry.quality_rules.length} rules.
             </p>
           </div>

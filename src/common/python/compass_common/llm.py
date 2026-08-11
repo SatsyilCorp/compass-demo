@@ -1,4 +1,4 @@
-"""Bedrock-only LLM gateway — the single in-boundary model chokepoint.
+"""Bedrock-only LLM gateway - the single in-boundary model chokepoint.
 
 Compass narrates an IL5 boundary story: **no public Anthropic API in any
 recorded path**. Every model call in this module goes through Amazon Bedrock,
@@ -13,19 +13,25 @@ Adapted from the ``satsyil_llm`` ``bedrock_transport`` block: a module-level
 (10s / 30s) and adaptive retry, so a hung inference call can't block the whole
 Lambda invocation, and warm invocations reuse the client.
 
-boto3 is imported lazily inside the client factory, so this module imports — and
-the smoke test runs — with no boto3, no network, and no credentials. Inject a
+boto3 is imported lazily inside the client factory, so this module imports - and
+the smoke test runs - with no boto3, no network, and no credentials. Inject a
 fake ``client_factory`` (any object exposing ``.converse`` / ``.invoke_model``)
 to exercise the gateway offline.
 """
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable, Dict, List, Optional
 
 from . import config
 
 _BEDROCK_CLIENT = None
+
+
+def normalize_generated_text(value: str) -> str:
+    """Enforce the repository-wide punctuation policy on provider output."""
+    return re.sub(r"\s*\u2014\s*", " - ", value)
 
 
 def get_bedrock_client(
@@ -34,7 +40,7 @@ def get_bedrock_client(
     """Module-level cached ``bedrock-runtime`` client for warm reuse.
 
     Explicit timeouts (boto3's default 60s read lets a hung request block the
-    invocation) and adaptive retry (throttle-aware — the right default for
+    invocation) and adaptive retry (throttle-aware - the right default for
     inference). Region comes from config (default us-east-1).
     """
     global _BEDROCK_CLIENT
@@ -75,7 +81,7 @@ def converse(
         messages=[{"role": "user", "content": [{"text": user}]}],
         inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
     )
-    text = resp["output"]["message"]["content"][0]["text"]
+    text = normalize_generated_text(resp["output"]["message"]["content"][0]["text"])
     return {"text": text, "usage": resp.get("usage"), "model_id": model_id}
 
 

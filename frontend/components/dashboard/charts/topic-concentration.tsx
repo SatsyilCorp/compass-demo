@@ -10,7 +10,7 @@ import { BarList, type BarListItem } from "./bar-list";
 import { pct } from "../format";
 
 /**
- * Topic mix — `GET /dashboard` → `top_topics`.
+ * Topic mix: `GET /dashboard` to `top_topics`.
  *
  * `/dashboard` carries each topic's share of the scored portfolio (`weight`),
  * not a time series; the per-topic year-over-year trend lines belong to the
@@ -34,7 +34,7 @@ export function TopicConcentration({ data }: { data: DashboardResponse["top_topi
     <ChartCard
       title="Topic concentration"
       hint="Share of scored grants carried by each topic in the latest topic-model run."
-      provenance="GET /dashboard → top_topics (weights produced by the element 5 topic model). Per-topic trend lines live on the run detail."
+      provenance="GET /dashboard returns topic weights from the current analytics run. Per-topic trend lines live on the run detail."
       empty={items.length === 0}
       emptyText="No topics scored for the portfolio visible to you."
       action={

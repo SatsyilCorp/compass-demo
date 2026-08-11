@@ -1,0 +1,169 @@
+name: Quality and security gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database-security:
+    name: PostgreSQL security contract
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: compass_contract
+          POSTGRES_PASSWORD: compass_contract
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d compass_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGDATABASE: compass_contract
+      PGHOST: localhost
+      PGPASSWORD: compass_contract
+      PGPORT: 5432
+      PGUSER: postgres
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Apply migrations in order
+        run: |
+          for migration in db/migrations/*.sql; do
+            psql --set ON_ERROR_STOP=1 --file "$migration"
+          done
+
+      - name: Prove row, column, capability, and audit controls
+        run: psql --set ON_ERROR_STOP=1 --file db/tests/security_contract.sql
+
+  source-and-backend:
+    name: Source, contracts, and infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            src/common/requirements.txt
+            src/functions/analytics/requirements.txt
+
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@v2
+
+      - name: Install verification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest ruff==0.15.12 cfn-lint pip-audit
+          python -m pip install -r src/common/requirements.txt
+          python -m pip install -r src/functions/analytics/requirements.txt
+
+      - name: Enforce content policy
+        run: python scripts/check_no_em_dash.py
+
+      - name: Lint Python
+        run: ruff check src scripts
+
+      - name: Audit Python runtime dependencies
+        run: |
+          pip-audit --no-deps --disable-pip \
+            -r src/common/requirements.txt \
+            -r src/functions/authorizer/requirements.txt \
+            -r src/functions/rmf_artifact/requirements.txt \
+            -r src/functions/analytics/requirements.txt
+
+      - name: Run offline contract tests
+        env:
+          PYTHONPATH: src/common/python
+        run: python -m pytest -q scripts/tests src/common/tests src/functions/*/tests
+
+      - name: Verify staged migrations match source migrations
+        run: |
+          ./src/functions/migrator/prepare_migrations.sh
+          git diff --exit-code -- db/migrations src/functions/migrator/migrations
+
+      - name: Validate infrastructure
+        run: sam validate --lint
+
+      - name: Build deployable backend artifacts
+        run: sam build --use-container --cached
+
+  frontend:
+    name: Frontend type, build, and interaction checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit frontend runtime dependencies
+        run: pnpm audit --prod
+
+      - name: Typecheck frontend
+        run: pnpm typecheck
+
+      - name: Verify deterministic scenario invariants
+        run: pnpm test:scenario
+
+      - name: Build static application
+        env:
+          NEXT_PUBLIC_USE_MOCK: "true"
+          NEXT_PUBLIC_AUTH_DISABLED: "true"
+        run: pnpm build
+
+      - name: Install browser runtime
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run responsive accessibility smoke
+        run: pnpm test:e2e
+
+      - name: Publish browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore
+          retention-days: 14

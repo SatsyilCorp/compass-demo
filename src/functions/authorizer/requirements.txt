@@ -1,8 +1,8 @@
-# Authorizer-only dependencies. Deliberately NOT in the shared CommonLayer —
+# Authorizer-only dependencies. Deliberately NOT in the shared CommonLayer:
 # this is the one function that verifies JWT signatures, and `cryptography`
 # ships a large native wheel we don't want on every Lambda.
 #
 # Target is Lambda linux/arm64: build with `sam build --use-container` on
 # macOS so pip resolves manylinux aarch64 wheels instead of darwin ones.
-PyJWT==2.10.1
-cryptography==44.0.1
+PyJWT==2.13.0
+cryptography==50.0.0

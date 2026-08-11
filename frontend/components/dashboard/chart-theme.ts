@@ -1,5 +1,5 @@
 /**
- * Chart theme — the small set of parameters every Compass chart draws from.
+ * Chart theme: the small set of parameters every Compass chart draws from.
  *
  * Why literal hex and not `var(--color-…)`: these values are handed to Recharts
  * as SVG *presentation attributes* (`fill`, `stroke`), where `var()` support is
@@ -7,7 +7,7 @@
  * in app/globals.css; the two chart series colors are the one exception and are
  * explained next.
  *
- * SERIES COLORS — validated, not eyeballed.
+ * SERIES COLORS: validated, not eyeballed.
  * The brand Navy (#0a2540) is deliberately NOT used as a chart fill: at that
  * lightness/chroma it reads as near-black in a mark and fails both the
  * lightness-band and chroma-floor checks. The chart step of the same hue
@@ -30,15 +30,15 @@
  *     color.
  */
 
-/** Primary data hue — the chart step of the Navy family. */
+/** Primary data hue: the chart step of the Navy family. */
 export const SERIES_PRIMARY = "#2a6496";
-/** Secondary data hue — the brass accent, used for baselines/targets. */
+/** Secondary data hue: the brass accent, used for baselines and targets. */
 export const SERIES_ACCENT = "#a8842f";
 
 /** Sequential ramp of the primary hue (light → dark), for meters/tracks. */
 export const RAMP_PRIMARY = ["#dce7f1", "#a9c4dd", "#6f9cc4", "#4780ae", SERIES_PRIMARY, "#1e4a70"];
 
-/** Chrome — one step off surface, hairline, solid, recessive. */
+/** Chrome: one step off surface, hairline, solid, recessive. */
 export const GRID_STROKE = "#e6e9ed";
 export const AXIS_STROKE = "#c3cad2";
 export const AXIS_TICK_FILL = "#6b7684";
@@ -68,6 +68,6 @@ export const AXIS_TICK: { fontSize: number; fill: string } = {
   fill: AXIS_TICK_FILL,
 };
 
-/** Bar geometry — thin marks, 4px rounded data-end, square at the baseline. */
+/** Bar geometry: thin marks, 4px rounded data-end, square at the baseline. */
 export const BAR_SIZE = 16;
 export const BAR_RADIUS_VERTICAL: [number, number, number, number] = [4, 4, 0, 0];

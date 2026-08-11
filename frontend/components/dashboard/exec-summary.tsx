@@ -15,7 +15,7 @@ import { num, pct, usd } from "./format";
  *
  *   COMPUTED   arithmetic over the `GET /dashboard` payload, done in the
  *              browser. Deterministic, reproducible, and safe to read aloud in
- *              a briefing — no model involved.
+ *              a briefing. No model is involved.
  *   NARRATIVE  a Bedrock generation (`POST /chat`) over the same portfolio,
  *              with its citations and the model id shown.
  *
@@ -43,7 +43,7 @@ export function ExecSummary({ data }: { data: DashboardResponse }) {
           <div>
             <h2 className="text-[14.5px] font-semibold text-text-strong">Executive summary</h2>
             <p className="mt-0.5 text-[11.5px] leading-snug text-text-muted">
-              Regenerated for whichever persona is signed in — the summary can only describe rows
+              Regenerated for whichever persona is signed in. The summary can only describe rows
               that persona may read.
             </p>
           </div>
@@ -87,7 +87,7 @@ export function ExecSummary({ data }: { data: DashboardResponse }) {
         <div className="lg:border-l lg:border-border-2 lg:pl-4">
           <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
             <Sparkles className="size-3.5" aria-hidden />
-            Narrative — generated
+            Narrative: generated
           </p>
 
           {narrative.loading ? (
@@ -102,7 +102,7 @@ export function ExecSummary({ data }: { data: DashboardResponse }) {
             </div>
           ) : narrative.error ? (
             <p className="mt-2.5 rounded border border-danger bg-danger-soft px-2.5 py-2 text-[11.5px] text-danger">
-              Summary unavailable — {narrative.error}. The computed figures on the left are
+              Summary unavailable: {narrative.error}. The computed figures on the left are
               unaffected.
             </p>
           ) : narrative.data ? (
@@ -185,8 +185,10 @@ function computeFacts(d: DashboardResponse): Fact[] {
   facts.push(
     {
       label: "Average quality score",
-      value: d.kpis.avg_quality_score.toFixed(1),
-      note: `${num(d.quality_trend.length)} runs`,
+      value: d.kpis.avg_quality_score?.toFixed(1) ?? "No evidence",
+      note: d.kpis.avg_quality_score === null
+        ? "no persisted gate receipt"
+        : `${num(d.quality_trend.length)} runs`,
     },
     {
       label: "Needs attention",

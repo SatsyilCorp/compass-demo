@@ -10,7 +10,7 @@ import {
   DownloadCloud,
   type LucideIcon,
 } from "lucide-react";
-import { getStreamRecent } from "@/lib/api";
+import { getStreamRecent, USE_MOCK } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import type { StreamRecord } from "@/lib/types";
 
@@ -43,7 +43,7 @@ function timeAgo(iso: string, now: number): string {
   return `${Math.round(m / 60)}h ago`;
 }
 
-/** Small streaming ticker — polls GET /stream/recent on an interval. Element 3. */
+/** Small streaming ticker: polls GET /stream/recent on an interval. Element 3. */
 export function StreamTicker() {
   const { role, orgUnit } = useAppAuth();
   const [records, setRecords] = useState<StreamRecord[]>([]);
@@ -56,15 +56,17 @@ export function StreamTicker() {
     let cancelled = false;
     async function poll() {
       try {
-        const res = await getStreamRecent();
+        const res = (await getStreamRecent()) as Awaited<ReturnType<typeof getStreamRecent>> & {
+          replay?: { generated_at: string };
+        };
         if (cancelled) return;
         setRecords(res.records);
-        setNow(Date.now());
+        setNow(res.replay ? new Date(res.replay.generated_at).getTime() : Date.now());
         setPulsing(true);
         if (pulseTimer.current) clearTimeout(pulseTimer.current);
         pulseTimer.current = setTimeout(() => setPulsing(false), 600);
       } catch {
-        // Best-effort ticker — a failed poll just waits for the next tick.
+        // Best-effort ticker. A failed poll just waits for the next tick.
       }
     }
     void poll();
@@ -76,8 +78,10 @@ export function StreamTicker() {
     };
   }, [role, orgUnit]);
 
-  // Tick the relative "Xs ago" labels between polls too.
+  // Live responses tick between polls. Replay responses reset this value to
+  // their deterministic scenario clock on every poll.
   useEffect(() => {
+    if (USE_MOCK) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -96,7 +100,11 @@ export function StreamTicker() {
         </p>
         <span className="text-[10.5px] text-text-subtle">every {POLL_MS / 1000}s</span>
       </header>
-      <ul className="max-h-[26rem] divide-y divide-border-2 overflow-y-auto">
+      <ul
+        className="max-h-[26rem] divide-y divide-border-2 overflow-y-auto"
+        tabIndex={0}
+        aria-label="Scrollable recent activity"
+      >
         {records.length === 0 && (
           <li className="px-4 py-6 text-center text-[12px] text-text-muted">Waiting for the first poll…</li>
         )}

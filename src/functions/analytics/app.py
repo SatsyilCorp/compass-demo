@@ -1,32 +1,32 @@
-"""Analytics Lambda — POST /analytics/run and GET /analytics/{run_id}.
+"""Analytics Lambda - POST /analytics/run and GET /analytics/{run_id}.
 
 POST /analytics/run  (poweruser / ONR-Corporate only)
     Body (all optional): {"k": 2..20 (default 8), "seed": int}
     Runs the real TF-IDF + NMF topic model in ``topic_model.py`` over every
     grant abstract the caller's RLS context can see, flags funding z-score
     anomalies, and persists in ONE transaction:
-      * ``model_runs``   — params, metrics, and the decision RECOMMENDATION
-      * ``topics``       — label, top_terms, per-FY trend (trend_jsonb)
-      * ``grant_topics`` — doc→topic weights (>= 0.10, plus each dominant)
-      * ``anomalies``    — new open ``funding_zscore`` rows (deduped against
+      * ``model_runs``   - params, metrics, and the decision RECOMMENDATION
+      * ``topics``       - label, top_terms, per-FY trend (trend_jsonb)
+      * ``grant_topics`` - doc→topic weights (>= 0.10, plus each dominant)
+      * ``anomalies``    - new open ``funding_zscore`` rows (deduped against
                            existing open flags for the same grant)
-      * ``lineage_nodes/edges`` — the analysis run's provenance graph
+      * ``lineage_nodes/edges`` - the analysis run's provenance graph
     Returns 200 with ``{"run_id", "status": "completed", ...}`` (the model runs
     in well under the 120 s timeout at this corpus size, so the route is
-    synchronous by design — no fake job queue).
+    synchronous by design - no fake job queue).
 
-GET /analytics/{run_id}  (any authenticated caller)
+GET /analytics/{run_id}  (poweruser / ONR-Corporate only)
     Returns ``{"run_id", "kind", "created_at", "params", "metrics",
     "recommendation", "topics": [{"topic_id", "label", "top_terms", "trend"}]}``
     or 404.
 
 RLS/CLS notes
-    * All grant reads run inside ``db.set_org(conn, claims.org_unit)`` — the
+    * All grant reads run inside ``db.set_org(conn, claims.org_unit)`` - the
       caller's row-level view is what gets modeled.
     * ``amount_usd`` is column-revoked from ``compass_app`` on the base table
       (002_rls.sql); the anomaly routine reads it through the
       ``grants_curated_corp`` view, which is why POST is gated to the
-      corporate persona — model output lands in shared (non-RLS) tables.
+      corporate persona - model output lands in shared (non-RLS) tables.
 """
 from __future__ import annotations
 
@@ -47,13 +47,26 @@ RUN_KIND = "topic_model"
 ANOMALY_KIND = "funding_zscore"
 DEFAULT_K = 8
 DEFAULT_SEED = 20260810
+DEMO_BASELINE_ACTION = "prepare_demo_baseline"
+DEMO_PREPARER_ACTOR = "compass-demo-preparer"
 
 
 def handler(event, context):
     try:
+        # Fixed, IAM-protected direct invocation for recording preparation.
+        # This is not an API route, never fabricates a human session, and
+        # permits only the source-controlled baseline parameters.
+        if (event or {}).get("action") == DEMO_BASELINE_ACTION:
+            return _prepare_demo_baseline(event)
+
         claims = http.get_claims(event)
         if not claims.is_authenticated:
             return http.unauthorized()
+        if claims.role != "poweruser" or not claims.is_corporate:
+            return http.forbidden(
+                "shared analytics output requires the poweruser "
+                "(ONR-Corporate) persona"
+            )
 
         method = http.get_method(event)
         run_id = http.path_param(event, "run_id")
@@ -69,16 +82,34 @@ def handler(event, context):
         return http.server_error()
 
 
+def _prepare_demo_baseline(event):
+    try:
+        k = int(event.get("k", DEFAULT_K))
+        seed = int(event.get("seed", DEFAULT_SEED))
+    except (TypeError, ValueError):
+        return {"status": "error", "code": "invalid_baseline_parameters"}
+    if k != DEFAULT_K or seed != DEFAULT_SEED:
+        return {"status": "error", "code": "invalid_baseline_parameters"}
+
+    service_claims = http.Claims(
+        sub=DEMO_PREPARER_ACTOR,
+        username=DEMO_PREPARER_ACTOR,
+        role="poweruser",
+        org_unit="ONR-Corporate",
+    )
+    response = _run_analytics(
+        {"body": json.dumps({"k": DEFAULT_K, "seed": DEFAULT_SEED})},
+        service_claims,
+    )
+    if response.get("statusCode") != 200:
+        return {"status": "error", "code": "baseline_analytics_failed"}
+    return {"status": "ok", "analytics": json.loads(response["body"])}
+
+
 # --------------------------------------------------------------------------- #
 # POST /analytics/run
 # --------------------------------------------------------------------------- #
 def _run_analytics(event, claims):
-    if not (claims.is_corporate or claims.role == "poweruser"):
-        return http.forbidden(
-            "analytics runs write shared model output; requires the poweruser "
-            "(ONR-Corporate) persona"
-        )
-
     body = http.parse_body(event)
     try:
         k = int(body.get("k", DEFAULT_K))
@@ -121,7 +152,7 @@ def _run_analytics(event, claims):
         {
             "run_id": run_id,
             # "completed" is the frontend contract's union member
-            # (lib/types.ts AnalyticsRunResponse) — the run is synchronous.
+            # (lib/types.ts AnalyticsRunResponse) - the run is synchronous.
             "status": "completed",
             "kind": RUN_KIND,
             "metrics": result.metrics,
@@ -336,9 +367,7 @@ def _get_run(run_id: str, claims):
             )
             topic_rows = cur.fetchall()
 
-        # CLS: dollar sums only for the corporate persona; everyone else gets
-        # total_funding_usd = null (masked), same rule as /dashboard.
-        funding = _topic_funding(c, run_id) if claims.is_corporate else {}
+        funding = _topic_funding(c, run_id)
 
     metrics = dict(run[3] or {})
     # Contract alias: the frontend's RecommendationPanel reads `grants_scored`.

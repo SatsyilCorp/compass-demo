@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Build the Compass local progress dashboard (dashboard.html) from STATUS.json.
 
-STATUS.json (repo root) is the only hand-edited input — project, focus,
-build phases, human gates, and the milestone log. Derived live at
-generation time: optional check commands and recent git history. Stdlib
-only, no network, no third-party deps. Output is a static, self-contained
-page with inline CSS that refreshes itself every 60s when left open.
+STATUS.json is the only hand-edited input. The dashboard renders the candidate
+state, implemented controls, release gates, external inputs, and recent git
+history. Gate commands can be executed at generation time. The script uses the
+standard library only and writes one self-contained static page.
 
 Usage:
   python3 scripts/status_dashboard.py [--skip-checks]
@@ -29,6 +28,7 @@ CHIP = {
     "in_progress": ("IN PROGRESS", "#9a6700"),
     "blocked": ("BLOCKED", "#cf222e"),
     "pending": ("PENDING", "#57606a"),
+    "required": ("REQUIRED", "#57606a"),
 }
 
 
@@ -36,7 +36,7 @@ def run_checks(checks: list) -> list:
     results = []
     for c in checks:
         if "--skip-checks" in sys.argv:
-            results.append((c["name"], "skipped", True))
+            results.append((c["name"], "skipped", None))
             continue
         try:
             r = subprocess.run(
@@ -73,36 +73,40 @@ def main() -> None:
         sys.exit(1)
 
     status = json.loads(STATUS_FILE.read_text())
-    checks = run_checks(status.get("checks", []))
+    checks = run_checks(status.get("release_gates", []))
     git = git_info()
 
-    stages = status.get("stages", [])
-    done = sum(1 for s in stages if s.get("status") == "done")
+    stages = status.get("release_gates", [])
+    check_by_name = {name: (label, ok) for name, label, ok in checks}
+    done = sum(
+        1
+        for name, label, ok in checks
+        if ok is True
+    )
     pct = done * 100 // max(1, len(stages))
 
     phases_html = "\n".join(
-        f"<tr><td><span class='chip' style='background:{CHIP.get(s.get('status'), CHIP['pending'])[1]}'>"
-        f"{CHIP.get(s.get('status'), CHIP['pending'])[0]}</span></td>"
+        f"<tr><td><span class='chip' style='background:{('#1f883d' if check_by_name.get(s.get('name'), ('', None))[1] is True else '#cf222e' if check_by_name.get(s.get('name'), ('', None))[1] is False else '#57606a')}'>"
+        f"{('PASSED' if check_by_name.get(s.get('name'), ('', None))[1] is True else 'FAILED' if check_by_name.get(s.get('name'), ('', None))[1] is False else 'REQUIRED')}</span></td>"
         f"<td><strong>{esc(s.get('name', s.get('id', '')))}</strong>"
-        f"{('<br><small>' + esc(s.get('note', '')) + '</small>') if s.get('note') else ''}</td></tr>"
+        f"<br><small><code>{esc(s.get('command', ''))}</code></small></td></tr>"
         for s in stages
     )
 
     gates_html = "\n".join(
-        f"<li><strong>{esc(w.get('what', ''))}</strong> — {esc(w.get('who', ''))}"
-        f"{(' · <code>' + esc(w['artifact']) + '</code>') if w.get('artifact') else ''}</li>"
-        for w in status.get("waiting_on_human", [])
-    ) or "<li>nothing — build on</li>"
+        f"<li>{esc(str(item))}</li>"
+        for item in status.get("external_inputs", [])
+    ) or "<li>No external inputs recorded.</li>"
 
     checks_html = "\n".join(
-        f"<span class='check' style='background:{'#1f883d' if ok else '#cf222e'}'>"
+        f"<span class='check' style='background:{'#1f883d' if ok is True else '#cf222e' if ok is False else '#57606a'}'>"
         f"{esc(name)}: {esc(label)}</span>"
         for name, label, ok in checks
     )
 
     log_html = "\n".join(
-        f"<li><span class='d'>{esc(e.get('date', ''))}</span> {esc(e.get('entry', ''))}</li>"
-        for e in reversed(status.get("log", []))
+        f"<li><strong>{esc(str(name).replace('_', ' ').title())}:</strong> {esc(str(value))}</li>"
+        for name, value in status.get("implementation", {}).items()
     )
 
     commits_html = "\n".join(
@@ -111,14 +115,14 @@ def main() -> None:
     ) or "<li>not a git repository, or no commits yet</li>"
 
     project = status.get("project", "Compass")
-    vision = status.get("vision", "")
-    focus = status.get("focus", "")
+    vision = status.get("purpose", "")
+    focus = status.get("candidate_state", "")
 
     html = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60">
-<title>{esc(project)} — status dashboard</title>
+<title>{esc(project)} - status dashboard</title>
 <style>
  body {{ font-family: -apple-system, "Segoe UI", sans-serif; max-width: 1000px;
         margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; line-height: 1.45;
@@ -144,7 +148,7 @@ def main() -> None:
  small {{ color: #57606a; }}
  footer {{ color: #57606a; font-size: 0.8rem; margin-top: 2rem; }}
 </style></head><body>
-<h1>{esc(project)} — status dashboard</h1>
+<h1>{esc(project)} - status dashboard</h1>
 <p class="sub">{esc(vision)}</p>
 <div class="card">
  <strong>Now:</strong> {esc(focus)}<br>
@@ -158,7 +162,7 @@ def main() -> None:
 </div>
 <h2>Build phases</h2>
 <table>{phases_html}</table>
-<h2>Milestone log</h2>
+<h2>Implemented candidate</h2>
 <ul>{log_html}</ul>
 <h2>Recent commits ({esc(git['count'])} total)</h2>
 <ul>{commits_html}</ul>
@@ -168,7 +172,8 @@ scripts/status_dashboard.py from STATUS.json. Page self-refreshes every 60s.</fo
 
     OUT.write_text(html, encoding="utf-8")
     summary = ", ".join(
-        "{} {}".format(n, "ok" if ok else "FAIL") for n, _, ok in checks
+        "{} {}".format(n, "ok" if ok is True else "FAIL" if ok is False else "skipped")
+        for n, _, ok in checks
     ) or "none"
     print(f"wrote {OUT} ({done}/{len(stages)} phases done; checks: {summary})")
 

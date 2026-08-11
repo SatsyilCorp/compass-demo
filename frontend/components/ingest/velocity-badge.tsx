@@ -15,7 +15,7 @@ const TONE: Record<Velocity, string> = {
 
 /** Small pill for a batch row. Pass `forced` for a batch whose velocity is
  * genuinely known (e.g. a simulate-triggered batch is always on-demand);
- * otherwise it's derived illustratively from the batch_id — see velocity.ts. */
+ * otherwise it's derived illustratively from the batch_id - see velocity.ts. */
 export function VelocityBadge({ batchId, forced }: { batchId: string; forced?: Velocity }) {
   const v = forced ?? velocityForBatch(batchId);
   const Icon = ICON[v];

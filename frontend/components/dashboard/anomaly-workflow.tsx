@@ -26,11 +26,11 @@ import { dateTimeShort } from "./format";
  * Anomaly → summary → approval (element 6).
  *
  * The three calls are real contract calls, in order:
- *   1. `GET /anomalies`   — the detection surface (rows written by the quality
+ *   1. `GET /anomalies`: the detection surface (rows written by the quality
  *                           gate, scoped by RLS like everything else).
- *   2. `POST /chat`       — an LLM triage note about the selected anomaly,
+ *   2. `POST /chat`: an LLM triage note about the selected anomaly,
  *                           grounded on the grants it can cite.
- *   3. `POST /approvals`  — `request`, then `approve` / `reject`. The decision
+ *   3. `POST /approvals`: `request`, then `approve` / `reject`. The decision
  *                           step is gated to the power-user persona; a viewer
  *                           can raise an approval but cannot decide it.
  *
@@ -193,7 +193,7 @@ export function AnomalyWorkflow() {
           )}
         >
           {canDecide ? <ShieldCheck className="size-3.5" aria-hidden /> : <Lock className="size-3.5" aria-hidden />}
-          {canDecide ? "You may decide approvals" : "Request only — decisions need the power-user role"}
+          {canDecide ? "You may decide approvals" : "Request only. Decisions need the power-user role"}
         </span>
       </header>
 
@@ -283,13 +283,13 @@ export function AnomalyWorkflow() {
                 </p>
               </div>
 
-              {/* Step 2 — summary */}
+              {/* Step 2: summary */}
               <div className="mt-4">
                 {item.summary ? (
                   <div className="rounded border border-border px-3 py-2.5">
                     <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
                       <FileText className="size-3.5" aria-hidden />
-                      Triage note — generated
+                      Triage note: generated
                     </p>
                     <p className="mt-1.5 text-[12.5px] leading-relaxed text-text">{item.summary}</p>
                     {item.citations && item.citations.length > 0 ? (
@@ -331,7 +331,7 @@ export function AnomalyWorkflow() {
                 ) : null}
               </div>
 
-              {/* Step 3/4 — approval */}
+              {/* Step 3/4: approval */}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {item.stage === "summarized" ? (
                   <button
@@ -421,7 +421,7 @@ function Stepper({ stage }: { stage: Stage }) {
         const done = terminal || i < current;
         const active = !done && i === current;
         const label =
-          s.key === "approved" && stage === "rejected" ? "Decided — rejected" : s.title;
+          s.key === "approved" && stage === "rejected" ? "Decided: rejected" : s.title;
         return (
           <li key={s.key} className="flex items-center gap-1.5">
             <span
@@ -462,10 +462,10 @@ function ApprovalRecord({ approval }: { approval: Approval }) {
       <Field label="subject" value={`${approval.subject_type}:${approval.subject_id}`} mono />
       <Field label="state" value={approval.state} mono />
       <Field label="requested_by" value={approval.requested_by} />
-      <Field label="decided_by" value={approval.decided_by ?? "—"} />
+      <Field label="decided_by" value={approval.decided_by ?? "Not available"} />
       <Field
         label="decided_at"
-        value={approval.decided_at ? dateTimeShort(approval.decided_at) : "—"}
+        value={approval.decided_at ? dateTimeShort(approval.decided_at) : "Not available"}
       />
     </dl>
   );

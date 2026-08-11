@@ -1,14 +1,14 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Compass — US Navy/ONR S&T Portfolio Intelligence demo (single stack,
+  Compass - US Navy/ONR S&T Portfolio Intelligence demo (single stack,
   us-east-1). Everything is created in-template for reproducibility: a minimal
   VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito (MFA ON,
   TOTP-only) with a JWT-guarded HttpApi, one Lambda per src/functions dir on a
   shared CommonLayer, an Express intake state machine fired by S3 -> EventBridge,
   an on-demand Kinesis ticker stream, a private S3 + CloudFront web tier behind
   a CLOUDFRONT-scope WAF, and a customer-managed KMS key over data at rest.
-  All data is synthetic (mock ONR portfolio) — no real CUI/PII.
+  All data is synthetic (mock ONR portfolio) - no real CUI/PII.
   NOTE: the WAF WebACL is Scope CLOUDFRONT, so this stack MUST deploy in
   us-east-1 (pinned in samconfig.toml).
 
@@ -52,7 +52,7 @@ Parameters:
     Type: Number
     Default: 5000
     Description: >
-      Aggregation-guard threshold for POST /export — requests above this row
+      Aggregation-guard threshold for POST /export - requests above this row
       count return HTTP 428 (approval required) unless an approval token is
       attached (see docs/CONTRACTS.md).
 
@@ -75,7 +75,7 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: >
-      Toggle GuardDuty + Security Hub + Macie. These are ACCOUNT SINGLETONS —
+      Toggle GuardDuty + Security Hub + Macie. These are ACCOUNT SINGLETONS:
       only one stack per account may own them, so they default off. The KMS key
       and the CloudFront WAF WebACL are NOT behind this flag; they always deploy.
 
@@ -90,7 +90,7 @@ Conditions:
   HasCognitoDomainPrefix: !Not [!Equals [!Ref CognitoDomainPrefix, ""]]
 
 # -----------------------------------------------------------------------------
-# Globals — every Lambda: python3.11 on arm64, X-Ray on, DB contract env vars
+# Globals - every Lambda: python3.11 on arm64, X-Ray on, DB contract env vars
 # (see src/common/python/compass_common/config.py for the env-var contract).
 # -----------------------------------------------------------------------------
 Globals:
@@ -117,7 +117,7 @@ Globals:
 Resources:
 
   # ===========================================================================
-  # (1) Minimal VPC — 2 public + 2 private subnets across two AZs, one NAT.
+  # (1) Minimal VPC - 2 public + 2 private subnets across two AZs, one NAT.
   #     Private subnets host every DB-touching Lambda and the Aurora cluster;
   #     NAT gives those Lambdas the outbound path to Bedrock / Secrets Manager /
   #     S3 / Kinesis / Step Functions. Created in-template on purpose: the whole
@@ -216,7 +216,7 @@ Resources:
     Properties:
       Domain: vpc
 
-  # One NAT (not one per AZ) — deliberate demo-cost tradeoff, noted honestly:
+  # One NAT (not one per AZ) - deliberate demo-cost tradeoff, noted honestly:
   # an AZ outage would sever private-subnet egress until repair.
   NatGateway:
     Type: AWS::EC2::NatGateway
@@ -279,7 +279,7 @@ Resources:
         - { Key: Name, Value: !Sub "${AWS::StackName}-db-sg" }
 
   # ===========================================================================
-  # (2) Customer-managed KMS key — encrypts the Aurora cluster + its master
+  # (2) Customer-managed KMS key - encrypts the Aurora cluster + its master
   #     secret, both S3 buckets, and the Kinesis stream. Always deployed (NOT
   #     behind DeploySecurityBaseline). The CloudFront statement lets OAC serve
   #     KMS-encrypted web objects; it is account-scoped (not distribution-
@@ -318,7 +318,7 @@ Resources:
       TargetKeyId: !Ref AppKey
 
   # ===========================================================================
-  # (3) Aurora Serverless v2 PostgreSQL — created IN-TEMPLATE (reproducibility
+  # (3) Aurora Serverless v2 PostgreSQL - created IN-TEMPLATE (reproducibility
   #     requirement). RDS manages the master secret in Secrets Manager
   #     (ManageMasterUserPassword) so no credential ever appears in the
   #     template or samconfig. The migrator Lambda applies db/migrations
@@ -356,7 +356,7 @@ Resources:
       Port: 5432
       BackupRetentionPeriod: 1
       CopyTagsToSnapshot: true
-      DeletionProtection: false   # demo stack — must tear down cleanly
+      DeletionProtection: false   # demo stack - must tear down cleanly
 
   DbInstance:
     Type: AWS::RDS::DBInstance
@@ -368,7 +368,7 @@ Resources:
       PubliclyAccessible: false
 
   # ===========================================================================
-  # (4) Cognito — MFA ON (TOTP only), 16-char password policy, two demo groups
+  # (4) Cognito - MFA ON (TOTP only), 16-char password policy, two demo groups
   #     that map 1:1 to the RLS personas in docs/CONTRACTS.md:
   #       compass-poweruser -> org_unit ONR-Corporate (sees all rows)
   #       compass-viewer    -> org_unit Code-30       (sees Code-30 only)
@@ -412,7 +412,7 @@ Resources:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
       GroupName: compass-poweruser
-      Description: "Portfolio power user — org_unit ONR-Corporate, sees the whole portfolio"
+      Description: "Portfolio power user - org_unit ONR-Corporate, sees the whole portfolio"
       UserPoolId: !Ref UserPool
       Precedence: 10
 
@@ -420,7 +420,7 @@ Resources:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
       GroupName: compass-viewer
-      Description: "Program-office viewer — org_unit Code-30, RLS-scoped to Code-30 rows"
+      Description: "Program-office viewer - org_unit Code-30, RLS-scoped to Code-30 rows"
       UserPoolId: !Ref UserPool
       Precedence: 20
 
@@ -436,7 +436,7 @@ Resources:
       AllowedOAuthScopes: [openid, email, profile]
       # localhost is always registered; the CloudFront URLs are parameters
       # filled on the SECOND deploy (the domain does not exist until the first).
-      # /login/ (with the trailing slash) is the SPA's actual redirect_uri —
+      # /login/ (with the trailing slash) is the SPA's actual redirect_uri:
       # see frontend/lib/auth/providers.tsx and next.config.ts trailingSlash.
       CallbackURLs: !If
         - HasWebCallbackUrl
@@ -461,14 +461,14 @@ Resources:
         RefreshToken: hours
 
   # ===========================================================================
-  # (5) HttpApi — JWT authorizer (Cognito issuer) as the DEFAULT authorizer, so
+  # (5) HttpApi - JWT authorizer (Cognito issuer) as the DEFAULT authorizer, so
   #     every route is deny-by-default: no valid token, no entry. Handlers read
   #     claims (incl. cognito:groups) from requestContext.authorizer.jwt.claims
   #     and derive org_unit via compass_common. The CompassContextAuthorizer
   #     (the authorizer Lambda) is also registered as a named REQUEST authorizer
   #     that validates the same Cognito JWT itself and injects
   #     {role, org_unit, groups} into the request context for any route that
-  #     opts in per-event — and it serves GET /me.
+  #     opts in per-event - and it serves GET /me.
   # ===========================================================================
 
   ApiAccessLogGroup:
@@ -485,11 +485,12 @@ Resources:
         DestinationArn: !GetAtt ApiAccessLogGroup.Arn
         Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","path":"$context.path","status":"$context.status","responseLatency":"$context.responseLatency","authorizerError":"$context.authorizer.error"}'
       CorsConfiguration:
-        AllowOrigins: !If
-          - HasWebOrigin
-          - - http://localhost:3000
-            - !Ref WebOrigin
-          - - http://localhost:3000
+        # Keep AllowOrigins a literal list through the SAM transform. Wrapping
+        # the entire list in Fn::If collapses the generated OpenAPI CORS object
+        # to an origin array, so API Gateway receives no CORS configuration.
+        AllowOrigins:
+          - http://localhost:3000
+          - !If [HasWebOrigin, !Ref WebOrigin, !Ref "AWS::NoValue"]
         AllowHeaders: [Content-Type, Authorization]
         AllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
         MaxAge: 600
@@ -501,7 +502,7 @@ Resources:
             JwtConfiguration:
               issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
               # Web app sends ID tokens (aud = client id); access tokens carry
-              # client_id instead of aud — API Gateway checks either.
+              # client_id instead of aud - API Gateway checks either.
               audience:
                 - !Ref WebClient
           CompassContextAuthorizer:
@@ -513,7 +514,7 @@ Resources:
               Headers: [Authorization]
 
   # ===========================================================================
-  # (6) Shared CommonLayer — compass_common (config, db w/ SET ROLE + RLS GUC,
+  # (6) Shared CommonLayer - compass_common (config, db w/ SET ROLE + RLS GUC,
   #     http, llm/Bedrock, audit) + psycopg2 from src/common/requirements.txt.
   # ===========================================================================
 
@@ -531,7 +532,7 @@ Resources:
       BuildArchitecture: arm64
 
   # ===========================================================================
-  # (7) Data plane — raw landing bucket (EventBridge notifications on) and the
+  # (7) Data plane - raw landing bucket (EventBridge notifications on) and the
   #     on-demand Kinesis ticker stream, both under the customer KMS key.
   # ===========================================================================
 
@@ -577,12 +578,12 @@ Resources:
         KeyId: !Ref AppKey
 
   # ===========================================================================
-  # (8) Lambda functions — one per src/functions dir, all on CommonLayer.
+  # (8) Lambda functions - one per src/functions dir, all on CommonLayer.
   #     DB-touching functions run in the private subnets. Route map follows
   #     docs/CONTRACTS.md exactly (see each function's Events).
   # ===========================================================================
 
-  # --- authorizer: GET /me + the named Lambda REQUEST authorizer. No VPC/DB —
+  # --- authorizer: GET /me + the named Lambda REQUEST authorizer. No VPC/DB:
   #     identity, role and org_unit derive entirely from the Cognito JWT.
   AuthorizerFunction:
     Type: AWS::Serverless::Function
@@ -767,7 +768,7 @@ Resources:
             Path: /catalog/{id}/lineage
 
   # --- analytics: POST /analytics/run + GET /analytics/{run_id}. Topic model
-  #     over curated abstracts — the heavy one (1024 MB / 120 s).
+  #     over curated abstracts - the heavy one (1024 MB / 120 s).
   AnalyticsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -810,7 +811,7 @@ Resources:
             Method: GET
             Path: /analytics/{run_id}
 
-  # --- dashboard: GET /dashboard — one round trip: KPI tiles + every chart
+  # --- dashboard: GET /dashboard - one round trip: KPI tiles + every chart
   #     series, shaped to frontend/lib/types.ts::DashboardResponse.
   DashboardFunction:
     Type: AWS::Serverless::Function
@@ -881,7 +882,7 @@ Resources:
             Method: GET
             Path: /anomalies
 
-  # --- rag_chat: POST /chat — RAG over curated grants via Bedrock (in-boundary
+  # --- rag_chat: POST /chat - RAG over curated grants via Bedrock (in-boundary
   #     only: Nova Lite chat + Titan v2 embeddings, per CONTRACTS).
   RagChatFunction:
     Type: AWS::Serverless::Function
@@ -919,7 +920,7 @@ Resources:
             Method: POST
             Path: /chat
 
-  # --- approvals: POST /approvals — create/advance an approval.
+  # --- approvals: POST /approvals - create/advance an approval.
   ApprovalsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -950,7 +951,7 @@ Resources:
             Method: POST
             Path: /approvals
 
-  # --- license: GET /licenses — license lifecycle table.
+  # --- license: GET /licenses - license lifecycle table.
   LicenseFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -982,7 +983,7 @@ Resources:
             Path: /licenses
 
   # --- export: POST /export (RLS/CLS + aggregation guard + audit_log) and
-  #     GET /openapi.json (the served OpenAPI 3.1 contract — element 7).
+  #     GET /openapi.json (the served OpenAPI 3.1 contract - element 7).
   ExportFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1087,7 +1088,7 @@ Resources:
               Resource: !GetAtt AppKey.Arn
 
   # ===========================================================================
-  # (9) Intake pipeline — Express state machine (intake -> quality gate) fired
+  # (9) Intake pipeline - Express state machine (intake -> quality gate) fired
   #     by EventBridge whenever an object lands in the raw bucket.
   # ===========================================================================
 
@@ -1165,7 +1166,7 @@ Resources:
           RoleArn: !GetAtt EventsToStatesRole.Arn
 
   # ===========================================================================
-  # (10) Web tier — private S3 + OAC + CloudFront (PriceClass_100) with the
+  # (10) Web tier - private S3 + OAC + CloudFront (PriceClass_100) with the
   #      Next.js trailing-slash path-rewrite function (proven pattern from a prior static-export deployment),
   #      fronted by the CLOUDFRONT-scope WAF WebACL below.
   # ===========================================================================
@@ -1228,7 +1229,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: Compass demo web — Next.js static export
+        Comment: Compass demo web - Next.js static export
         DefaultRootObject: index.html
         HttpVersion: http2and3
         PriceClass: PriceClass_100
@@ -1275,7 +1276,7 @@ Resources:
                 AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebDistribution.Id}"
 
   # ===========================================================================
-  # (11) WAF — CLOUDFRONT-scope WebACL (this is why the stack is pinned to
+  # (11) WAF - CLOUDFRONT-scope WebACL (this is why the stack is pinned to
   #      us-east-1): AWS managed common rules + per-IP rate rule, associated
   #      to the distribution via WebACLId above. Always deployed.
   # ===========================================================================
@@ -1318,7 +1319,7 @@ Resources:
             MetricName: AWSCommonRules
 
   # ===========================================================================
-  # (12) OPTIONAL account-singleton detectors — GuardDuty + Security Hub +
+  # (12) OPTIONAL account-singleton detectors - GuardDuty + Security Hub +
   #      Macie, gated behind DeploySecurityBaseline (default false: only ONE
   #      stack per account may own these).
   # ===========================================================================
@@ -1350,7 +1351,7 @@ Outputs:
     Description: HttpApi base URL (JWT-guarded, deny-by-default).
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   CloudFrontDomain:
-    Description: CloudFront domain — feed back into WebCallbackUrl/WebLogoutUrl/WebOrigin on the second deploy.
+    Description: CloudFront domain - feed back into WebCallbackUrl/WebLogoutUrl/WebOrigin on the second deploy.
     Value: !GetAtt WebDistribution.DomainName
   UserPoolId:
     Description: Cognito user pool id.

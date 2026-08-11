@@ -2,7 +2,7 @@
  * Formatting helpers shared by the element 6/7 surfaces (dashboard, export,
  * licenses).
  *
- * `amount_usd` is `number | null` across the whole API contract — `null` is not
+ * `amount_usd` is `number | null` across the whole API contract. `null` is not
  * "zero" or "unknown", it is *column-level security*: the viewer persona has
  * `SELECT (amount_usd)` revoked (db/migrations/002_rls.sql), so the API returns
  * null. Everything that renders money goes through `usd()` / `MASKED_LABEL` so
@@ -37,7 +37,7 @@ export function usdFull(n: number | null | undefined): string {
 }
 
 export function num(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "—";
+  if (n === null || n === undefined) return "Not available";
   return n.toLocaleString("en-US");
 }
 
@@ -49,7 +49,7 @@ const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
  * Parse an API date. `renews_on` is a Postgres DATE and arrives as a bare
- * `YYYY-MM-DD`, which `new Date()` reads as UTC midnight — so a viewer west of
+ * `YYYY-MM-DD`, which `new Date()` reads as UTC midnight. A viewer west of
  * UTC sees the previous day ("2026-09-15" rendering as "Sep 14"). Date-only
  * strings are therefore built as local dates; full timestamps are left alone.
  */
@@ -82,7 +82,7 @@ export function daysUntil(iso: string, now: Date = new Date()): number {
 }
 
 export function relativeDays(days: number): string {
-  if (Number.isNaN(days)) return "—";
+  if (Number.isNaN(days)) return "Not available";
   if (days < 0) return `${Math.abs(days).toLocaleString("en-US")} days ago`;
   if (days === 0) return "today";
   if (days === 1) return "tomorrow";
@@ -90,7 +90,7 @@ export function relativeDays(days: number): string {
   return `in ${days.toLocaleString("en-US")} days`;
 }
 
-/** True when every value in the series is masked — used to switch a chart into
+/** True when every value in the series is masked. Used to switch a chart into
  *  its explicit "masked by CLS" state instead of plotting an empty axis. */
 export function allMasked(values: (number | null)[]): boolean {
   return values.length > 0 && values.every((v) => v === null);

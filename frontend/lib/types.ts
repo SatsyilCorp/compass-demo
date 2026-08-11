@@ -1,9 +1,9 @@
 /**
- * Compass API contract types — shared by `lib/api.ts` (the live/mock client)
+ * Compass API contract types: shared by `lib/api.ts` (the live/mock client)
  * and `lib/mock/*` (fixtures). Field names deliberately mirror the Postgres
  * column names in `db/migrations/001_schema.sql` (snake_case) since
  * docs/CONTRACTS.md locks the DB shape but not a separate wire-format for
- * the API — mirroring the DB columns keeps this the single source of truth
+ * the API. Mirroring the DB columns keeps this the single source of truth
  * every subsystem (Lambdas, frontend) can build against without guessing.
  *
  * Kept in its own module (no imports from lib/api.ts or lib/mock/*) so both
@@ -74,13 +74,18 @@ export type LineageResponse = { run_id: string; nodes: LineageNode[]; edges: Lin
 // ---------------------------------------------------------------------------
 // POST /ingest/simulate, GET /ingest/status  (element 3)
 // ---------------------------------------------------------------------------
-export type IngestSimulateRequest = { source_file?: string };
+export type IngestSimulateRequest = {
+  fixture?: "good" | "compatible" | "bad";
+  source_file?: string;
+};
 export type IngestSimulateResponse = {
   batch_id: string;
   run_id: string;
   source_file: string;
   status: "queued" | "running";
   triggered_at: string;
+  trigger?: string;
+  fixture?: "good" | "compatible" | "bad";
 };
 
 export type IngestBatch = {
@@ -146,13 +151,36 @@ export type AnalyticsRunDetail = {
 // ---------------------------------------------------------------------------
 // GET /dashboard  (element 6)
 // ---------------------------------------------------------------------------
+export type DashboardFilters = {
+  program_area?: string;
+  fiscal_year?: number;
+  org_unit?: string;
+  q?: string;
+};
+
+export type DashboardAppliedFilters = {
+  program_area?: string | null;
+  fiscal_year?: number | null;
+  org_unit?: string | null;
+  q?: string | null;
+};
+
+export type DashboardFilterOptions = {
+  program_areas: string[];
+  fiscal_years: number[];
+  org_units: string[];
+};
+
 export type DashboardResponse = {
+  /** Live responses always include these fields. Optional supports older replay fixtures. */
+  filters_applied?: DashboardAppliedFilters;
+  filter_options?: DashboardFilterOptions;
   kpis: {
     total_grants: number;
     /** null when masked (viewer/CLS) */
     total_funding_usd: number | null;
     active_program_areas: number;
-    avg_quality_score: number;
+    avg_quality_score: number | null;
     open_anomalies: number;
     pending_approvals: number;
   };
@@ -213,8 +241,25 @@ export type Approval = {
   decided_at: string | null;
   note: string | null;
   created_at: string;
+  expires_at?: string | null;
+  consumed_at?: string | null;
+  consumed_by?: string | null;
 };
-export type ApprovalResponse = { approval: Approval };
+export type ApprovalResponse = {
+  approval: Approval;
+  approval_token?: string | null;
+  four_eyes?: Record<string, unknown>;
+};
+export type ApprovalsListResponse = {
+  approvals: Approval[];
+  actor: string;
+  scope: "all_pending" | "requested_by_actor";
+  can_decide: boolean;
+  four_eyes_enforced: boolean;
+  /** Always false. Capability tokens are issued only by an approve action. */
+  tokens_included: false;
+  generated_at: string;
+};
 
 // ---------------------------------------------------------------------------
 // GET /licenses  (element 6)
@@ -230,22 +275,69 @@ export type License = {
   renews_on: string; // ISO date
   owner: string;
   status: "active" | "expiring" | "expired" | "suspended";
+  status_stored?: "active" | "expiring" | "expired" | "suspended";
+  days_to_renewal?: number | null;
+  renewal_alert?: {
+    level: "expired" | "critical" | "warning" | "ok";
+    days_to_renewal: number | null;
+    message: string;
+  };
+  seat_alert?: {
+    level: "critical" | "warning" | "ok";
+    utilization_pct: number | null;
+    seats_available: number | null;
+    message: string;
+  };
+  needs_action?: boolean;
 };
-export type LicensesResponse = { licenses: License[] };
+export type LicensesResponse = {
+  licenses: License[];
+  alerts?: {
+    license_id: number;
+    vendor: string;
+    product: string;
+    owner: string;
+    kind: "renewal" | "seats";
+    level: "expired" | "critical" | "warning";
+    message: string;
+    renews_on: string;
+    days_to_renewal: number | null;
+  }[];
+  summary?: Record<string, unknown>;
+  thresholds?: {
+    critical_days: number;
+    warning_days: number;
+    seat_warn_ratio: number;
+    note: string;
+  };
+  scope?: { org_unit: string; note: string };
+};
 
 // ---------------------------------------------------------------------------
 // POST /export  (element 7)
 // ---------------------------------------------------------------------------
 export type ExportRequest = {
   format: "csv" | "json" | "parquet";
+  columns?: string[];
   filters?: Record<string, unknown>;
   approval_token?: string;
 };
 export type ExportResponse = {
   export_id: string;
   row_count: number;
+  matched_rows?: number;
   format: "csv" | "json" | "parquet";
+  requested_format?: "csv" | "json" | "parquet";
   download_url: string;
+  delivery?: "s3-presigned" | "inline-data-uri";
+  bytes?: number;
+  columns?: string[];
+  masked_fields?: string[];
+  mask_reason?: string | null;
+  filters_applied?: Record<string, unknown>;
+  audit_id?: number;
+  expires_in_seconds?: number;
+  note?: string;
   audited: true;
 };
 /** Thrown as ApiError(428, ...) when row_count > EXPORT_MAX_ROWS with no approval_token. */
@@ -253,9 +345,100 @@ export type ExportApprovalRequiredBody = {
   error: "approval_required";
   row_count: number;
   max_rows: number;
+  subject_type: "export";
+  subject_id: string;
+  how_to_clear: string;
 };
 
 // ---------------------------------------------------------------------------
-// GET /openapi.json  (element 7) — pass-through, shape owned by the API itself
+// GET /openapi.json  (element 7): pass-through, shape owned by the API itself
 // ---------------------------------------------------------------------------
 export type OpenApiDoc = Record<string, unknown>;
+
+// ---------------------------------------------------------------------------
+// GET /system/evidence  (protected System Inspector)
+// ---------------------------------------------------------------------------
+export type EvidenceStage = {
+  id: string;
+  label: string;
+  status: "completed" | "running" | "skipped" | "failed";
+  receipt: string;
+};
+
+export type EvidenceRun = {
+  run_id: string;
+  batch_id: string;
+  started_at: string;
+  completed_at: string;
+  status: "completed" | "running" | "failed";
+  outcome: "curated" | "quarantined" | "failed";
+  quality_score: number;
+  curated_rows: number;
+  stages: EvidenceStage[];
+  source: "database_projection" | "replay_fixture";
+};
+
+export type EvidenceAuditEvent = {
+  event_id: string;
+  action: string;
+  category: string;
+  detail: Record<string, string | number | boolean>;
+  at: string;
+  source: "append_only_audit" | "replay_fixture";
+};
+
+export type SystemEvidenceResponse = {
+  mode: "live" | "replay";
+  evidence_class: string;
+  generated_at: string;
+  deploy_revision: string;
+  correlation_id: string;
+  request: {
+    method: "GET";
+    route: "/system/evidence";
+    status: number;
+    latency_ms: number;
+  };
+  identity_decision: {
+    authenticated: boolean;
+    role: Role;
+    scope: string;
+    row_policy: string;
+    column_policy: string;
+  };
+  health: {
+    status: "operational" | "degraded" | "unavailable";
+    database: "reachable" | "unavailable" | "replay";
+    projection_freshness: string;
+  };
+  metrics: {
+    curated_records: number;
+    curated_batches: number;
+    open_anomalies: number;
+    pending_approvals: number;
+    audit_receipts: number;
+  };
+  services: {
+    id: string;
+    label: string;
+    purpose: string;
+    status: "operational" | "degraded" | "replay";
+  }[];
+  recent_runs: EvidenceRun[];
+  recent_audit: EvidenceAuditEvent[];
+  latest_model_run: {
+    run_id: string;
+    kind: string;
+    status: string;
+    created_at: string;
+    metrics: Record<string, string | number | boolean>;
+    source: "model_run_projection" | "replay_fixture";
+  } | null;
+  controls: {
+    id: string;
+    label: string;
+    status: "enforced" | "configured" | "verified";
+    evidence: string;
+  }[];
+  disclosure: string;
+};

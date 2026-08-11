@@ -1,4 +1,4 @@
-"""Governed export + the served OpenAPI contract — element 7 of the Compass demo.
+"""Governed export plus the served OpenAPI contract, element 7 of the Compass demo.
 
 Routes (docs/CONTRACTS.md):
 
@@ -21,7 +21,7 @@ all four controls are enforced here in one visible path:
    which re-exposes the column while ``FORCE ROW LEVEL SECURITY`` keeps the same
    row policy in force. Two consequences worth noticing: asking for
    ``columns: ["amount_usd"]`` as a viewer is a 403, not a silently-dropped
-   column, and *filtering* on ``min_amount_usd`` is refused for the same caller —
+   column, and *filtering* on ``min_amount_usd`` is refused for the same caller.
    a filter on a hidden column is a read of that column by binary search.
 
 3. **The aggregation guard.** If the filter matches more than
@@ -31,8 +31,8 @@ all four controls are enforced here in one visible path:
    clears it. The guard measures the rows the *filter matched*, not the page
    returned, so lowering ``limit`` cannot page around the control.
 
-4. **Audit.** Every outcome — delivered, blocked at the guard, denied on a bad
-   token, or failed in delivery — appends to ``compass.audit_log``. The
+4. **Audit.** Every outcome, including delivered, blocked at the guard, denied
+   on a bad token, or failed in delivery, appends to ``compass.audit_log``. The
    allow-decision row is written inside the same transaction as the read, before
    any bytes leave the boundary, so the trail can over-record but never
    under-record.
@@ -42,7 +42,7 @@ Format support
 ``csv`` and ``json`` are always available (Python standard library only).
 ``parquet`` requires **pyarrow**, which is deliberately *not* bundled: the arm64
 wheel is ~90 MB and would dominate this function's package for a format the demo
-rarely uses. When pyarrow is absent, a parquet request does not fail — it returns
+rarely uses. When pyarrow is absent, a parquet request does not fail. It returns
 CSV with ``requested_format: "parquet"`` and an explicit note saying the parquet
 layer is not installed and how to install it (uncomment the pinned line in
 ``src/functions/export/requirements.txt`` and redeploy). When pyarrow *is*
@@ -53,7 +53,7 @@ Delivery
 --------
 With ``EXPORT_BUCKET`` set (template.yaml wires it to the KMS-encrypted raw
 bucket, write-scoped to ``exports/*``), the file is written to S3 and returned as
-a 15-minute presigned URL. Without a bucket — local invoke, ``sam local`` — a
+a 15-minute presigned URL. Without a bucket, such as local invoke or ``sam local``, a
 small export is returned inline as a ``data:`` URI so the whole path is still
 exercisable offline. Anything too large for either route is a 413 that says so.
 """
@@ -62,10 +62,12 @@ from __future__ import annotations
 import base64
 import csv
 import hashlib
+import hmac
 import io
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -89,9 +91,6 @@ PRESIGN_TTL_SECONDS = int(os.environ.get("EXPORT_PRESIGN_TTL", "900"))
 INLINE_MAX_BYTES = int(os.environ.get("EXPORT_INLINE_MAX_BYTES", "3000000"))
 # Refuse to materialise an unbounded result set in a 1 GB Lambda.
 HARD_MAX_ROWS = int(os.environ.get("EXPORT_HARD_MAX_ROWS", "100000"))
-
-GROUP_TO_ROLE = {"compass-poweruser": "poweruser", "compass-viewer": "viewer"}
-ROLE_TO_ORG = {"poweruser": config.CORPORATE_ORG_UNIT, "viewer": "Code-30"}
 
 FORMATS = ("csv", "json", "parquet")
 AMOUNT_COLUMN = "amount_usd"
@@ -123,20 +122,8 @@ EXTENSIONS = {"csv": "csv", "json": "json", "parquet": "parquet"}
 # Identity
 # --------------------------------------------------------------------------- #
 def resolve_identity(claims: http.Claims) -> Tuple[Optional[str], Optional[str]]:
-    """``(role, org_unit)``, or ``(None, None)`` to deny. See catalog/app.py."""
-    role = (claims.role or "").strip().lower() or None
-    org = (claims.org_unit or "").strip() or None
-    if role is None:
-        for g in claims.groups:
-            mapped = GROUP_TO_ROLE.get(str(g).strip().lower())
-            if mapped:
-                role = mapped
-                break
-    if role and org is None:
-        org = ROLE_TO_ORG.get(role)
-    if role not in ROLE_TO_ORG or not org:
-        return None, None
-    return role, org
+    """Delegate to the shared deny-by-default identity contract."""
+    return http.resolve_identity(claims)
 
 
 def actor_of(claims: http.Claims) -> str:
@@ -144,7 +131,7 @@ def actor_of(claims: http.Claims) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Filters — whitelist only
+# Filters: whitelist only
 # --------------------------------------------------------------------------- #
 def _like(value: Any) -> str:
     return f"%{value}%"
@@ -183,7 +170,7 @@ class FilterError(ValueError):
 def build_where(filters: Dict[str, Any], amount_visible: bool) -> Tuple[str, List[Any], Dict[str, Any]]:
     """Compile whitelisted filters into ``(where_sql, params, applied)``.
 
-    Unknown keys are a 400 (never silently ignored — a filter the caller
+    Unknown keys are a 400. A filter the caller
     believes was applied but wasn't is a governance bug). Amount filters are a
     403 for a caller whose ``amount_usd`` is masked: allowing them would let a
     viewer binary-search a column they are not entitled to read.
@@ -279,7 +266,7 @@ def filter_fingerprint(org_unit: str, fmt: str, columns: Sequence[str], applied:
     """Deterministic id for *this exact* export request.
 
     Returned in the 428 body as ``subject_id`` so an approval is granted for a
-    specific query, from a specific org, in a specific shape — not a standing
+    specific query, from a specific org, in a specific shape, not a standing
     licence to export anything. Includes ``org_unit`` so an approval issued to
     one org cannot be replayed by another.
     """
@@ -296,43 +283,78 @@ def filter_fingerprint(org_unit: str, fmt: str, columns: Sequence[str], applied:
     return "exp-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
-def parse_token(token: str) -> Optional[int]:
-    """``apr-123`` or ``123`` -> ``123``. Anything else -> None."""
-    raw = (token or "").strip().lower()
-    if raw.startswith("apr-"):
-        raw = raw[4:]
-    if not raw.isdigit():
+APPROVAL_TOKEN_PATTERN = re.compile(
+    r"^apr-(?P<approval_id>[1-9][0-9]*)\.(?P<secret>[A-Za-z0-9_-]{43})$"
+)
+
+
+def parse_token(token: str) -> Optional[Tuple[int, str]]:
+    """Parse the opaque token shape and reject legacy id-only tokens."""
+    matched = APPROVAL_TOKEN_PATTERN.fullmatch((token or "").strip())
+    if matched is None:
         return None
-    return int(raw)
+    return int(matched.group("approval_id")), matched.group("secret")
 
 
-def check_approval(conn, token: str, subject_id: str) -> Tuple[bool, Dict[str, Any]]:
-    """Validate an approval token. Returns ``(ok, detail)``.
+def capability_digest(secret: str) -> str:
+    """Return the SHA-256 digest stored by the approval service."""
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
 
-    An approval is valid when it exists, is ``approved``, and was raised for
-    ``subject_type = 'export'``. If its ``subject_id`` was issued by this
-    endpoint (``exp-<hash>``) it must also match the fingerprint of the request
-    being made — an approval for one query does not clear a different one. A
-    token whose subject_id was set by some other client is accepted but flagged
-    in the response and the audit trail as unbound.
+
+def check_approval(
+    conn,
+    token: str,
+    subject_id: str,
+    *,
+    actor: str = "unknown",
+) -> Tuple[bool, Dict[str, Any]]:
+    """Atomically validate and consume an export approval token.
+
+    The approval must be approved, unexpired, unused, and bound to the exact
+    export fingerprint. ``FOR UPDATE`` plus the conditional consume update
+    means two concurrent exports cannot spend the same approval.
     """
-    approval_id = parse_token(token)
-    if approval_id is None:
-        return False, {"reason": "malformed approval_token (expected apr-<id>)"}
+    parsed = parse_token(token)
+    if parsed is None:
+        return False, {
+            "code": "approval_capability_invalid",
+            "reason": "malformed or legacy approval_token",
+        }
+    approval_id, presented_secret = parsed
+    presented_hash = capability_digest(presented_secret)
 
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, subject_type, subject_id, state, requested_by, decided_by, decided_at
+            SELECT id, subject_type, subject_id, state, requested_by, decided_by,
+                   decided_at, expires_at, consumed_at, consumed_by,
+                   capability_hash,
+                   (expires_at IS NOT NULL AND expires_at > now()) AS is_active
               FROM approvals
              WHERE id = %s
+             FOR UPDATE
             """,
             (approval_id,),
         )
         row = cur.fetchone()
 
     if row is None:
-        return False, {"reason": f"approval {approval_id} does not exist", "approval_id": approval_id}
+        return False, {
+            "code": "approval_capability_invalid",
+            "reason": f"approval {approval_id} does not exist",
+            "approval_id": approval_id,
+        }
+
+    stored_hash = row[10]
+    if not isinstance(stored_hash, str) or not hmac.compare_digest(
+        stored_hash,
+        presented_hash,
+    ):
+        return False, {
+            "code": "approval_capability_invalid",
+            "reason": "approval_token secret rejected",
+            "approval_id": approval_id,
+        }
 
     detail = {
         "approval_id": int(row[0]),
@@ -342,12 +364,17 @@ def check_approval(conn, token: str, subject_id: str) -> Tuple[bool, Dict[str, A
         "requested_by": row[4],
         "decided_by": row[5],
         "decided_at": row[6].isoformat() if isinstance(row[6], (datetime, date)) else row[6],
+        "expires_at": row[7].isoformat() if isinstance(row[7], (datetime, date)) else row[7],
+        "consumed_at": row[8].isoformat() if isinstance(row[8], (datetime, date)) else row[8],
+        "consumed_by": row[9],
     }
 
     if detail["state"] != "approved":
+        detail["code"] = "approval_capability_invalid"
         detail["reason"] = f"approval {approval_id} is '{detail['state']}', not 'approved'"
         return False, detail
     if (detail["subject_type"] or "").lower() != "export":
+        detail["code"] = "approval_capability_invalid"
         detail["reason"] = (
             f"approval {approval_id} was raised for subject_type "
             f"'{detail['subject_type']}', not 'export'"
@@ -355,20 +382,60 @@ def check_approval(conn, token: str, subject_id: str) -> Tuple[bool, Dict[str, A
         return False, detail
 
     subject = detail["subject_id"] or ""
-    if subject.startswith("exp-"):
-        if subject != subject_id:
-            detail["reason"] = (
-                "this approval was granted for a different export request "
-                f"({subject}); re-request approval for {subject_id}"
-            )
-            return False, detail
-        detail["binding"] = "bound-to-request"
-    else:
-        detail["binding"] = "unbound"
-        detail["warning"] = (
-            "approval subject_id is not a Compass export fingerprint, so the token "
-            f"is not bound to this specific query (expected {subject_id})"
+    if not subject_id.startswith("exp-") or subject != subject_id:
+        detail["code"] = "approval_capability_unbound"
+        detail["binding"] = "rejected"
+        detail["reason"] = (
+            "approval is not bound to this exact export fingerprint "
+            f"(approved {subject or 'empty'}; expected {subject_id})"
         )
+        return False, detail
+    if detail["consumed_at"] is not None:
+        detail["code"] = "approval_capability_consumed"
+        detail["reason"] = (
+            f"approval {approval_id} was already consumed at "
+            f"{detail['consumed_at']}"
+        )
+        return False, detail
+    if not bool(row[11]):
+        detail["code"] = "approval_capability_expired"
+        detail["reason"] = (
+            f"approval {approval_id} expired at "
+            f"{detail['expires_at'] or 'an unspecified time'}"
+        )
+        return False, detail
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE approvals
+               SET consumed_at = now(), consumed_by = %s
+             WHERE id = %s
+               AND state = 'approved'
+               AND consumed_at IS NULL
+               AND expires_at > now()
+               AND capability_hash = %s
+            RETURNING consumed_at
+            """,
+            (actor, approval_id, presented_hash),
+        )
+        consumed = cur.fetchone()
+    if consumed is None:
+        detail["code"] = "approval_capability_unavailable"
+        detail["reason"] = (
+            f"approval {approval_id} could not be consumed because it expired "
+            "or was used by another request"
+        )
+        return False, detail
+
+    consumed_at = consumed[0]
+    detail["consumed_at"] = (
+        consumed_at.isoformat()
+        if isinstance(consumed_at, (datetime, date))
+        else consumed_at
+    )
+    detail["consumed_by"] = actor
+    detail["binding"] = "exact-request"
     return True, detail
 
 
@@ -533,7 +600,7 @@ def deliver(payload: bytes, key_name: str, content_type: str) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
         key = f"{EXPORT_PREFIX}/{now:%Y/%m/%d}/{key_name}"
         # The bucket enforces SSE-KMS by default (template.yaml), so no explicit
-        # encryption arguments are needed — and none are passed, so the bucket's
+        # encryption arguments are needed. None are passed, so the bucket's
         # key is always the one used.
         s3.put_object(
             Bucket=EXPORT_BUCKET,
@@ -578,7 +645,7 @@ def run_export(
     """Execute the guarded export. Returns ``{"status", "body", "payload"?}``.
 
     ``payload`` (bytes + content type) is returned separately so the caller can
-    deliver it *after* the read transaction commits — the audit row lands first.
+    deliver it *after* the read transaction commits. The audit row lands first.
     """
     fmt = str(body.get("format") or "csv").strip().lower()
     if fmt not in FORMATS:
@@ -599,9 +666,12 @@ def run_export(
     amount_needed = AMOUNT_COLUMN in columns or any(k in AMOUNT_FILTER_SPEC for k in applied)
     relation = _relation(amount_needed and amount_visible)
     masked_fields: List[str] = [] if amount_visible else [AMOUNT_COLUMN]
+    request_filters = dict(applied)
+    if limit is not None:
+        request_filters["limit"] = limit
 
     matched = count_rows(conn, relation, where, params)
-    subject_id = filter_fingerprint(org_unit, fmt, columns, applied)
+    subject_id = filter_fingerprint(org_unit, fmt, columns, request_filters)
     max_rows = config.export_max_rows()
 
     base_detail = {
@@ -609,11 +679,33 @@ def run_export(
         "org_unit": org_unit,
         "format": fmt,
         "columns": columns,
-        "filters": applied,
+        "filters": request_filters,
         "matched_rows": matched,
         "max_rows": max_rows,
         "subject_id": subject_id,
     }
+
+    # The hard materialization cap cannot be overridden by an approval. Check
+    # it before consuming a one-time token so a request that can never run does
+    # not spend the approval.
+    to_write = matched if limit is None else min(matched, limit)
+    if to_write > HARD_MAX_ROWS:
+        audit.write_audit(
+            conn,
+            actor=actor,
+            action="export_denied",
+            resource="grants_curated",
+            detail={**base_detail, "decision": "denied", "reason": "hard row cap"},
+        )
+        return {
+            "status": 413,
+            "body": {
+                "error": f"export of {to_write} rows exceeds the {HARD_MAX_ROWS}-row "
+                         "materialisation cap for this function",
+                "row_count": to_write,
+                "hard_max_rows": HARD_MAX_ROWS,
+            },
+        }
 
     # --- aggregation guard --------------------------------------------------- #
     token = (body.get("approval_token") or "").strip()
@@ -643,7 +735,12 @@ def run_export(
                 },
             }
 
-        ok, approval_detail = check_approval(conn, token, subject_id)
+        ok, approval_detail = check_approval(
+            conn,
+            token,
+            subject_id,
+            actor=actor,
+        )
         if not ok:
             audit.write_audit(
                 conn,
@@ -656,33 +753,19 @@ def run_export(
                 "status": 403,
                 "body": {
                     "error": "approval_token rejected",
-                    "reason": approval_detail.get("reason", "invalid approval token"),
+                    "code": approval_detail.get(
+                        "code", "approval_capability_invalid"
+                    ),
+                    "reason": (
+                        "opaque approval capability is invalid, expired, consumed, "
+                        "or not bound to this request"
+                    ),
                     "row_count": matched,
                     "max_rows": max_rows,
                     "subject_type": "export",
                     "subject_id": subject_id,
                 },
             }
-
-    # --- materialisation cap -------------------------------------------------- #
-    to_write = matched if limit is None else min(matched, limit)
-    if to_write > HARD_MAX_ROWS:
-        audit.write_audit(
-            conn,
-            actor=actor,
-            action="export_denied",
-            resource="grants_curated",
-            detail={**base_detail, "decision": "denied", "reason": "hard row cap"},
-        )
-        return {
-            "status": 413,
-            "body": {
-                "error": f"export of {to_write} rows exceeds the {HARD_MAX_ROWS}-row "
-                         "materialisation cap for this function",
-                "row_count": to_write,
-                "hard_max_rows": HARD_MAX_ROWS,
-            },
-        }
 
     rows = fetch_rows(conn, relation, columns, where, params, limit)
 
@@ -702,12 +785,12 @@ def run_export(
         "org_unit": org_unit,
         "role": role,
         "columns": list(columns),
-        "filters": applied,
+        "filters": request_filters,
         "matched_rows": matched,
         "row_count": len(rows),
         "masked_fields": masked_fields,
         "mask_reason": mask_reason,
-        "classification": "CUI-Mock — fully synthetic demonstration data, no real CUI/PII",
+        "classification": "CUI-Mock | fully synthetic demonstration data, no real CUI/PII",
     }
 
     if effective_format == "csv":
@@ -725,7 +808,8 @@ def run_export(
         "bytes": len(payload),
         "export_id": export_id,
         "masked_fields": masked_fields,
-        "approval_token": token or None,
+        "approval_used": bool(token),
+        "approval_id": approval_detail.get("approval_id") if approval_detail else None,
         "approval": approval_detail,
         "guard_tripped": matched > max_rows,
     }
@@ -746,7 +830,7 @@ def run_export(
         "columns": list(columns),
         "masked_fields": masked_fields,
         "mask_reason": mask_reason,
-        "filters_applied": applied,
+        "filters_applied": request_filters,
         "bytes": len(payload),
         "audited": True,
         "audit_id": audit_id,
@@ -801,7 +885,7 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
     role, org_unit = resolve_identity(claims)
     if not role:
         return http.forbidden(
-            "no Compass role on this identity — expected one of the "
+            "no Compass role on this identity. Expected one of the "
             "compass-poweruser / compass-viewer Cognito groups"
         )
     actor = actor_of(claims)
@@ -844,6 +928,7 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
         )
         return http.server_error("export was authorised and audited but delivery failed")
 
+    delivery_locator = delivery.get("s3_uri")
     _audit_out_of_band(
         actor,
         "export_delivered",
@@ -851,7 +936,11 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
             "export_id": result["body"]["export_id"],
             "audit_id": result["body"]["audit_id"],
             "delivery": delivery["delivery"],
-            "s3_uri": delivery.get("s3_uri"),
+            "delivery_reference": (
+                hashlib.sha256(str(delivery_locator).encode()).hexdigest()[:16]
+                if delivery_locator
+                else None
+            ),
             "bytes": result["body"]["bytes"],
         },
     )
@@ -861,7 +950,6 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
         {
             "download_url": delivery["download_url"],
             "delivery": delivery["delivery"],
-            "s3_uri": delivery.get("s3_uri"),
         }
     )
     if "expires_in_seconds" in delivery:

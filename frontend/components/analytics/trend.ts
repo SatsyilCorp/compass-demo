@@ -15,7 +15,7 @@ export function latestDelta(topic: Topic): number {
 }
 
 export function formatUsd(n: number | null): string {
-  if (n === null) return "—";
+  if (n === null) return " - ";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

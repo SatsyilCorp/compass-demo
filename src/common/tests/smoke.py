@@ -17,7 +17,7 @@ os.environ.setdefault("DB_SECRET_ARN", "arn:aws:secretsmanager:fake")
 os.environ.pop("DB_SCHEMA", None)
 os.environ.pop("EXPORT_MAX_ROWS", None)
 
-from compass_common import audit, config, db, http, llm  # noqa: E402
+from compass_common import audit, config, db, disclosure, http, llm  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -66,7 +66,13 @@ class FakeBedrock:
     def converse(self, **kw):
         self.calls.append(("converse", kw))
         return {
-            "output": {"message": {"content": [{"text": "topic drift up in FY24"}]}},
+            "output": {
+                "message": {
+                    "content": [
+                        {"text": "topic drift " + chr(0x2014) + " up in FY24"}
+                    ]
+                }
+            },
             "usage": {"inputTokens": 12, "outputTokens": 7, "totalTokens": 19},
         }
 
@@ -94,6 +100,7 @@ def test_http_responses():
     r = http.json_response(200, {"hello": "world"})
     assert r["statusCode"] == 200
     assert r["headers"]["Content-Type"] == "application/json"
+    assert r["headers"].get("Access-Control-Allow-Origin") != "*"
     assert json.loads(r["body"]) == {"hello": "world"}
 
     e = http.error_response(403, "nope", detail="x")
@@ -130,6 +137,15 @@ def test_get_claims_lambda_authorizer():
             "role": "poweruser", "org_unit": "ONR-Corporate"}}}}}
     )
     assert corp.is_corporate
+
+    native_cognito = http.get_claims(
+        {"requestContext": {"authorizer": {"jwt": {"claims": {
+            "sub": "u-2", "cognito:groups": '["compass-viewer"]'
+        }}}}}
+    )
+    assert native_cognito.role == "viewer"
+    assert native_cognito.org_unit == "Code-30"
+    assert native_cognito.is_authenticated
 
     anon = http.get_claims({})
     assert not anon.is_authenticated
@@ -183,7 +199,8 @@ def test_set_org_rejects_empty_and_rolls_back_on_error():
 def test_llm_converse_and_embed_offline():
     fake = FakeBedrock()
     out = llm.converse(system="be terse", user="summarize", client_factory=lambda: fake)
-    assert out["text"] == "topic drift up in FY24"
+    assert out["text"] == "topic drift - up in FY24"
+    assert chr(0x2014) not in out["text"]
     assert out["model_id"] == "amazon.nova-lite-v1:0"
     assert out["usage"]["totalTokens"] == 19
 
@@ -215,8 +232,34 @@ def test_write_audit_inserts_and_returns_id():
 
 def test_modules_import_clean():
     # The whole point: importable with no psycopg2 / boto3 / network present.
-    for name in ("config", "db", "llm", "http", "audit"):
+    for name in ("config", "db", "disclosure", "llm", "http", "audit"):
         assert hasattr(__import__("compass_common", fromlist=[name]), name)
+
+
+def test_product_disclosure_hides_physical_storage_locators():
+    assert (
+        disclosure.logical_source_locator(
+            "s3://compass-demo-raw-123456789012/private/drop_good.json"
+        )
+        == "landing://drops/drop_good.json"
+    )
+    node = disclosure.safe_lineage_node(
+        run_id="run-safe",
+        node_id="src-file",
+        kind="source",
+        label="s3://secret-bucket/private/drop_good.json",
+        meta={
+            "bucket": "secret-bucket",
+            "key": "private/drop_good.json",
+            "schema_variant": "canonical",
+            "record_count": 40,
+            "parse_errors": ["raw value"],
+        },
+    )
+    encoded = json.dumps(node)
+    assert node["label"] == "landing://drops/drop_good.json"
+    assert node["meta"] == {"schema_variant": "canonical", "record_count": 40}
+    assert "secret-bucket" not in encoded and '"bucket"' not in encoded
 
 
 if __name__ == "__main__":

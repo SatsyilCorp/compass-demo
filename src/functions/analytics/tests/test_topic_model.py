@@ -1,4 +1,4 @@
-"""Offline test for the numpy-only topic model — no AWS, no DB, no network.
+"""Offline test for the numpy-only topic model - no AWS, no DB, no network.
 
 Runs against the synthetic seed corpus (seed/grants_portfolio.json) when
 present, plus a tiny hand-built corpus that must separate two obvious topics.
@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import warnings
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -51,6 +52,18 @@ def test_two_obvious_topics():
     print("  two-topic separation: OK")
 
 
+def test_checked_matmul_rejects_non_finite_output():
+    invalid = topic_model.np.array([[topic_model.np.inf]])
+    finite = topic_model.np.array([[1.0]])
+
+    try:
+        topic_model._checked_matmul(invalid, finite)
+    except FloatingPointError as exc:
+        assert "non-finite" in str(exc)
+    else:
+        raise AssertionError("non-finite matrix product was accepted")
+
+
 def test_zscore_anomalies():
     rows = [{"grant_id": i, "grant_no": f"G-{i}", "program_area": "AI/ML",
              "amount_usd": 100_000} for i in range(20)]
@@ -77,7 +90,9 @@ def test_seed_corpus():
          "program_area": g["program_area"], "fiscal_year": g["fiscal_year"]}
         for i, g in enumerate(grants)
     ]
-    r = topic_model.fit_topics(docs, k=8, seed=20260810)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        r = topic_model.fit_topics(docs, k=8, seed=20260810)
     assert r.metrics["n_docs"] == len(docs)
     assert len(r.topics) == 8
     assert all(len(t["top_terms"]) >= 5 for t in r.topics)

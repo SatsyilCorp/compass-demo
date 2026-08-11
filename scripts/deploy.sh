@@ -6,7 +6,7 @@
 #   Pass "dev" to deploy the isolated compass-demo-dev stack instead
 #   (see samconfig.toml.template).
 #
-# NOTE: sam build MUST use --use-container on macOS — the CommonLayer
+# NOTE: sam build MUST use --use-container on macOS - the CommonLayer
 # pip-installs psycopg2-binary and the demo also needs numpy for analytics;
 # a macOS-native build produces darwin wheels inside a linux/arm64 layer,
 # which breaks the Lambda import at runtime (see docs/BUILD_REPORT.md /

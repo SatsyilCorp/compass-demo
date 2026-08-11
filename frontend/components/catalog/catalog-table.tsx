@@ -9,7 +9,7 @@ import { QualityPanel } from "./quality-panel";
 import { formatInt, formatUsd, timeAgo } from "./format";
 
 /**
- * Dataset catalog table — the crm-datatable pattern (declarative columns,
+ * Dataset catalog table: the crm-datatable pattern (declarative columns,
  * clickable sortable headers, a toolbar search) from
  * satsyil-blocks/code/web/crm_datatable, hand-adapted to plain React state
  * instead of that block's zustand-backed view-prefs store (this build adds
@@ -274,15 +274,25 @@ export function CatalogTable({ rows }: { rows: CatalogEntry[] }) {
                         isExpanded ? "bg-surface-2/60" : ""
                       }`}
                       onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                      aria-expanded={isExpanded}
                     >
                       <td className="px-2 py-2.5">
-                        <span
-                          className="inline-flex size-5 items-center justify-center rounded text-text-subtle group-hover:text-text"
+                        <button
+                          type="button"
+                          className="inline-flex size-6 items-center justify-center rounded text-text-subtle transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary focus-visible:ring-offset-1"
                           aria-label={isExpanded ? "Collapse quality detail" : "Expand quality detail"}
+                          aria-expanded={isExpanded}
+                          aria-controls={`quality-detail-${row.id}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpandedId(isExpanded ? null : row.id);
+                          }}
                         >
-                          {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                        </span>
+                          {isExpanded ? (
+                            <ChevronDown className="size-4" aria-hidden />
+                          ) : (
+                            <ChevronRight className="size-4" aria-hidden />
+                          )}
+                        </button>
                       </td>
                       {COLUMNS.map((c) => (
                         <td
@@ -306,7 +316,10 @@ export function CatalogTable({ rows }: { rows: CatalogEntry[] }) {
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr className="border-t border-border-2 bg-surface">
+                      <tr
+                        id={`quality-detail-${row.id}`}
+                        className="border-t border-border-2 bg-surface"
+                      >
                         <td colSpan={COLUMNS.length + 2} className="p-3 sm:p-4">
                           <QualityPanel entry={row} />
                         </td>

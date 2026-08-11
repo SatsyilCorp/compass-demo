@@ -1,11 +1,11 @@
-"""Compass runtime configuration — one place that reads the environment.
+"""Compass runtime configuration - one place that reads the environment.
 
 Every Lambda in the layer resolves its settings here so the env-var contract
 lives in exactly one file. Values are read from ``os.environ`` at call time
 (not import time) so tests can set/patch env vars after import, and so a warm
 Lambda picks up nothing stale.
 
-Environment variables (contract — see docs/CONTRACTS.md)
+Environment variables (contract - see docs/CONTRACTS.md)
 ------------------------------------------------------
 DB_HOST             Aurora/RDS cluster endpoint (required at runtime).
 DB_NAME             Database name (required at runtime).

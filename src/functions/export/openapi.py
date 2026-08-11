@@ -1,4 +1,4 @@
-"""The served OpenAPI 3.1 contract for the Compass API — element 7.
+"""The served OpenAPI 3.1 contract for the Compass API, element 7.
 
 ``GET /openapi.json`` returns this document. It is built in code rather than
 checked in as a static file for one reason: the ``servers`` block is filled
@@ -6,7 +6,7 @@ from the *actual* request context (domain + stage), so the contract a caller
 downloads always points at the deployment they downloaded it from.
 
 Every path here is a row of the API table in docs/CONTRACTS.md. Routes owned by
-other functions in the stack are documented all the same — an interface
+other functions in the stack are documented all the same. An interface
 contract that only described one Lambda's routes would not be a contract.
 
 Conventions:
@@ -20,20 +20,20 @@ Conventions:
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
-API_TITLE = "Compass — S&T Portfolio Intelligence API"
-API_VERSION = "1.0.0"
+API_TITLE = "Compass | S&T Portfolio Intelligence API"
+API_VERSION = "1.3.0"
 
 # Strings reused across operations.
 _ERR = {"$ref": "#/components/responses/Error"}
 
 
-def _ref(name: str) -> Dict[str, str]:
+def _ref(name: str) -> dict[str, str]:
     return {"$ref": f"#/components/schemas/{name}"}
 
 
-def _json(schema: Dict[str, Any], description: str = "OK") -> Dict[str, Any]:
+def _json(schema: dict[str, Any], description: str = "OK") -> dict[str, Any]:
     return {"description": description, "content": {"application/json": {"schema": schema}}}
 
 
@@ -41,21 +41,23 @@ def _op(
     op_id: str,
     summary: str,
     element: str,
-    response_schema: Dict[str, Any],
+    response_schema: dict[str, Any],
     *,
     description: str = "",
     parameters: Any = None,
-    request_schema: Dict[str, Any] | None = None,
-    extra_responses: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
-    op: Dict[str, Any] = {
+    request_schema: dict[str, Any] | None = None,
+    success_status: str = "200",
+    success_description: str = "OK",
+    extra_responses: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    op: dict[str, Any] = {
         "operationId": op_id,
         "summary": summary,
         "description": description or summary,
         "tags": [element],
         "security": [{"cognitoJwt": []}],
         "responses": {
-            "200": _json(response_schema),
+            success_status: _json(response_schema, success_description),
             "401": _ERR,
             "403": _ERR,
             "500": _ERR,
@@ -73,8 +75,35 @@ def _op(
     return op
 
 
-def _schemas() -> Dict[str, Any]:
+def _schemas() -> dict[str, Any]:
     money = {"type": ["number", "null"], "description": "null when masked by column-level security"}
+    scale_cost_required = [
+        "currency",
+        "estimated_run_usd",
+        "upper_bound_usd",
+        "incremental_idle_monthly_usd",
+        "pricing_as_of",
+        "estimate_source",
+        "disclaimer",
+        "line_items",
+    ]
+    scale_cost_properties = {
+        "currency": {"type": "string", "const": "USD"},
+        "estimated_run_usd": {"type": "number", "minimum": 0},
+        "upper_bound_usd": {"type": "number", "minimum": 0},
+        "incremental_idle_monthly_usd": {"type": "number", "minimum": 0},
+        "pricing_as_of": {"type": "string", "format": "date-time"},
+        "estimate_source": {
+            "type": "string",
+            "enum": ["aws_price_model", "replay_model"],
+            "description": "Live API responses use aws_price_model.",
+        },
+        "disclaimer": {"type": "string"},
+        "line_items": {
+            "type": "array",
+            "items": _ref("ScaleCostLineItem"),
+        },
+    }
     return {
         "Error": {
             "type": "object",
@@ -202,7 +231,18 @@ def _schemas() -> Dict[str, Any]:
         },
         "IngestSimulateRequest": {
             "type": "object",
-            "properties": {"source_file": {"type": "string"}},
+            "properties": {
+                "fixture": {
+                    "type": "string",
+                    "enum": ["good", "compatible", "bad"],
+                    "description": (
+                        "Release one fixed, preparation-receipted synthetic fixture. "
+                        "The object-created event owns workflow start and duplicate "
+                        "release is blocked."
+                    ),
+                },
+                "source_file": {"type": "string"},
+            },
         },
         "IngestSimulateResponse": {
             "type": "object",
@@ -213,6 +253,11 @@ def _schemas() -> Dict[str, Any]:
                 "source_file": {"type": "string"},
                 "status": {"type": "string", "enum": ["queued", "running"]},
                 "triggered_at": {"type": "string", "format": "date-time"},
+                "trigger": {"type": "string"},
+                "fixture": {
+                    "type": "string",
+                    "enum": ["good", "compatible", "bad"],
+                },
             },
         },
         "IngestBatch": {
@@ -305,6 +350,25 @@ def _schemas() -> Dict[str, Any]:
             "type": "object",
             "required": ["kpis"],
             "properties": {
+                "filters_applied": {
+                    "type": "object",
+                    "properties": {
+                        "program_area": {"type": ["string", "null"]},
+                        "fiscal_year": {"type": ["integer", "null"]},
+                        "org_unit": {"type": ["string", "null"]},
+                        "q": {"type": ["string", "null"]},
+                    },
+                    "additionalProperties": False,
+                },
+                "filter_options": {
+                    "type": "object",
+                    "properties": {
+                        "program_areas": {"type": "array", "items": {"type": "string"}},
+                        "fiscal_years": {"type": "array", "items": {"type": "integer"}},
+                        "org_units": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "additionalProperties": False,
+                },
                 "kpis": {
                     "type": "object",
                     "properties": {
@@ -407,7 +471,7 @@ def _schemas() -> Dict[str, Any]:
                 },
                 "model": {
                     "type": "string",
-                    "description": "Bedrock model id — in-boundary only (amazon.nova-lite-v1:0)",
+                    "description": "Bedrock model id, in-boundary only (amazon.nova-lite-v1:0)",
                 },
             },
         },
@@ -455,6 +519,9 @@ def _schemas() -> Dict[str, Any]:
                 "decided_at": {"type": ["string", "null"], "format": "date-time"},
                 "note": {"type": ["string", "null"]},
                 "created_at": {"type": "string", "format": "date-time"},
+                "expires_at": {"type": ["string", "null"], "format": "date-time"},
+                "consumed_at": {"type": ["string", "null"], "format": "date-time"},
+                "consumed_by": {"type": ["string", "null"]},
             },
         },
         "ApprovalResponse": {
@@ -464,9 +531,45 @@ def _schemas() -> Dict[str, Any]:
                 "approval": _ref("Approval"),
                 "approval_token": {
                     "type": ["string", "null"],
-                    "description": "Issued only on an approved decision; POST /export accepts it.",
+                    "description": (
+                        "Opaque, short-lived, single-use value issued only in a successful "
+                        "approve response. The inbox never returns it and the service stores "
+                        "only its SHA-256 digest."
+                    ),
                 },
                 "four_eyes": {"type": "object", "additionalProperties": True},
+            },
+        },
+        "ApprovalsListResponse": {
+            "type": "object",
+            "required": [
+                "approvals",
+                "actor",
+                "scope",
+                "can_decide",
+                "four_eyes_enforced",
+                "tokens_included",
+                "generated_at",
+            ],
+            "properties": {
+                "approvals": {
+                    "type": "array",
+                    "items": _ref("Approval"),
+                    "description": "Pending approvals visible to the caller.",
+                },
+                "actor": {"type": "string"},
+                "scope": {
+                    "type": "string",
+                    "enum": ["all_pending", "requested_by_actor"],
+                },
+                "can_decide": {"type": "boolean"},
+                "four_eyes_enforced": {"type": "boolean"},
+                "tokens_included": {
+                    "type": "boolean",
+                    "const": False,
+                    "description": "The list route never returns capability tokens.",
+                },
+                "generated_at": {"type": "string", "format": "date-time"},
             },
         },
         "License": {
@@ -534,7 +637,10 @@ def _schemas() -> Dict[str, Any]:
                 },
                 "approval_token": {
                     "type": "string",
-                    "description": "apr-<id> from POST /approvals; clears the aggregation guard.",
+                    "description": (
+                        "Opaque one-time token from the independent approve response. "
+                        "It clears the guard only for the exact bound request."
+                    ),
                 },
             },
         },
@@ -570,14 +676,611 @@ def _schemas() -> Dict[str, Any]:
                 "how_to_clear": {"type": "string"},
             },
         },
+        "ScaleProfileId": {
+            "type": "string",
+            "enum": ["1k", "10k", "100k", "1m"],
+            "description": "A server-approved workload profile. Arbitrary record counts are not accepted.",
+        },
+        "ScaleCapacityState": {
+            "type": "string",
+            "enum": ["ready", "locked"],
+        },
+        "ScaleStageId": {
+            "type": "string",
+            "enum": [
+                "plan",
+                "generate",
+                "buffer",
+                "ingest",
+                "quality",
+                "curate",
+                "intelligence",
+                "export",
+                "evidence",
+            ],
+        },
+        "ScaleRunStatus": {
+            "type": "string",
+            "enum": [
+                "queued",
+                "generating",
+                "ingesting",
+                "quality",
+                "intelligence",
+                "exporting",
+                "cancelling",
+                "cancelled",
+                "completed",
+                "failed",
+            ],
+        },
+        "ScaleSyntheticDomain": {
+            "type": "string",
+            "enum": [
+                "grants",
+                "finance",
+                "milestones",
+                "documents",
+                "licenses",
+                "stream_events",
+            ],
+        },
+        "ScaleProfile": {
+            "type": "object",
+            "required": [
+                "id",
+                "label",
+                "short_label",
+                "total_records",
+                "description",
+                "capacity_state",
+                "capacity_note",
+                "recommended",
+            ],
+            "properties": {
+                "id": _ref("ScaleProfileId"),
+                "label": {"type": "string"},
+                "short_label": {"type": "string"},
+                "total_records": {"type": "integer", "minimum": 1},
+                "description": {"type": "string"},
+                "capacity_state": _ref("ScaleCapacityState"),
+                "capacity_note": {"type": "string"},
+                "recommended": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleProfilesResponse": {
+            "type": "object",
+            "required": ["profiles", "generated_at"],
+            "properties": {
+                "profiles": {
+                    "type": "array",
+                    "items": _ref("ScaleProfile"),
+                    "minItems": 4,
+                    "maxItems": 4,
+                },
+                "generated_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleDatasetAllocation": {
+            "type": "object",
+            "required": ["domain", "label", "records", "percentage", "purpose"],
+            "properties": {
+                "domain": _ref("ScaleSyntheticDomain"),
+                "label": {"type": "string"},
+                "records": {"type": "integer", "minimum": 0},
+                "percentage": {"type": "number", "minimum": 0, "maximum": 100},
+                "purpose": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleCostLineItem": {
+            "type": "object",
+            "required": ["id", "label", "estimated_usd", "basis"],
+            "properties": {
+                "id": {"type": "string"},
+                "label": {"type": "string"},
+                "estimated_usd": {"type": "number", "minimum": 0},
+                "basis": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleCostEstimate": {
+            "type": "object",
+            "required": scale_cost_required,
+            "properties": scale_cost_properties,
+            "additionalProperties": False,
+        },
+        "ScalePlanStage": {
+            "type": "object",
+            "required": ["id", "label", "detail", "resource"],
+            "properties": {
+                "id": _ref("ScaleStageId"),
+                "label": {"type": "string"},
+                "detail": {"type": "string"},
+                "resource": {
+                    "type": "string",
+                    "description": "Logical service role, not a deployed resource identifier.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScalePlan": {
+            "type": "object",
+            "required": [
+                "plan_id",
+                "profile_id",
+                "seed",
+                "generated_at",
+                "capacity_state",
+                "total_records",
+                "estimated_raw_bytes",
+                "target_duration_seconds",
+                "concurrency_limit",
+                "partition_count",
+                "dataset_mix",
+                "stages",
+                "cost",
+            ],
+            "properties": {
+                "plan_id": {"type": "string"},
+                "profile_id": _ref("ScaleProfileId"),
+                "seed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9999999999,
+                },
+                "generated_at": {"type": "string", "format": "date-time"},
+                "capacity_state": _ref("ScaleCapacityState"),
+                "total_records": {"type": "integer", "minimum": 1},
+                "estimated_raw_bytes": {"type": "integer", "minimum": 0},
+                "target_duration_seconds": {"type": "integer", "minimum": 1},
+                "concurrency_limit": {"type": "integer", "minimum": 1},
+                "partition_count": {"type": "integer", "minimum": 1},
+                "dataset_mix": {
+                    "type": "array",
+                    "items": _ref("ScaleDatasetAllocation"),
+                    "minItems": 6,
+                    "maxItems": 6,
+                },
+                "stages": {
+                    "type": "array",
+                    "items": _ref("ScalePlanStage"),
+                    "minItems": 9,
+                    "maxItems": 9,
+                },
+                "cost": _ref("ScaleCostEstimate"),
+            },
+            "additionalProperties": False,
+        },
+        "ScalePlanRequest": {
+            "type": "object",
+            "required": ["profile_id", "seed"],
+            "properties": {
+                "profile_id": _ref("ScaleProfileId"),
+                "seed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9999999999,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleLaunchRequest": {
+            "type": "object",
+            "required": ["plan_id", "idempotency_key"],
+            "properties": {
+                "plan_id": {"type": "string", "minLength": 1},
+                "idempotency_key": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleCancelRequest": {
+            "type": "object",
+            "required": ["reason"],
+            "properties": {
+                "reason": {"type": "string", "const": "operator_requested"},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleExportRequest": {
+            "type": "object",
+            "required": ["dataset", "format", "idempotency_key"],
+            "properties": {
+                "dataset": {"type": "string", "const": "curated_portfolio"},
+                "format": {"type": "string", "const": "parquet"},
+                "idempotency_key": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRunProgress": {
+            "type": "object",
+            "required": [
+                "stage",
+                "percent",
+                "records_generated",
+                "records_ingested",
+                "records_curated",
+                "records_quarantined",
+                "bytes_written",
+                "partitions_completed",
+                "partitions_total",
+                "current_throughput_rps",
+                "peak_throughput_rps",
+                "elapsed_seconds",
+                "eta_seconds",
+            ],
+            "properties": {
+                "stage": _ref("ScaleStageId"),
+                "percent": {"type": "number", "minimum": 0, "maximum": 100},
+                "records_generated": {"type": "integer", "minimum": 0},
+                "records_ingested": {"type": "integer", "minimum": 0},
+                "records_curated": {"type": "integer", "minimum": 0},
+                "records_quarantined": {"type": "integer", "minimum": 0},
+                "bytes_written": {"type": "integer", "minimum": 0},
+                "partitions_completed": {"type": "integer", "minimum": 0},
+                "partitions_total": {"type": "integer", "minimum": 0},
+                "current_throughput_rps": {"type": "number", "minimum": 0},
+                "peak_throughput_rps": {"type": "number", "minimum": 0},
+                "elapsed_seconds": {"type": "integer", "minimum": 0},
+                "eta_seconds": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleQualityRule": {
+            "type": "object",
+            "required": [
+                "id",
+                "label",
+                "score",
+                "passed_records",
+                "failed_records",
+            ],
+            "properties": {
+                "id": {"type": "string"},
+                "label": {"type": "string"},
+                "score": {"type": "number", "minimum": 0, "maximum": 100},
+                "passed_records": {"type": "integer", "minimum": 0},
+                "failed_records": {"type": "integer", "minimum": 0},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRunQuality": {
+            "type": "object",
+            "required": [
+                "overall_score",
+                "passed_records",
+                "failed_records",
+                "quarantined_records",
+                "rules",
+            ],
+            "properties": {
+                "overall_score": {"type": "number", "minimum": 0, "maximum": 100},
+                "passed_records": {"type": "integer", "minimum": 0},
+                "failed_records": {"type": "integer", "minimum": 0},
+                "quarantined_records": {"type": "integer", "minimum": 0},
+                "rules": {
+                    "type": "array",
+                    "items": _ref("ScaleQualityRule"),
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleTopic": {
+            "type": "object",
+            "required": ["label", "record_count", "confidence", "terms"],
+            "properties": {
+                "label": {"type": "string"},
+                "record_count": {"type": "integer", "minimum": 0},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "terms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRunIntelligence": {
+            "type": "object",
+            "required": [
+                "status",
+                "model_run_id",
+                "grants_analyzed",
+                "topic_count",
+                "anomalies_detected",
+                "processing_seconds",
+                "top_topics",
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "running", "completed", "cancelled"],
+                },
+                "model_run_id": {
+                    "type": ["string", "null"],
+                    "description": "Deterministic intelligence receipt identifier.",
+                },
+                "grants_analyzed": {"type": "integer", "minimum": 0},
+                "topic_count": {"type": "integer", "minimum": 0},
+                "anomalies_detected": {"type": "integer", "minimum": 0},
+                "processing_seconds": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                },
+                "top_topics": {
+                    "type": "array",
+                    "items": _ref("ScaleTopic"),
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleExportReceipt": {
+            "type": "object",
+            "required": [
+                "export_id",
+                "status",
+                "format",
+                "row_count",
+                "bytes",
+                "object_uri",
+                "download_url",
+                "expires_at",
+                "sha256",
+            ],
+            "properties": {
+                "export_id": {"type": ["string", "null"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "building", "ready", "cancelled"],
+                },
+                "format": {"type": "string", "const": "parquet"},
+                "row_count": {"type": "integer", "minimum": 0},
+                "bytes": {"type": "integer", "minimum": 0},
+                "object_uri": {
+                    "type": ["string", "null"],
+                    "description": "Opaque logical object locator without physical deployment details.",
+                },
+                "download_url": {
+                    "type": ["string", "null"],
+                    "description": "Short-lived download URL, present only while a ready export remains valid.",
+                },
+                "expires_at": {
+                    "type": ["string", "null"],
+                    "format": "date-time",
+                },
+                "sha256": {"type": ["string", "null"]},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleEvidenceStage": {
+            "type": "object",
+            "required": ["id", "label", "status", "receipt", "recorded_at"],
+            "properties": {
+                "id": _ref("ScaleStageId"),
+                "label": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "running",
+                        "completed",
+                        "cancelled",
+                        "failed",
+                    ],
+                },
+                "receipt": {
+                    "type": ["string", "null"],
+                    "description": "Logical evidence receipt identifier.",
+                },
+                "recorded_at": {
+                    "type": ["string", "null"],
+                    "format": "date-time",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRunEvidence": {
+            "type": "object",
+            "required": [
+                "correlation_id",
+                "audit_receipt",
+                "manifest_uri",
+                "manifest_sha256",
+                "metrics_recorded_at",
+                "recovery_queue_depth",
+                "duplicate_records_suppressed",
+                "stages",
+            ],
+            "properties": {
+                "correlation_id": {"type": "string"},
+                "audit_receipt": {"type": "string"},
+                "manifest_uri": {
+                    "type": "string",
+                    "description": "Logical manifest locator without physical deployment details.",
+                },
+                "manifest_sha256": {"type": "string"},
+                "metrics_recorded_at": {"type": "string", "format": "date-time"},
+                "recovery_queue_depth": {"type": "integer", "minimum": 0},
+                "duplicate_records_suppressed": {"type": "integer", "minimum": 0},
+                "stages": {
+                    "type": "array",
+                    "items": _ref("ScaleEvidenceStage"),
+                    "minItems": 9,
+                    "maxItems": 9,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRunCost": {
+            "type": "object",
+            "required": [*scale_cost_required, "accrued_usd"],
+            "properties": {
+                **scale_cost_properties,
+                "accrued_usd": {"type": "number", "minimum": 0},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRunError": {
+            "type": "object",
+            "required": ["code", "message", "retryable"],
+            "properties": {
+                "code": {"type": "string"},
+                "message": {"type": "string"},
+                "retryable": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRun": {
+            "type": "object",
+            "required": [
+                "run_id",
+                "mode",
+                "status",
+                "created_at",
+                "started_at",
+                "updated_at",
+                "completed_at",
+                "cancelled_at",
+                "plan",
+                "progress",
+                "quality",
+                "costs",
+                "intelligence",
+                "export_receipt",
+                "evidence",
+                "error",
+            ],
+            "properties": {
+                "run_id": {"type": "string"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["live", "replay"],
+                    "description": "Deployed API responses use live. Replay is a frontend-only adapter mode.",
+                },
+                "status": _ref("ScaleRunStatus"),
+                "created_at": {"type": "string", "format": "date-time"},
+                "started_at": {"type": ["string", "null"], "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+                "completed_at": {"type": ["string", "null"], "format": "date-time"},
+                "cancelled_at": {"type": ["string", "null"], "format": "date-time"},
+                "plan": _ref("ScalePlan"),
+                "progress": _ref("ScaleRunProgress"),
+                "quality": _ref("ScaleRunQuality"),
+                "costs": _ref("ScaleRunCost"),
+                "intelligence": _ref("ScaleRunIntelligence"),
+                "export_receipt": _ref("ScaleExportReceipt"),
+                "evidence": _ref("ScaleRunEvidence"),
+                "error": {
+                    "oneOf": [_ref("ScaleRunError"), {"type": "null"}],
+                },
+            },
+            "additionalProperties": False,
+        },
+        "ScaleRunsResponse": {
+            "type": "object",
+            "required": ["runs", "generated_at"],
+            "properties": {
+                "runs": {
+                    "type": "array",
+                    "items": _ref("ScaleRun"),
+                },
+                "generated_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": False,
+        },
+        "SystemEvidence": {
+            "type": "object",
+            "required": [
+                "mode",
+                "evidence_class",
+                "generated_at",
+                "deploy_revision",
+                "correlation_id",
+                "request",
+                "identity_decision",
+                "health",
+                "metrics",
+                "services",
+                "recent_runs",
+                "recent_audit",
+                "controls",
+                "disclosure",
+            ],
+            "properties": {
+                "mode": {"type": "string", "const": "live"},
+                "evidence_class": {
+                    "type": "string",
+                    "const": "sanitized_application_projection",
+                },
+                "generated_at": {"type": "string", "format": "date-time"},
+                "deploy_revision": {"type": "string"},
+                "correlation_id": {"type": "string"},
+                "request": {
+                    "type": "object",
+                    "properties": {
+                        "method": {"type": "string", "const": "GET"},
+                        "route": {"type": "string", "const": "/system/evidence"},
+                        "status": {"type": "integer"},
+                        "latency_ms": {"type": "integer"},
+                    },
+                },
+                "identity_decision": {
+                    "type": "object",
+                    "description": "Resolved policy result only. Raw claims are never returned.",
+                    "additionalProperties": {"type": ["string", "boolean"]},
+                },
+                "health": {"type": "object", "additionalProperties": {"type": "string"}},
+                "metrics": {
+                    "type": "object",
+                    "additionalProperties": {"type": "integer"},
+                },
+                "services": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": {"type": "string"}},
+                },
+                "recent_runs": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                },
+                "recent_audit": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "description": "Allowlisted audit projection without actor identity or delivery location.",
+                        "additionalProperties": True,
+                    },
+                },
+                "latest_model_run": {
+                    "type": ["object", "null"],
+                    "additionalProperties": True,
+                },
+                "controls": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": {"type": "string"}},
+                },
+                "disclosure": {"type": "string"},
+            },
+        },
     }
 
 
-def build_openapi(server_url: str = "") -> Dict[str, Any]:
+def build_openapi(server_url: str = "") -> dict[str, Any]:
     """Return the OpenAPI 3.1 document, optionally bound to a concrete server."""
     servers = [{"url": server_url, "description": "This deployment"}] if server_url else []
 
-    paths: Dict[str, Any] = {
+    paths: dict[str, Any] = {
         "/me": {
             "get": _op(
                 "getMe",
@@ -628,8 +1331,11 @@ def build_openapi(server_url: str = "") -> Dict[str, Any]:
                 "3 · ingest",
                 _ref("IngestSimulateResponse"),
                 request_schema=_ref("IngestSimulateRequest"),
-                description="Developer convenience: copies a seed drop into the raw bucket, "
-                            "which fires the real S3 -> EventBridge -> Step Functions path.",
+                description=(
+                    "Releases one fixed, preparation-receipted synthetic fixture "
+                    "into the landing zone. Its S3 object-created event fires the "
+                    "real EventBridge to Step Functions path exactly once."
+                ),
             )
         },
         "/ingest/status": {
@@ -675,6 +1381,17 @@ def build_openapi(server_url: str = "") -> Dict[str, Any]:
                 "Executive dashboard: KPIs and every chart series in one round-trip",
                 "6 · dashboard",
                 _ref("DashboardResponse"),
+                parameters=[
+                    {"name": "program_area", "in": "query", "schema": {"type": "string"}},
+                    {"name": "fiscal_year", "in": "query", "schema": {"type": "integer"}},
+                    {"name": "org_unit", "in": "query", "schema": {"type": "string"}},
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "Case-insensitive title and abstract search.",
+                        "schema": {"type": "string"},
+                    },
+                ],
             )
         },
         "/chat": {
@@ -711,15 +1428,26 @@ def build_openapi(server_url: str = "") -> Dict[str, Any]:
             )
         },
         "/approvals": {
+            "get": _op(
+                "listPendingApprovals",
+                "List pending approvals visible to the caller",
+                "6 · dashboard",
+                _ref("ApprovalsListResponse"),
+                description=(
+                    "Powerusers receive the shared pending review queue. Viewers receive only "
+                    "requests they created. Capability tokens are never returned by this read "
+                    "path. A token is issued only in the successful POST approve response."
+                ),
+            ),
             "post": _op(
                 "postApproval",
                 "Create or advance an approval",
                 "6 · dashboard",
                 _ref("ApprovalResponse"),
                 request_schema=_ref("ApprovalRequest"),
-                description="request -> pending -> approve|reject. Only a poweruser may "
-                            "decide. An approved decision returns the approval_token that "
-                            "clears the POST /export aggregation guard.",
+                description="request -> pending -> approve|reject. Only a separate poweruser may "
+                            "decide. An approved decision returns a short-lived, single-use "
+                            "approval_token for copy and paste into the exact POST /export retry.",
                 extra_responses={"201": _json(_ref("ApprovalResponse"), "Approval requested"), "404": _ERR},
             )
         },
@@ -742,14 +1470,174 @@ def build_openapi(server_url: str = "") -> Dict[str, Any]:
                     "Applies row-level security (org context), column-level security "
                     "(amount_usd masked for viewers), and the aggregation guard: if the "
                     "filter matches more than EXPORT_MAX_ROWS rows the request is refused "
-                    "with 428 unless a valid approval_token is attached. Every outcome — "
-                    "allowed, blocked, denied — writes compass.audit_log."
+                    "with 428 unless a valid approval_token is attached. Every outcome, "
+                    "whether allowed, blocked, or denied, writes compass.audit_log."
                 ),
                 extra_responses={
                     "400": _ERR,
                     "413": _ERR,
-                    "428": _json(_ref("ApprovalRequired"), "Aggregation guard tripped — approval required"),
+                    "428": _json(_ref("ApprovalRequired"), "Aggregation guard tripped: approval required"),
                 },
+            )
+        },
+        "/scale/profiles": {
+            "get": _op(
+                "getScaleProfiles",
+                "List guarded synthetic workload profiles",
+                "8 · scale lab",
+                _ref("ScaleProfilesResponse"),
+                description=(
+                    "Poweruser-only capacity catalog for the four server-approved "
+                    "synthetic workload sizes. Readiness and lock reasons are evaluated "
+                    "by the live control plane; callers cannot submit arbitrary counts."
+                ),
+            )
+        },
+        "/scale/plans": {
+            "post": _op(
+                "createScalePlan",
+                "Preview a deterministic, cost-gated Scale Run",
+                "8 · scale lab",
+                _ref("ScalePlan"),
+                request_schema=_ref("ScalePlanRequest"),
+                success_status="201",
+                success_description="Scale Plan created",
+                description=(
+                    "Poweruser-only planning gate. Binds a fixed profile and seed to "
+                    "dataset allocations, bounded concurrency, partition count, ordered "
+                    "stages, and a pre-run cost envelope. Planning does not launch work."
+                ),
+                extra_responses={"400": _ERR},
+            )
+        },
+        "/scale/runs": {
+            "get": _op(
+                "listScaleRuns",
+                "List recent Scale Runs and evidence",
+                "8 · scale lab",
+                _ref("ScaleRunsResponse"),
+                description=(
+                    "Poweruser-only sanitized projections of recent synthetic runs. "
+                    "Each entry includes progress, quality, metered cost, intelligence, "
+                    "governed export state, and logical audit evidence."
+                ),
+            ),
+            "post": _op(
+                "createScaleRun",
+                "Launch one approved Scale Plan",
+                "8 · scale lab",
+                _ref("ScaleRun"),
+                request_schema=_ref("ScaleLaunchRequest"),
+                success_status="201",
+                success_description="Scale Run launched",
+                description=(
+                    "Poweruser-only idempotent launch. Consumes an unexpired cost-gated "
+                    "plan and returns the live run projection. The control plane permits "
+                    "only one protected active rehearsal at a time."
+                ),
+                extra_responses={"400": _ERR},
+            ),
+        },
+        "/scale/runs/{run_id}": {
+            "get": _op(
+                "getScaleRun",
+                "Get live Scale Run progress and evidence",
+                "8 · scale lab",
+                _ref("ScaleRun"),
+                parameters=[
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                        "description": "Run identifier returned by POST /scale/runs.",
+                    }
+                ],
+                description=(
+                    "Poweruser-only live projection. Returns logical receipts and "
+                    "sanitized operational evidence without deployed resource identifiers."
+                ),
+                extra_responses={"404": _ERR},
+            )
+        },
+        "/scale/runs/{run_id}/cancel": {
+            "post": _op(
+                "cancelScaleRun",
+                "Request cooperative Scale Run cancellation",
+                "8 · scale lab",
+                _ref("ScaleRun"),
+                request_schema=_ref("ScaleCancelRequest"),
+                parameters=[
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                        "description": "Run identifier returned by POST /scale/runs.",
+                    }
+                ],
+                description=(
+                    "Poweruser-only cooperative cancellation. The response is the latest "
+                    "run projection; callers poll GET /scale/runs/{run_id} until the "
+                    "status becomes cancelled or another terminal state."
+                ),
+                extra_responses={"404": _ERR},
+            )
+        },
+        "/scale/runs/{run_id}/exports": {
+            "post": _op(
+                "createScaleRunExport",
+                "Request a governed Parquet portfolio export",
+                "8 · scale lab",
+                _ref("ScaleExportReceipt"),
+                request_schema=_ref("ScaleExportRequest"),
+                success_status="201",
+                success_description="Export job accepted",
+                parameters=[
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                        "description": "Completed run identifier.",
+                    }
+                ],
+                description=(
+                    "Poweruser-only idempotent export request for the completed curated "
+                    "portfolio. The asynchronous receipt exposes an opaque logical locator "
+                    "and a short-lived download URL only after the manifest is ready."
+                ),
+                extra_responses={"400": _ERR, "404": _ERR},
+            )
+        },
+        "/scale/runs/{run_id}/exports/{export_id}": {
+            "get": _op(
+                "getScaleRunExport",
+                "Poll a governed Scale Run export receipt",
+                "8 · scale lab",
+                _ref("ScaleExportReceipt"),
+                parameters=[
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                        "description": "Completed run identifier.",
+                    },
+                    {
+                        "name": "export_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                        "description": "Export identifier returned by the export request.",
+                    },
+                ],
+                description=(
+                    "Poweruser-only asynchronous status projection. Ready receipts include "
+                    "row and byte counts, checksum, expiration, logical object locator, "
+                    "and a short-lived download URL."
+                ),
+                extra_responses={"404": _ERR},
             )
         },
         "/openapi.json": {
@@ -758,6 +1646,21 @@ def build_openapi(server_url: str = "") -> Dict[str, Any]:
                 "This document",
                 "7 · export",
                 {"type": "object", "additionalProperties": True},
+            )
+        },
+        "/system/evidence": {
+            "get": _op(
+                "getSystemEvidence",
+                "Sanitized live backend evidence for the protected System Inspector",
+                "system evidence",
+                _ref("SystemEvidence"),
+                description=(
+                    "Poweruser-only, read-only application projections. Returns policy "
+                    "decisions, service health, recent workflow receipts, model-run metadata, "
+                    "and allowlisted audit evidence. It excludes infrastructure identifiers, "
+                    "credentials, tokens, personal data, source records, SQL, model inputs, "
+                    "delivery locations, and exception details."
+                ),
             )
         },
     }
@@ -774,7 +1677,7 @@ def build_openapi(server_url: str = "") -> Dict[str, Any]:
                 "Data access is governed in PostgreSQL, not in application code: "
                 "row-level security keys on `compass.org_unit`, set per transaction from "
                 "the caller's claim, and column-level security revokes `amount_usd` from "
-                "the runtime role. All data is synthetic — no real CUI or PII."
+                "the runtime role. All data is synthetic. No real CUI or PII is used."
             ),
             "contact": {"name": "Compass demo"},
             "license": {"name": "Demonstration use only", "identifier": "LicenseRef-demo"},
@@ -787,6 +1690,11 @@ def build_openapi(server_url: str = "") -> Dict[str, Any]:
             {"name": "5 · analytics", "description": "Topic model over curated abstracts"},
             {"name": "6 · dashboard", "description": "KPIs, chat, anomalies, approvals, licenses"},
             {"name": "7 · export", "description": "Governed export and the served contract"},
+            {
+                "name": "8 · scale lab",
+                "description": "Cost-gated synthetic workload rehearsal and evidence",
+            },
+            {"name": "system evidence", "description": "Protected, sanitized runtime proof"},
         ],
         "security": [{"cognitoJwt": []}],
         "paths": paths,

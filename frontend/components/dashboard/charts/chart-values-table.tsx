@@ -5,7 +5,7 @@
  *
  * Any value that a chart carries only in a hover tooltip is unreachable to a
  * keyboard or screen-reader user and invisible in print. The SVG charts here
- * therefore ship a collapsed table of the same rows — the numbers are never
+ * therefore ship a collapsed table of the same rows. The numbers are never
  * gated behind hover or color.
  */
 export function ChartValuesTable({

@@ -1,4 +1,4 @@
-"""Compass quality gate — the Validate and Quarantine states of the intake pipeline.
+"""Compass quality gate - the Validate and Quarantine states of the intake pipeline.
 
 Invoked only by ``statemachines/intake.asl.yaml`` (no API route). Two actions:
 
@@ -17,7 +17,7 @@ Invoked only by ``statemachines/intake.asl.yaml`` (no API route). Two actions:
 Two levels of quarantine, on purpose
 ------------------------------------
 *Row level*: a record that fails any rule is marked ``quarantined`` in
-``grants_raw`` and is never eligible for ``grants_curated`` — this happens on
+``grants_raw`` and is never eligible for ``grants_curated`` - this happens on
 every run, pass or fail. *Batch level*: if the batch's row pass-rate falls below
 ``QUALITY_PASS_THRESHOLD`` the gate rejects the batch as a whole and no rows are
 curated at all, even the clean ones. The demo fixtures exercise both:
@@ -67,7 +67,7 @@ def _settings() -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Lineage helpers — same two upserts as intake/pipeline.py. Lambda packages are
+# Lineage helpers - same two upserts as intake/pipeline.py. Lambda packages are
 # independent deployment units, so the small duplication is deliberate; the
 # alternative is a shared-layer dependency for twenty lines of SQL.
 # --------------------------------------------------------------------------- #
@@ -157,7 +157,7 @@ def validate_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
     with db.set_org(conn, PIPELINE_ORG_UNIT) as c, c.cursor() as cur:
         rows = _load_batch(cur, batch_id)
         if not rows:
-            raise ValueError(f"no grants_raw rows for batch {batch_id!r} — did Fetch run?")
+            raise ValueError(f"no grants_raw rows for batch {batch_id!r} - did Fetch run?")
         existing = _existing_grant_nos(cur, batch_id)
 
         result = rules.evaluate_batch(
@@ -266,8 +266,6 @@ def validate_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
         "batch_id": batch_id,
         "run_id": run_id,
         "source_file": payload.get("source_file"),
-        "bucket": payload.get("bucket"),
-        "key": payload.get("key"),
         "gate": result.gate,
         **result.summary(),
     }

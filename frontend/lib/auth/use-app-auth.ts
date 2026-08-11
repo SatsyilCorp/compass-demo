@@ -3,6 +3,22 @@
 import { useContext } from "react";
 import { AuthContext } from "react-oidc-context";
 import { useDemoPersona } from "./demo-persona";
+import {
+  COGNITO_GROUP_FOR_ROLE,
+  deriveRoleFromGroups,
+  normalizeCognitoGroups,
+  ORG_UNIT_FOR_ROLE,
+  ROLE_LABELS,
+  ROLES,
+  type AppRole,
+} from "./identity-contract";
+
+export {
+  ORG_UNIT_FOR_ROLE,
+  ROLE_LABELS,
+  ROLES,
+  type AppRole,
+} from "./identity-contract";
 
 export const AUTH_DISABLED =
   typeof process !== "undefined" &&
@@ -18,28 +34,14 @@ const POST_LOGOUT_URI =
  * Compass's two demo personas (docs/CONTRACTS.md "RLS"), each a Cognito
  * group mapped 1:1 by the HttpApi JWT authorizer:
  *
- *   poweruser  org_unit ONR-Corporate — the RLS "sees all" branch.
- *   viewer     org_unit Code-30       — sees only its own org_unit's rows.
+ *   poweruser  org_unit ONR-Corporate - the RLS "sees all" branch.
+ *   viewer     org_unit Code-30       - sees only its own org_unit's rows.
  *
  * The authorizer injects `org_unit` as a claim; ORG_UNIT_FOR_ROLE below is
  * the frontend's copy of that same mapping, used only for the mock-mode
  * client-side RLS simulation in lib/mock/* (so the demo tells the same
  * security story with or without a deployed backend).
  */
-export type AppRole = "poweruser" | "viewer";
-
-export const ROLES: readonly AppRole[] = ["poweruser", "viewer"];
-
-export const ORG_UNIT_FOR_ROLE: Record<AppRole, string> = {
-  poweruser: "ONR-Corporate",
-  viewer: "Code-30",
-};
-
-const ROLE_LABEL: Record<AppRole, string> = {
-  poweruser: "Power User (ONR-Corporate)",
-  viewer: "Viewer (Code-30)",
-};
-
 export type AppAuth = {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -64,10 +66,10 @@ function buildStub(role: AppRole): AppAuth {
     isLoading: false,
     user: { profile: { email: "demo@compass.local", name: "Demo User" } },
     idToken: null,
-    groups: [role],
+    groups: [COGNITO_GROUP_FOR_ROLE[role]],
     role,
     orgUnit: ORG_UNIT_FOR_ROLE[role],
-    displayName: ROLE_LABEL[role],
+    displayName: ROLE_LABELS[role],
     signinRedirect: () => {},
     signoutRedirect: () => {},
   };
@@ -86,23 +88,13 @@ function cognitoSignout() {
       if (key.startsWith("oidc.")) window.sessionStorage.removeItem(key);
     }
   } catch {
-    // sessionStorage may be unavailable in private browsing — ignore.
+    // sessionStorage may be unavailable in private browsing - ignore.
   }
   const params = new URLSearchParams({
     client_id: COGNITO_CLIENT_ID,
     logout_uri: POST_LOGOUT_URI,
   });
   window.location.href = `${COGNITO_DOMAIN}/logout?${params.toString()}`;
-}
-
-/** Precedence when a token somehow carries both groups — poweruser wins. */
-const ROLE_PRECEDENCE: AppRole[] = ["poweruser", "viewer"];
-
-function deriveRole(groups: string[]): AppRole | null {
-  for (const r of ROLE_PRECEDENCE) {
-    if (groups.includes(r)) return r;
-  }
-  return null;
 }
 
 export function useAppAuth(): AppAuth {
@@ -112,13 +104,8 @@ export function useAppAuth(): AppAuth {
   if (AUTH_DISABLED || !ctx) return buildStub(demoRole);
 
   const profile = ctx.user?.profile as Record<string, unknown> | undefined;
-  const rawGroups = profile?.["cognito:groups"];
-  const groups = Array.isArray(rawGroups)
-    ? rawGroups.filter((g): g is string => typeof g === "string")
-    : typeof rawGroups === "string"
-      ? [rawGroups]
-      : [];
-  const role = deriveRole(groups);
+  const groups = normalizeCognitoGroups(profile?.["cognito:groups"]);
+  const role = deriveRoleFromGroups(groups);
 
   return {
     isAuthenticated: !!ctx.isAuthenticated,
@@ -136,10 +123,8 @@ export function useAppAuth(): AppAuth {
     groups,
     role,
     orgUnit: role ? ORG_UNIT_FOR_ROLE[role] : null,
-    displayName: role ? ROLE_LABEL[role] : null,
+    displayName: role ? ROLE_LABELS[role] : null,
     signinRedirect: () => ctx.signinRedirect(),
     signoutRedirect: cognitoSignout,
   };
 }
-
-export const ROLE_LABELS = ROLE_LABEL;

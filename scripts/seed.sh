@@ -5,15 +5,23 @@
 # docs/RUNBOOK.md §5.
 #
 # WARNING (recording-day tripwire, per docs/RUNBOOK.md §5 and §8): do NOT run
-# this against the stack you intend to record on before recording — the
+# this against the stack you intend to record on before recording - the
 # drops are ingested live on camera during Element 3 of docs/DEMO_SCRIPT.md.
 # Fine to run any time against a dev/rehearsal stack (--config-env dev).
 #
-# Usage: ./scripts/seed.sh [stack-name]
+# Usage: ./scripts/seed.sh [stack-name] --ingest-all-fixtures
 set -euo pipefail
 
 STACK="${1:-compass-demo}"
+CONFIRMATION="${2:-}"
 REGION="${REGION:-us-east-1}"
+
+if [ "$CONFIRMATION" != "--ingest-all-fixtures" ]; then
+  echo "REFUSED: this legacy helper ingests every demo drop immediately." >&2
+  echo "Use scripts/prepare_demo.py prepare for recording preparation." >&2
+  echo "For an isolated rehearsal only: $0 $STACK --ingest-all-fixtures" >&2
+  exit 2
+fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
@@ -22,7 +30,7 @@ if [ -f "$here/seed_data.py" ]; then
   echo "==> Regenerating seed/ via scripts/seed_data.py"
   python3 "$here/seed_data.py"
 else
-  echo "==> scripts/seed_data.py not present — using seed/ as committed"
+  echo "==> scripts/seed_data.py not present - using seed/ as committed"
 fi
 
 echo "==> Resolving raw bucket name from stack outputs ($STACK)"
@@ -33,7 +41,7 @@ RAW_BUCKET="$(aws cloudformation describe-stacks \
   --output text)"
 
 if [ -z "$RAW_BUCKET" ] || [ "$RAW_BUCKET" = "None" ]; then
-  echo "RawBucketName not in stack outputs — falling back to describe-stack-resources (logical id: RawBucket)" >&2
+  echo "RawBucketName not in stack outputs - falling back to describe-stack-resources (logical id: RawBucket)" >&2
   RAW_BUCKET="$(aws cloudformation describe-stack-resources \
     --region "$REGION" \
     --stack-name "$STACK" \
@@ -57,7 +65,11 @@ echo "==> Dropping seed/drops/*.json into s3://$RAW_BUCKET/drops/"
 for f in "$DROPS_DIR"/*.json; do
   name="$(basename "$f")"
   echo "  -> drops/$name"
-  aws s3 cp "$f" "s3://$RAW_BUCKET/drops/$name" --region "$REGION" >/dev/null
+  if ! aws s3 cp "$f" "s3://$RAW_BUCKET/drops/$name" \
+    --region "$REGION" --only-show-errors >/dev/null 2>&1; then
+    echo "ERROR: failed to release the logical drop drops/$name" >&2
+    exit 1
+  fi
 done
 
 echo

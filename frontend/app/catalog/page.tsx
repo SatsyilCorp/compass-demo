@@ -9,7 +9,7 @@ import { getCatalog, ApiError } from "@/lib/api";
 import type { CatalogResponse } from "@/lib/types";
 
 /**
- * Element 4 — Data catalog. GET /catalog: every curated dataset (grain =
+ * Element 4 - Data catalog. GET /catalog: every curated dataset (grain =
  * ingest batch), its quality/health score, and metadata. Each row expands
  * into the score formula + rule breakdown; "View" opens the lineage graph
  * at /catalog/[id]/.
@@ -36,7 +36,7 @@ export default function CatalogPage() {
   return (
     <AppShell>
       <PageHeader
-        kicker="Element 4 · Data catalog"
+        kicker="Mission flow | Govern"
         icon={<Database className="size-[18px]" aria-hidden />}
         title="Data Catalog"
         lead="Every curated dataset in the S&T portfolio, with its data-quality gate result, freshness, and originating pipeline run. Expand a row for the score formula and rule-by-rule breakdown, or open the full lineage graph."

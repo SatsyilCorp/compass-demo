@@ -1,56 +1,20 @@
 "use client";
 
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { EyeOff } from "lucide-react";
+import { useState } from "react";
+import { EyeOff, FlaskConical, Lightbulb, SlidersHorizontal } from "lucide-react";
 
 import type { DashboardResponse } from "@/lib/types";
 
 import { ChartCard } from "../chart-card";
-import { ChartValuesTable } from "./chart-values-table";
-import {
-  AXIS_STROKE,
-  AXIS_TICK,
-  AXIS_TICK_FILL,
-  BAR_RADIUS_VERTICAL,
-  BAR_SIZE,
-  GRID_STROKE,
-  SERIES_ACCENT,
-  SERIES_PRIMARY,
-  TOOLTIP_STYLE,
-} from "../chart-theme";
 import { allMasked, usd, usdFull } from "../format";
 
-/**
- * Budget vs. execution by fiscal year — `GET /dashboard` →
- * `funding_by_fiscal_year`.
- *
- * Honest framing, stated on the card: the bars are *execution* — money actually
- * obligated on awards in `grants_curated` for that fiscal year. Compass does
- * not ingest an appropriation/PB feed, so there is no authoritative budget
- * authority line to plot against it. Rather than invent one, the comparison
- * baseline is computed and labelled as computed: the even-spend line (mean
- * execution across the visible fiscal years). Years above it drew more than
- * their even share of the portfolio; years below drew less.
- *
- * One y-axis, two marks with different geometry (solid bars vs. a dashed
- * line) plus a legend — identity never rests on color alone.
- */
-type Row = {
-  fiscal_year: number;
+
+type ScenarioMetricProps = {
   label: string;
-  executed: number;
-  baseline: number;
-  variance: number;
+  value: number;
+  maximum: number;
+  color: string;
+  note: string;
 };
 
 export function BudgetExecutionChart({
@@ -58,142 +22,226 @@ export function BudgetExecutionChart({
 }: {
   data: DashboardResponse["funding_by_fiscal_year"];
 }) {
-  const masked = allMasked(data.map((d) => d.amount_usd));
+  const [planUplift, setPlanUplift] = useState(12);
+  const [gapCapture, setGapCapture] = useState(65);
+  const masked = allMasked(data.map((row) => row.amount_usd));
 
   if (masked) {
     return (
       <ChartCard
-        title="Budget vs. execution by fiscal year"
-        hint="Execution is measured in dollars, and dollars are withheld from your role."
-        provenance="GET /dashboard → funding_by_fiscal_year (all values null under column-level security)."
+        title="Funding planning sandbox"
+        hint="A planning scenario needs an actual obligations starting point, which your role cannot read."
+        provenance="Live funding values remain protected for this role. No synthetic plan is calculated from hidden values."
+        action={<ScenarioBadge />}
       >
-        <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-2 rounded border border-dashed border-border px-6 text-center">
-          <EyeOff className="size-5 text-text-subtle" aria-hidden />
-          <p className="text-[13px] font-semibold text-text-strong">Masked by column-level security</p>
-          <p className="max-w-sm text-[12px] leading-relaxed text-text-muted">
-            The viewer role has <code className="font-mono text-[11px]">SELECT (amount_usd)</code>{" "}
-            revoked on <code className="font-mono text-[11px]">compass.grants_curated</code>, so the
-            API returns null for every fiscal-year total. Switch to the power-user persona to see the
-            execution curve.
+        <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 text-center">
+          <EyeOff className="size-6 text-text-subtle" aria-hidden />
+          <p className="text-base font-semibold text-text-strong">Funding values are protected</p>
+          <p className="max-w-sm text-sm leading-6 text-text-muted">
+            The portfolio remains visible by grant count, but this role cannot use award values in a planning calculation.
           </p>
         </div>
       </ChartCard>
     );
   }
 
-  const present = data.filter((d): d is { fiscal_year: number; amount_usd: number } =>
-    typeof d.amount_usd === "number",
-  );
-  const baseline =
-    present.length > 0 ? present.reduce((a, d) => a + d.amount_usd, 0) / present.length : 0;
-
-  const rows: Row[] = present
+  const latest = data
+    .filter((row): row is { fiscal_year: number; amount_usd: number } => row.amount_usd !== null)
     .slice()
     .sort((a, b) => a.fiscal_year - b.fiscal_year)
-    .map((d) => ({
-      fiscal_year: d.fiscal_year,
-      label: `FY${String(d.fiscal_year).slice(-2)}`,
-      executed: d.amount_usd,
-      baseline,
-      variance: baseline > 0 ? d.amount_usd / baseline - 1 : 0,
-    }));
+    .at(-1);
+
+  if (!latest) {
+    return (
+      <ChartCard
+        title="Funding planning sandbox"
+        hint="No actual obligations are visible in the current result."
+        provenance="No planning values are calculated without a live actual starting point."
+        action={<ScenarioBadge />}
+        empty
+        emptyText="Adjust the portfolio filters to include a fiscal year with obligations."
+      >
+        <span />
+      </ChartCard>
+    );
+  }
+
+  const actual = latest.amount_usd;
+  const plan = actual * (1 + planUplift / 100);
+  const forecast = actual + (plan - actual) * (gapCapture / 100);
+  const variance = forecast - plan;
+  const varianceRate = plan > 0 ? variance / plan : 0;
+  const maximum = Math.max(plan, actual, forecast, 1);
 
   return (
     <ChartCard
-      title="Budget vs. execution by fiscal year"
-      hint="Bars are executed obligations. The dashed line is the even-spend baseline — the mean across the fiscal years visible to you."
-      provenance="GET /dashboard → funding_by_fiscal_year. The baseline is computed in the browser from those same values; Compass ingests no appropriation feed, so no budget-authority line is claimed."
-      empty={rows.length === 0}
-      emptyText="No fiscal years are visible under your current row-level security scope."
+      title="Funding planning sandbox"
+      hint="Live actual obligations anchor an adjustable, clearly synthetic planning scenario."
+      provenance={`Actual obligations come from GET /dashboard for FY${latest.fiscal_year}. Plan, forecast, variance, and recommendation are browser-computed synthetic assumptions.`}
+      action={<ScenarioBadge />}
     >
-      <ResponsiveContainer width="100%" height={240}>
-        <ComposedChart data={rows} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
-          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
-          <XAxis dataKey="label" stroke={AXIS_STROKE} tick={AXIS_TICK} tickLine={false} />
-          <YAxis
-            stroke={AXIS_STROKE}
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={false}
-            width={58}
-            tickFormatter={(v: number) => usd(v)}
-          />
-          <Tooltip
-            cursor={{ fill: "rgba(42, 100, 150, 0.06)" }}
-            contentStyle={TOOLTIP_STYLE}
-            content={<ExecutionTooltip />}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: 11, paddingTop: 6 }}
-            iconType="plainline"
-            iconSize={14}
-            // Recharts tints legend text with the series color by default; the
-            // colored key beside the label carries identity, the text stays in
-            // a text token so it is legible at any hue.
-            formatter={(value: string) => (
-              <span style={{ color: AXIS_TICK_FILL }}>{value}</span>
-            )}
-          />
-          <Bar
-            dataKey="executed"
-            name="Executed obligations"
-            fill={SERIES_PRIMARY}
-            barSize={BAR_SIZE}
-            radius={BAR_RADIUS_VERTICAL}
-            isAnimationActive
-          />
-          <Line
-            dataKey="baseline"
-            name="Even-spend baseline (computed)"
-            stroke={SERIES_ACCENT}
-            strokeWidth={2}
-            strokeDasharray="6 4"
-            dot={false}
-            activeDot={false}
-            isAnimationActive={false}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+      <div className="rounded-lg border border-border bg-surface-2 p-4">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-subtle">
+          Live actuals
+        </p>
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-text-strong">FY{latest.fiscal_year} obligated awards</p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-text-strong">
+              {usd(actual)}
+            </p>
+          </div>
+          <p className="max-w-xs text-right text-xs leading-5 text-text-muted">
+            This is the only authoritative finance value used below.
+          </p>
+        </div>
+      </div>
 
-      <ChartValuesTable
-        caption="Show values"
-        columns={["Fiscal year", "Executed", "Baseline", "Variance"]}
-        rows={rows.map((r) => [
-          `FY${r.fiscal_year}`,
-          usdFull(r.executed),
-          usdFull(r.baseline),
-          `${r.variance >= 0 ? "+" : ""}${(r.variance * 100).toFixed(1)}%`,
-        ])}
-      />
+      <div className="mt-3 rounded-lg border border-gold/30 bg-gold-soft/45 p-4">
+        <div className="flex items-start gap-2">
+          <SlidersHorizontal className="mt-0.5 size-4 shrink-0 text-gold-ink" aria-hidden />
+          <div>
+            <p className="text-sm font-semibold text-text-strong">Synthetic planning assumptions</p>
+            <p className="mt-0.5 text-xs leading-5 text-text-muted">
+              Adjust the scenario live. These controls do not write to the portfolio or represent budget authority.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <ScenarioControl
+            label="Plan above current obligations"
+            value={planUplift}
+            min={2}
+            max={30}
+            suffix="%"
+            onChange={setPlanUplift}
+          />
+          <ScenarioControl
+            label="Expected capture of remaining gap"
+            value={gapCapture}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={setGapCapture}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3" aria-label="Synthetic plan, actual, and forecast comparison">
+        <ScenarioMetric
+          label="Synthetic plan"
+          value={plan}
+          maximum={maximum}
+          color="bg-gold"
+          note={`${planUplift}% above current obligations`}
+        />
+        <ScenarioMetric
+          label="Live actual obligations"
+          value={actual}
+          maximum={maximum}
+          color="bg-gov-primary"
+          note={`FY${latest.fiscal_year} governed actual`}
+        />
+        <ScenarioMetric
+          label="Synthetic forecast"
+          value={forecast}
+          maximum={maximum}
+          color="bg-info"
+          note={`${gapCapture}% of the synthetic remaining gap captured`}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-[160px_1fr]">
+        <div className="rounded-lg border border-border bg-surface-2 p-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-text-subtle">
+            Forecast variance
+          </p>
+          <p className={`mt-1 font-mono text-lg font-semibold ${variance < 0 ? "text-warn" : "text-success"}`}>
+            {variance >= 0 ? "+" : ""}{usdFull(variance)}
+          </p>
+          <p className="mt-0.5 text-xs text-text-muted">
+            {varianceRate >= 0 ? "+" : ""}{(varianceRate * 100).toFixed(1)}% vs synthetic plan
+          </p>
+        </div>
+        <div className="rounded-lg border border-info/25 bg-info-soft p-3">
+          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-info">
+            <Lightbulb className="size-3.5" aria-hidden />
+            Scenario recommendation
+          </p>
+          <p className="mt-1.5 text-sm leading-6 text-text">
+            {variance < 0
+              ? `Validate whether the projected ${usdFull(Math.abs(variance))} gap should be accelerated, rephased, or released before treating this scenario as a plan.`
+              : "The synthetic forecast meets the synthetic plan. Validate source assumptions before using it in a funding decision."}
+          </p>
+        </div>
+      </div>
     </ChartCard>
   );
 }
 
-type TooltipPayload = { payload: Row };
-
-function ExecutionTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: TooltipPayload[];
-}) {
-  if (!active || !payload || payload.length === 0) return null;
-  const row = payload[0]!.payload;
-  const above = row.variance >= 0;
+function ScenarioBadge() {
   return (
-    <div style={TOOLTIP_STYLE}>
-      <p className="font-semibold text-text-strong">FY{row.fiscal_year}</p>
-      <p className="mt-1 text-text">
-        Executed <span className="font-mono font-semibold">{usdFull(row.executed)}</span>
-      </p>
-      <p className="text-text-muted">
-        Baseline <span className="font-mono">{usdFull(row.baseline)}</span>
-      </p>
-      <p className={above ? "mt-1 text-success" : "mt-1 text-warn"}>
-        {above ? "+" : ""}
-        {(row.variance * 100).toFixed(1)}% vs. even spend
-      </p>
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gold/30 bg-gold-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-gold-ink">
+      <FlaskConical className="size-3.5" aria-hidden />
+      Synthetic scenario
+    </span>
+  );
+}
+
+function ScenarioControl({
+  label,
+  value,
+  min,
+  max,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  suffix: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="block text-xs font-semibold text-text-strong">
+      <span className="flex items-center justify-between gap-3">
+        <span>{label}</span>
+        <output className="font-mono text-sm font-semibold text-gov-primary">
+          {value}{suffix}
+        </output>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="mt-1 min-h-11 w-full cursor-pointer accent-gov-primary"
+      />
+    </label>
+  );
+}
+
+function ScenarioMetric({ label, value, maximum, color, note }: ScenarioMetricProps) {
+  const width = `${Math.max(2, (value / maximum) * 100)}%`;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-text-strong">{label}</p>
+          <p className="text-xs text-text-muted">{note}</p>
+        </div>
+        <p className="shrink-0 font-mono text-sm font-semibold text-text-strong">{usdFull(value)}</p>
+      </div>
+      <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-surface-2">
+        <div
+          className={`h-full rounded-full ${color} motion-safe:transition-[width] motion-safe:duration-300`}
+          style={{ width }}
+        />
+      </div>
     </div>
   );
 }

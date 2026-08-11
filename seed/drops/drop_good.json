@@ -1,4 +1,7 @@
 {
+  "fixture_contract": "compass.synthetic.v1",
+  "synthetic_only": true,
+  "generator_seed": 20260810,
   "source_file": "gms_export_2026_08.json",
   "batch_id": "drop-good-2026-08",
   "dropped_at": "2026-08-10T19:56:47.414136+00:00",

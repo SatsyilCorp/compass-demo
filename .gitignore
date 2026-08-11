@@ -1,4 +1,4 @@
-# --- Secrets & credentials (NEVER commit — evaluators have read access) ---
+# --- Secrets & credentials (NEVER commit - evaluators have read access) ---
 *.pem
 *.key
 .env
@@ -14,6 +14,8 @@ credentials
 .aws-sam/
 frontend/out/
 frontend/.next/
+frontend/playwright-report/
+frontend/test-results/
 node_modules/
 __pycache__/
 *.pyc
@@ -21,6 +23,8 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+*.tsbuildinfo
+artifacts/
 
 # --- Local / OS ---
 .DS_Store
@@ -34,7 +38,11 @@ venv/
 *.parquet
 !seed/**/*.parquet
 scratch/
+.scratch/
 tmp/
 
-# Generated status page (contains local paths) — regenerate with scripts/status_dashboard.py
+# Proposal and submission working files are maintained outside the shared codebase.
+volume_iv/
+
+# Generated status page (contains local paths) - regenerate with scripts/status_dashboard.py
 dashboard.html

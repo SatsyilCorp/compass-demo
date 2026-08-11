@@ -5,17 +5,17 @@
  *
  * When `NEXT_PUBLIC_AUTH_DISABLED=true` there is no real Cognito session, so
  * there is no `cognito:groups` claim to derive a role from. To let one
- * browser tab demo both personas — poweruser (ONR-Corporate, sees every
- * org_unit) and viewer (Code-30, sees only its own rows) — we keep the
+ * browser tab demo both personas - poweruser (ONR-Corporate, sees every
+ * org_unit) and viewer (Code-30, sees only its own rows) - we keep the
  * selected persona in `sessionStorage` (per-tab) and expose it through
  * `useSyncExternalStore` so the sidebar, AuthGuard, and persona switcher all
  * re-render instantly on change (no reload, hydration-safe).
  *
- * Outside demo mode this module is inert — `useAppAuth` ignores the override
+ * Outside demo mode this module is inert - `useAppAuth` ignores the override
  * and derives the role from the real ID token's `cognito:groups` claim.
  */
 import { useSyncExternalStore } from "react";
-import type { AppRole } from "./use-app-auth";
+import type { AppRole } from "./identity-contract";
 
 const KEY = "compass:demo-persona";
 const DEFAULT_PERSONA: AppRole = "poweruser";
@@ -29,7 +29,7 @@ export function getDemoPersona(): AppRole {
     const v = window.sessionStorage.getItem(KEY);
     if (v && (VALID as readonly string[]).includes(v)) return v as AppRole;
   } catch {
-    // sessionStorage may be unavailable (private mode) — fall through to default.
+    // sessionStorage may be unavailable (private mode) - fall through to default.
   }
   return DEFAULT_PERSONA;
 }
@@ -39,7 +39,7 @@ export function setDemoPersona(role: AppRole): void {
   try {
     window.sessionStorage.setItem(KEY, role);
   } catch {
-    // ignore — still notify so in-memory subscribers in this tab update.
+    // ignore - still notify so in-memory subscribers in this tab update.
   }
   listeners.forEach((l) => l());
 }

@@ -1,4 +1,4 @@
-"""Grounded RAG answer pipeline — retrieved grants + LLM, with citations.
+"""Grounded RAG answer pipeline - retrieved grants + LLM, with citations.
 
 Adapted from the ``satsyil_chatbot.answer`` building block
 (the satsyil-blocks library, satsyil_chatbot), trimmed for Compass:
@@ -10,7 +10,7 @@ structure is unchanged: both heavy dependencies are injected
     llm_fn(system, user)  -> str                  (pairs with compass_common.llm)
 
 so the pipeline is pure orchestration and smoke-tests offline with fakes.
-Citation tokens are grant numbers — the model is instructed to cite
+Citation tokens are grant numbers - the model is instructed to cite
 ``[ONRD-...]`` inline, and the returned citation index carries the grant
 metadata the UI renders.
 """
@@ -28,7 +28,7 @@ SYSTEM_PROMPT = (
     "specifically using ONLY the provided grant passages. Each passage is "
     "labelled with a citation token like [ONRD-2026-AIML-00123]; cite the "
     "token(s) you relied on inline after the statements they support. Never "
-    "state or estimate dollar amounts — funding figures are access-controlled "
+    "state or estimate dollar amounts - funding figures are access-controlled "
     "and not in your context. If the answer is not in the passages, say so "
     "plainly rather than guessing."
 )
@@ -121,7 +121,7 @@ def answer(
     """Retrieve grounded context for ``question`` and ask the LLM.
 
     Returns ``{"text", "citations", "chunks_used", "grounded"}``. When nothing
-    is retrievable the model is NOT called — the honest no-context reply is
+    is retrievable the model is NOT called - the honest no-context reply is
     returned with ``grounded: False`` (cheaper, and it cannot hallucinate).
     """
     question = (question or "").strip()

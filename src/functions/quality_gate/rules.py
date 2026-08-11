@@ -1,6 +1,6 @@
 """The Compass data-quality rule engine.
 
-Pure functions — no AWS, no database, stdlib only — so the rules can be read,
+Pure functions - no AWS, no database, stdlib only - so the rules can be read,
 reasoned about and run offline (``python3 rules.py`` executes the self-test).
 The Lambda around it (``app.py``) does the I/O: read the batch out of
 ``grants_raw``, run :func:`evaluate_batch`, write ``grant_quality``, mark the
@@ -26,7 +26,7 @@ One formula, applied at two grains::
 *Per rule* (what lands in ``grant_quality.score``) the units are the rows that
 rule evaluated. *Per batch* (``overall_score``, the number the gate decides on)
 the units are whole rows: a row passes only if it fails no rule. The batch
-number is deliberately row-grained — "45 of 60 rows are clean" is the fact an
+number is deliberately row-grained - "45 of 60 rows are clean" is the fact an
 evaluator cares about, and averaging across rules would dilute 15 bad rows into
 a reassuring 95%. The rule-evaluation aggregate is still reported, as
 ``rule_evaluation_score``, so both views are on the record. Every
@@ -40,7 +40,7 @@ failure; ``valid_fiscal_year_range`` has nothing to range-check, so the row is
 count is reported as ``not_applicable_rows`` in the rule's details, so the
 denominator is always auditable. A field that is *present but the wrong type*
 (``fiscal_year: "FY2026"``, ``amount_usd: "TBD"``) is a real failure of the
-typed rule, not a missing value — see ``intake/normalize.py`` for why that
+typed rule, not a missing value - see ``intake/normalize.py`` for why that
 distinction is drawn at normalization time.
 
 A row is **quarantined** when it fails one or more rules; only rows that fail
@@ -62,7 +62,7 @@ RULE_NAMES = (
 )
 
 # The org units that exist in this portfolio. ``org_unit`` is the RLS key, so an
-# unrecognized value would create a row nobody can ever see — a silent data
+# unrecognized value would create a row nobody can ever see - a silent data
 # black hole. That is why it is a hard rule, not a warning.
 KNOWN_ORG_UNITS: Set[str] = {
     "ONR-Corporate",
@@ -178,13 +178,13 @@ class BatchQualityResult:
 
     @property
     def overall_score(self) -> float:
-        """Row-level pass rate — the number the gate decides on."""
+        """Row-level pass rate - the number the gate decides on."""
         return score_of(self.rows_passed, self.rows_failed)
 
     @property
     def rule_evaluation_score(self) -> float:
         """The same formula aggregated over every rule evaluation (reported,
-        not decided on — see the module docstring)."""
+        not decided on - see the module docstring)."""
         return score_of(
             sum(r.passed_rows for r in self.rules),
             sum(r.failed_rows for r in self.rules),
@@ -250,7 +250,7 @@ def evaluate_batch(
 
     Args:
         rows: dicts shaped like the ``grants_raw.raw_jsonb`` envelope written by
-            the intake stage — ``{"raw_id", "record", "normalized", "meta":
+            the intake stage - ``{"raw_id", "record", "normalized", "meta":
             {"row_index", "issues": [...]}}``.
         existing_grant_nos: grant numbers already in ``grants_curated`` (read
             under the pipeline's corporate RLS context, so the uniqueness check
@@ -354,7 +354,7 @@ def evaluate_batch(
 
 
 # --------------------------------------------------------------------------- #
-# Self-test — `python3 rules.py`
+# Self-test - `python3 rules.py`
 # --------------------------------------------------------------------------- #
 def _row(row_index: int, normalized: Dict[str, Any], issues=None) -> Dict[str, Any]:
     return {

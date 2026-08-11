@@ -4,7 +4,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 
 /**
- * /dashboard — element 6.
+ * /dashboard - element 6.
  *
  * A server component only so the route can carry static metadata; every byte of
  * data on the page is fetched client-side from the HttpApi (or the mock

@@ -1,4 +1,7 @@
 {
+  "fixture_contract": "compass.synthetic.v1",
+  "synthetic_only": true,
+  "generator_seed": 20260810,
   "dataset": "ONR S&T Grants Portfolio",
   "description": "Synthetic mock ONR Science & Technology grants portfolio for the Compass demo. No real CUI/PII.",
   "generated_at": "2026-08-10T19:56:47.414136+00:00",

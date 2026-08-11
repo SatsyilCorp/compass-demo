@@ -1,5 +1,5 @@
 /**
- * Ingestion velocity classification — element 3.
+ * Ingestion velocity classification - element 3.
  *
  * Compass runs three different cadences over the exact same intake state
  * machine (statemachines/intake.asl.yaml: Fetch -> Validate -> Persist /
@@ -10,15 +10,15 @@
  *               15 min via EventBridge Scheduler); each pickup is its own
  *               batch.
  *   on-demand   an object landing in the raw bucket fires the
- *               RawObjectCreatedRule immediately — the path
+ *               RawObjectCreatedRule immediately - the path
  *               POST /ingest/simulate exercises for this demo.
  *
  * docs/CONTRACTS.md's `IngestBatch` shape carries no velocity field, so the
  * tag shown on a fixture batch is a deterministic, illustrative client-side
- * classification for the demo list — never presented as a value read from
+ * classification for the demo list - never presented as a value read from
  * the API or database. A batch produced by the "Drop a file" button on
  * /ingest IS genuinely on-demand (that is literally what
- * POST /ingest/simulate is), so it is forced rather than hashed — see
+ * POST /ingest/simulate is), so it is forced rather than hashed - see
  * `components/ingest/batch-row.tsx`.
  */
 
@@ -38,7 +38,7 @@ export const VELOCITY_META: Record<
     label: "Interval",
     cadence: "scheduled · e.g. every 15 min",
     blurb:
-      "A partner feed picked up on a fixed cadence via EventBridge Scheduler — each pickup is its own batch.",
+      "A partner feed picked up on a fixed cadence via EventBridge Scheduler - each pickup is its own batch.",
   },
   "on-demand": {
     label: "On-demand",
@@ -48,7 +48,7 @@ export const VELOCITY_META: Record<
   },
 };
 
-/** Deterministic djb2 string hash — same algorithm lib/mock/quality.ts uses,
+/** Deterministic djb2 string hash - same algorithm lib/mock/quality.ts uses,
  * so demo-only classification derived from it never looks random between
  * renders/builds. */
 export function hashStr(s: string): number {

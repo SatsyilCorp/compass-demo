@@ -5,7 +5,7 @@ import { formatInt } from "./trend";
 /**
  * The written decision recommendation the topic-model routine produces,
  * plus enough run provenance (params/metrics) that an evaluator can see
- * where the recommendation came from — not just trust it.
+ * where the recommendation came from - not just trust it.
  */
 export function RecommendationPanel({ detail }: { detail: AnalyticsRunDetail }) {
   const embeddingModel = typeof detail.params.embedding_model === "string" ? detail.params.embedding_model : null;
@@ -36,15 +36,15 @@ export function RecommendationPanel({ detail }: { detail: AnalyticsRunDetail }) 
         </div>
         <div>
           <dt className="text-text-subtle">Grants scored</dt>
-          <dd className="font-medium tabular-nums text-text">{grantsScored !== null ? formatInt(grantsScored) : "—"}</dd>
+          <dd className="font-medium tabular-nums text-text">{grantsScored !== null ? formatInt(grantsScored) : " - "}</dd>
         </div>
         <div>
           <dt className="text-text-subtle">Coherence</dt>
-          <dd className="font-medium tabular-nums text-text">{coherence !== null ? coherence.toFixed(2) : "—"}</dd>
+          <dd className="font-medium tabular-nums text-text">{coherence !== null ? coherence.toFixed(2) : " - "}</dd>
         </div>
         <div>
           <dt className="text-text-subtle">Topics (k)</dt>
-          <dd className="font-medium tabular-nums text-text">{k ?? "—"}</dd>
+          <dd className="font-medium tabular-nums text-text">{k ?? " - "}</dd>
         </div>
       </dl>
       {embeddingModel && (

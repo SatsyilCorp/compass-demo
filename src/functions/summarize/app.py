@@ -1,7 +1,7 @@
-"""Summarize Lambda — GET /dashboard, GET /anomalies, and the executive
+"""Summarize Lambda - GET /dashboard, GET /anomalies, and the executive
 weekly summary (Bedrock Nova Lite), per docs/CONTRACTS.md element 6.
 
-GET /dashboard — ONE round trip: KPIs + every chart series + the latest
+GET /dashboard - ONE round trip: KPIs + every chart series + the latest
 stored executive summary. Response shape (the frontend contract):
 
     {
@@ -26,11 +26,11 @@ stored executive summary. Response shape (the frontend contract):
 ``?refresh=true`` (corporate persona only) regenerates the executive summary
 synchronously via Bedrock before returning.
 
-GET /anomalies — open anomalies, INNER-JOINed to ``grants_curated`` so RLS
+GET /anomalies - open anomalies, INNER-JOINed to ``grants_curated`` so RLS
 filters them to grants the caller can see. Dollar figures inside ``reason``
 are masked for non-corporate callers (CLS: viewers cannot read amounts).
 
-Weekly executive summary — also callable OUTSIDE the API by the
+Weekly executive summary - also callable OUTSIDE the API by the
 approvals/dashboard flow with a direct Lambda invoke::
 
     {"action": "weekly_summary"}            # runs as ONR-Corporate, actor "system"
@@ -42,7 +42,7 @@ executive brief, and persists it to ``model_runs`` (kind ``weekly_summary``,
 call on the hot path.
 
 RLS/CLS: every grant read runs inside ``db.set_org``; dollar sums come from
-the ``grants_curated_corp`` view and only for the corporate persona — viewer
+the ``grants_curated_corp`` view and only for the corporate persona - viewer
 responses carry ``amount_usd: null`` and ``masked: true``.
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ SUMMARY_SYSTEM_PROMPT = (
     "2) topic movement (what is emerging or contracting), 3) risk items "
     "(funding anomalies, licenses renewing soon, pending approvals), "
     "4) exactly one recommended action. Use ONLY figures present in the "
-    "snapshot — never invent numbers. Plain prose, no markdown headings."
+    "snapshot - never invent numbers. Plain prose, no markdown headings."
 )
 
 

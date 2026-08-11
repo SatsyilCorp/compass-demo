@@ -1,4 +1,4 @@
-"""Lightweight topic modeling over grant abstracts — numpy-only TF-IDF + NMF.
+"""Lightweight topic modeling over grant abstracts - numpy-only TF-IDF + NMF.
 
 Algorithm (exact, so evaluators can check the math)
 ---------------------------------------------------
@@ -24,7 +24,7 @@ Algorithm (exact, so evaluators can check the math)
    highest-weight vocabulary entries; the label is the top-3 terms title-cased.
 6. **Doc→topic weights**: each row of ``W`` normalized to sum to 1. A grant's
    *dominant* topic is its argmax.
-7. **Per-fiscal-year trend**: for each topic and FY — dominant-grant count,
+7. **Per-fiscal-year trend**: for each topic and FY - dominant-grant count,
    summed weight, and *share* (topic weight ÷ all-topic weight that FY, so
    growth is not inflated by the portfolio simply adding more grants per year).
    ``growth_pct`` compares share across the trailing 2-FY window.
@@ -35,14 +35,14 @@ Algorithm (exact, so evaluators can check the math)
 Dependency & Lambda-layer note
 ------------------------------
 The ONLY third-party dependency is **numpy** (see this function's
-``requirements.txt``): a single manylinux aarch64 wheel, ~40 MB unzipped —
+``requirements.txt``): a single manylinux aarch64 wheel, ~40 MB unzipped:
 well within Lambda's 250 MB unzipped budget next to the psycopg2 CommonLayer.
 scikit-learn was considered and rejected: sklearn + scipy would add ~170 MB
 and meaningfully slower cold starts for two routines (TF-IDF, NMF) that are
 ~150 lines of transparent linear algebra here. The dense 400×2000 float64
 matrix is ~6.4 MB; a full fit runs in well under a second at 1024 MB.
 
-This module is pure computation — no AWS, no DB, no network — so it unit-tests
+This module is pure computation - no AWS, no DB, no network - so it unit-tests
 offline (see tests/test_topic_model.py).
 """
 from __future__ import annotations
@@ -140,6 +140,21 @@ def build_tfidf(
 # --------------------------------------------------------------------------- #
 # NMF (Lee & Seung multiplicative updates, Frobenius norm)
 # --------------------------------------------------------------------------- #
+def _checked_matmul(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+    """Multiply matrices and reject real non-finite numerical failures.
+
+    Some BLAS backends can leave divide, overflow, or invalid status flags set
+    after a fully finite matrix product. NumPy surfaces those stale flags as
+    RuntimeWarnings. The explicit finite-result check keeps genuine failures
+    fail-closed without treating backend status noise as an invalid model.
+    """
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        product = left @ right
+    if not np.isfinite(product).all():
+        raise FloatingPointError("NMF matrix product produced non-finite values")
+    return product
+
+
 def nmf(
     X: np.ndarray,
     k: int,
@@ -163,10 +178,18 @@ def nmf(
     err = 1.0
     prev: Optional[float] = None
     for it in range(1, iterations + 1):
-        H *= (W.T @ X) / (W.T @ W @ H + EPS)
-        W *= (X @ H.T) / (W @ (H @ H.T) + EPS)
+        numerator_h = _checked_matmul(W.T, X)
+        gram_w = _checked_matmul(W.T, W)
+        denominator_h = _checked_matmul(gram_w, H) + EPS
+        H *= numerator_h / denominator_h
+
+        numerator_w = _checked_matmul(X, H.T)
+        gram_h = _checked_matmul(H, H.T)
+        denominator_w = _checked_matmul(W, gram_h) + EPS
+        W *= numerator_w / denominator_w
         if it % 10 == 0 or it == iterations:
-            err = float(np.linalg.norm(X - W @ H) / norm_x)
+            reconstruction = _checked_matmul(W, H)
+            err = float(np.linalg.norm(X - reconstruction) / norm_x)
             if prev is not None and abs(prev - err) < tol:
                 return W, H, err, it
             prev = err

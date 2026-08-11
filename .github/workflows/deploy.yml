@@ -1,0 +1,302 @@
+name: Controlled demo deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub environment to deploy
+        required: true
+        type: choice
+        options: [demo]
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, deploy, migrate, verify
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      STACK_NAME: ${{ vars.STACK_NAME }}
+      EXPORT_MAX_ROWS: ${{ vars.EXPORT_MAX_ROWS }}
+      DATABASE_RESILIENCE_MODE: ${{ vars.DATABASE_RESILIENCE_MODE }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Require successful quality run for this revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs=$(gh run list --workflow quality.yml --commit "$GITHUB_SHA" --limit 20 --json databaseId,headSha,status,conclusion)
+          python - "$runs" <<'PY'
+          import json
+          import os
+          import sys
+
+          expected = os.environ["GITHUB_SHA"]
+          matches = [
+              run
+              for run in json.loads(sys.argv[1])
+              if run.get("headSha") == expected
+              and run.get("status") == "completed"
+              and run.get("conclusion") == "success"
+          ]
+          assert matches, "no successful quality.yml run exists for this exact commit"
+          print(f"verified quality run {matches[0]['databaseId']} for {expected[:12]}")
+          PY
+
+      - name: Configure short revision
+        run: echo "DEPLOY_REVISION=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      - name: Validate protected deployment inputs
+        run: |
+          test -n "$AWS_REGION"
+          test -n "$STACK_NAME"
+          case "$EXPORT_MAX_ROWS" in
+            ''|*[!0-9]*) echo "EXPORT_MAX_ROWS must be a positive integer" >&2; exit 1 ;;
+          esac
+          test "$EXPORT_MAX_ROWS" -gt 0
+          case "$DATABASE_RESILIENCE_MODE" in
+            demo|ha) ;;
+            *) echo "DATABASE_RESILIENCE_MODE must be demo or ha" >&2; exit 1 ;;
+          esac
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python and AWS SAM
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: aws-actions/setup-sam@v2
+
+      - name: Stage migrations and build backend
+        run: |
+          ./src/functions/migrator/prepare_migrations.sh
+          sam validate --lint
+          sam build --use-container --cached
+
+      - name: Detect existing deployment
+        run: |
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
+            echo "STACK_EXISTS=true" >> "$GITHUB_ENV"
+            domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue' --output text)
+            python - "$domain" "$GITHUB_ENV" <<'PY'
+          import re
+          import sys
+
+          domain, destination = sys.argv[1:]
+          assert re.fullmatch(r"[a-z0-9]+\.cloudfront\.net", domain), "invalid CloudFrontDomain stack output"
+          origin = f"https://{domain}"
+          with open(destination, "a", encoding="utf-8") as handle:
+              handle.write(f"WEB_ORIGIN={origin}\n")
+              handle.write(f"WEB_CALLBACK_URL={origin}/login/\n")
+              handle.write(f"WEB_LOGOUT_URL={origin}/login/\n")
+          PY
+          else
+            echo "STACK_EXISTS=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Apply compatible database expansion before code
+        if: env.STACK_EXISTS == 'true'
+        run: |
+          python scripts/prepare_migration_payload.py migration-request.json
+          aws lambda invoke \
+            --function-name "${STACK_NAME}-migrator" \
+            --payload fileb://migration-request.json \
+            --cli-binary-format raw-in-base64-out \
+            migration-expand-response.json \
+            --query '{StatusCode:StatusCode,FunctionError:FunctionError}' \
+            --output json > migration-expand-invoke.json
+          python -c 'import json; meta=json.load(open("migration-expand-invoke.json")); data=json.load(open("migration-expand-response.json")); assert meta.get("StatusCode")==200 and not meta.get("FunctionError"), meta; assert data.get("status")=="ok", data; assert data.get("role_bootstrap", {}).get("status")=="granted", data'
+
+      - name: Deploy reviewed infrastructure change set
+        run: |
+          if [ "$STACK_EXISTS" = "true" ]; then
+            callback_url="$WEB_CALLBACK_URL"
+            logout_url="$WEB_LOGOUT_URL"
+            web_origin="$WEB_ORIGIN"
+          else
+            callback_url=""
+            logout_url=""
+            web_origin=""
+          fi
+          sam deploy \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              DeployRevision="$DEPLOY_REVISION" \
+              ExportMaxRows="$EXPORT_MAX_ROWS" \
+              DatabaseResilienceMode="$DATABASE_RESILIENCE_MODE" \
+              WebCallbackUrl="$callback_url" \
+              WebLogoutUrl="$logout_url" \
+              WebOrigin="$web_origin"
+
+      - name: Complete fresh deployment web identity binding
+        if: env.STACK_EXISTS == 'false'
+        run: |
+          domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue' --output text)
+          python - "$domain" "$GITHUB_ENV" <<'PY'
+          import re
+          import sys
+
+          domain, destination = sys.argv[1:]
+          assert re.fullmatch(r"[a-z0-9]+\.cloudfront\.net", domain), "invalid CloudFrontDomain stack output"
+          origin = f"https://{domain}"
+          with open(destination, "a", encoding="utf-8") as handle:
+              handle.write(f"WEB_ORIGIN={origin}\n")
+              handle.write(f"WEB_CALLBACK_URL={origin}/login/\n")
+              handle.write(f"WEB_LOGOUT_URL={origin}/login/\n")
+          PY
+          web_origin="https://${domain}"
+          sam deploy \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              DeployRevision="$DEPLOY_REVISION" \
+              ExportMaxRows="$EXPORT_MAX_ROWS" \
+              DatabaseResilienceMode="$DATABASE_RESILIENCE_MODE" \
+              WebCallbackUrl="${web_origin}/login/" \
+              WebLogoutUrl="${web_origin}/login/" \
+              WebOrigin="$web_origin"
+
+      - name: Apply forward database migrations
+        run: |
+          aws lambda invoke \
+            --function-name "${STACK_NAME}-migrator" \
+            --payload '{"migrate":"all"}' \
+            --cli-binary-format raw-in-base64-out \
+            migration-response.json \
+            --query '{StatusCode:StatusCode,FunctionError:FunctionError}' \
+            --output json > migration-invoke.json
+          python -c 'import json; meta=json.load(open("migration-invoke.json")); data=json.load(open("migration-response.json")); assert meta.get("StatusCode")==200 and not meta.get("FunctionError"), meta; assert data.get("status")=="ok", data; assert data.get("role_bootstrap", {}).get("status")=="granted", data'
+
+      - name: Verify authenticated backend and database path
+        run: |
+          python - <<'PY'
+          import json
+
+          event = {
+              "requestContext": {
+                  "http": {"method": "GET", "path": "/system/evidence"},
+                  "authorizer": {
+                      "lambda": {
+                          "sub": "deployment-contract-smoke",
+                          "role": "poweruser",
+                          "org_unit": "ONR-Corporate",
+                          "groups": "compass-poweruser",
+                      }
+                  },
+              }
+          }
+          with open("evidence-request.json", "w", encoding="utf-8") as handle:
+              json.dump(event, handle, separators=(",", ":"))
+          PY
+          aws lambda invoke \
+            --function-name "${STACK_NAME}-evidence" \
+            --payload fileb://evidence-request.json \
+            --cli-binary-format raw-in-base64-out \
+            evidence-response.json \
+            --query '{StatusCode:StatusCode,FunctionError:FunctionError}' \
+            --output json > evidence-invoke.json
+          python - <<'PY'
+          import json
+
+          meta = json.load(open("evidence-invoke.json", encoding="utf-8"))
+          response = json.load(open("evidence-response.json", encoding="utf-8"))
+          assert meta.get("StatusCode") == 200 and not meta.get("FunctionError"), meta
+          assert response.get("statusCode") == 200, response
+          body = json.loads(response["body"])
+          assert body.get("mode") == "live", body
+          assert body.get("health", {}).get("database") == "reachable", body
+          assert body.get("identity_decision", {}).get("role") == "poweruser", body
+          assert isinstance(body.get("recent_runs"), list), body
+          assert isinstance(body.get("recent_audit"), list), body
+          PY
+
+      - name: Read public application configuration
+        run: |
+          outputs=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' --output json)
+          python - "$outputs" >> "$GITHUB_ENV" <<'PY'
+          import json, sys
+          values = {item["OutputKey"]: item["OutputValue"] for item in json.loads(sys.argv[1])}
+          for env, key in {
+              "API_BASE_URL": "ApiBaseUrl",
+              "WEB_BUCKET": "WebBucketName",
+              "DISTRIBUTION_ID": "WebDistributionId",
+              "USER_POOL_ID": "UserPoolId",
+              "WEB_CLIENT_ID": "WebClientId",
+              "COGNITO_DOMAIN": "CognitoDomain",
+          }.items():
+              print(f"{env}={values[key]}")
+          PY
+
+      - name: Verify browser API preflight contract
+        run: |
+          python scripts/check_api_cors.py \
+            --api-base-url "$API_BASE_URL" \
+            --origin "$WEB_ORIGIN"
+
+      - name: Set up pnpm and Node
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build live frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_USE_MOCK: "false"
+          NEXT_PUBLIC_AUTH_DISABLED: "false"
+          NEXT_PUBLIC_API_BASE_URL: ${{ env.API_BASE_URL }}
+          NEXT_PUBLIC_COGNITO_AUTHORITY: https://cognito-idp.${{ env.AWS_REGION }}.amazonaws.com/${{ env.USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_DOMAIN: https://${{ env.COGNITO_DOMAIN }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ env.WEB_CLIENT_ID }}
+          NEXT_PUBLIC_COGNITO_REDIRECT_URI: ${{ env.WEB_CALLBACK_URL }}
+          NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI: ${{ env.WEB_LOGOUT_URL }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm build
+
+      - name: Publish immutable frontend build
+        run: |
+          aws s3 sync frontend/out "s3://${WEB_BUCKET}" --delete --only-show-errors
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' >/dev/null
+
+      - name: Verify public and protected boundaries
+        run: |
+          headers=$(mktemp)
+          curl --fail --silent --show-error --dump-header "$headers" --output /dev/null "${WEB_ORIGIN}/"
+          grep -Eiq '^strict-transport-security:.*max-age=63072000' "$headers"
+          grep -Eiq '^x-content-type-options:[[:space:]]*nosniff' "$headers"
+          grep -Eiq '^x-frame-options:[[:space:]]*DENY' "$headers"
+          grep -Eiq '^referrer-policy:[[:space:]]*strict-origin-when-cross-origin' "$headers"
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' "${API_BASE_URL}/system/evidence")
+          test "$status" = "401"

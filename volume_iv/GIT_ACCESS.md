@@ -1,56 +1,90 @@
-# Volume IV — Read-Only Repository Access
+# Volume IV: Read-only repository access
 
-**Solicitation:** N0001426R4002 · Factor 3
-**Repository:** Compass — the live code repository shown in the demonstration
-video (Elements 2, and referenced throughout).
+**Solicitation:** N0001426R4002, Factor 3
+**System:** Compass S&T Portfolio Intelligence
 
-> Shell: the demonstration must showcase live code repositories (L 11.2(c)).
-> This page gives evaluators read-only access to the exact code that built
-> and ran the recorded environment. Fill every `[FILL]` field and verify
-> access from an account outside the Offeror's organization before
-> submission.
+This page provides evaluator access to the exact repository revision deployed
+and shown in the technical demonstration. Replace each `EXTERNAL INPUT` value
+with an approved final value before submission.
 
 ## Access details
 
-| Field | Value |
+| Field | Submission value |
 |---|---|
-| Hosting platform | `[FILL: e.g., GitHub / GitLab private repository]` |
-| Repository URL | `[FILL: https://…/compass-demo]` |
-| Access method | `[FILL: e.g., invited read-only collaborator accounts / group access token — read_repository scope only]` |
-| Evaluator credentials or invite process | `[FILL: e.g., "send evaluator account names to <email>; invites issued within one business day" — or embed a read-only token here if the CO prefers self-service]` |
-| Tag/commit matching the recording | `[FILL: tag, e.g. volume-iv-recording, and the full commit SHA]` |
-| Access duration | Active through award; contact below for restoration if access fails |
-| POC | `[FILL: name, email, phone]` |
+| Hosting platform | `[EXTERNAL INPUT: approved Git hosting platform]` |
+| Repository URL | `[EXTERNAL INPUT: private repository URL]` |
+| Read-only access method | `[EXTERNAL INPUT: invited evaluator accounts or approved read-only credential process]` |
+| Access instructions | `[EXTERNAL INPUT: exact steps, required account, and support path]` |
+| Recording tag | `[EXTERNAL INPUT: immutable tag for the demonstrated revision]` |
+| Full commit SHA | `[EXTERNAL INPUT: 40-character SHA matching the recording]` |
+| Access start and end | `[EXTERNAL INPUT: approved availability period]` |
+| Technical support POC | `[EXTERNAL INPUT: name, email, and phone]` |
 
-**The tag above is the exact state demonstrated on video.** The recording
-shows `git log` on camera; the top commit visible there matches the tagged
-SHA. Access is read-only: evaluators can browse, clone, and diff, but not
-push.
+The recording shows the short deployed revision in System Inspector and the
+same revision from `git rev-parse --short=12 HEAD`. The full SHA above must be
+the commit referenced by the immutable recording tag.
 
-## What to look at (evaluator orientation)
+Evaluator access is read-only. It must allow browsing and cloning without
+allowing push, merge, workflow dispatch, environment access, secret access, or
+AWS role assumption.
 
-| Path | What it shows |
+## Evaluator orientation
+
+| Path | Evidence |
 |---|---|
-| `README.md` | Platform overview, open-architecture posture, quickstart |
-| `docs/CONTRACTS.md` | The locked interface contracts (DB, API, shapes) the build follows |
-| `docs/ARCHITECTURE.md` | Components, data flow, element mapping, portability seams |
-| `docs/SECURITY.md` | Zero Trust / RLS / CLS / aggregation-guard design, with a claim-verification crib sheet |
-| `template.yaml` | The single IaC template that provisioned the recorded environment |
-| `db/migrations/002_rls.sql` | FORCE row-level security + column-level security, as demonstrated |
-| `src/functions/export/app.py` | Aggregation guard (HTTP 428) + audited export path, as demonstrated |
-| `src/functions/rmf_artifact/app.py` | RMF artifact generator run live in the video — runnable offline: `python3 src/functions/rmf_artifact/app.py` |
-| `seed/SYNTHETIC-DATA-MANIFEST.md` | Per-file proof that all demonstrated data is synthetic |
+| `README.md` | Product scope, live and replay distinction, quickstart, and release gates |
+| `docs/DEMO_SCRIPT.md` | The 39-minute evidence-first sequence used for the recording |
+| `docs/CONTRACTS.md` | Database, identity, 17 protected API operations, replay, and evidence contracts |
+| `docs/ARCHITECTURE.md` | Components, data flow, portability seams, and resilience truth |
+| `docs/SECURITY.md` | Enforced controls, disclosure boundary, and production limitations |
+| `.github/workflows/quality.yml` | Clean-checkout quality and browser gates |
+| `.github/workflows/deploy.yml` | Protected-environment AWS OIDC deployment workflow |
+| `template.yaml` | Complete demonstration infrastructure, evidence route, observability, and resilience modes |
+| `db/migrations/003_security_hardening.sql` | Explicit grants, corporate GUC gate, append-only audit, approval expiry, and consumption fields |
+| `db/migrations/004_opaque_approval_capability.sql` | Opaque approval capability verifier and its narrow update grant |
+| `src/common/python/compass_common/http.py` | Centralized identity normalization and allowlisted CORS |
+| `src/functions/evidence/app.py` | Sanitized System Inspector backend projection |
+| `src/functions/export/app.py` | Exact-fingerprint aggregation guard and one-time approval consumption |
+| `scripts/prepare_demo.py` and `src/functions/migrator/demo_prep.py` | Bounded synthetic preparation, redacted preflight, and one-shot live drop contract |
+| `src/functions/rmf_artifact/app.py` | Deterministic RMF evidence generator |
+| `frontend/lib/mock/scenario-store.ts` | Persistent deterministic replay state |
+| `frontend/tests/` | Responsive and accessibility smoke coverage |
+| `seed/SYNTHETIC-DATA-MANIFEST.md` | Per-file synthetic-data statement |
 
-## Reproducing without AWS
+## Reproduction without AWS
 
-The full UI runs locally on fixture data with no cloud resources and no
-credentials (`README.md` → "Quickstart — mock mode"): `cd frontend &&
-pnpm install && pnpm dev`. The analytics model and the RMF generator also run
-offline (`src/functions/analytics/tests/`,
-`python3 src/functions/rmf_artifact/app.py`).
+```bash
+cd frontend
+pnpm install --frozen-lockfile
+NEXT_PUBLIC_USE_MOCK=true NEXT_PUBLIC_AUTH_DISABLED=true pnpm dev
+```
 
-## Contents statement
+The local UI labels this mode Replay fixture. It supports deterministic clean,
+legacy, and defective scenarios and can be reset to a known baseline. Replay
+is suitable for evaluator exploration of interaction and business rules. It is
+not evidence that AWS, Cognito, Aurora, Step Functions, Kinesis, or Bedrock ran.
 
-The repository contains no credentials or secrets (database credentials are
-generated and held by AWS Secrets Manager at deploy time), and no CUI or PII
-— all data files are machine-generated synthetic fixtures.
+The RMF artifact can also be generated offline:
+
+```bash
+python3 src/functions/rmf_artifact/app.py -o /tmp/compass-rmf.md
+```
+
+## Repository content statement
+
+The submitted recording revision must contain no committed credentials or
+secret values. Database credentials are created and held by AWS Secrets
+Manager. All demonstrated portfolio and license records are synthetic. No CUI,
+PII, classified data, or real award data may be included.
+
+## Pre-submission access test
+
+- Confirm the repository URL opens from an account outside the offeror
+  organization.
+- Confirm the evaluator can clone the recording tag.
+- Confirm the evaluator cannot push or dispatch a deployment.
+- Confirm the tag resolves to the full SHA above.
+- Confirm the SHA matches the deployed revision in the final recording.
+- Complete the approved secret and sensitive-data scan on the recording tag.
+- Confirm access stays active for the approved period.
+- Remove this checklist from the final submitted page after verification.

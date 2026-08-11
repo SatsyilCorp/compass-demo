@@ -12,7 +12,7 @@ import { NumberTick } from "./number-tick";
  * for the `compass-rise` CSS animation (motion is not a dependency here) and
  * one addition Compass needs:
  *
- *   `masked` — the value is not zero and not missing, it is withheld by
+ *   `masked`: the value is not zero and not missing, it is withheld by
  *   column-level security (viewer persona has `SELECT (amount_usd)` revoked).
  *   Rendering that as "$0" would be a lie, so the tile states it plainly.
  */
@@ -23,7 +23,7 @@ type Props = {
   /** Formatter applied to a numeric value while it animates. */
   format?: (n: number) => string;
   sublabel?: string;
-  /** Withheld by CLS — renders the masked treatment instead of the value. */
+  /** Withheld by CLS. Renders the masked treatment instead of the value. */
   masked?: boolean;
   /** Why it is masked (shown under the masked value). */
   maskedReason?: string;

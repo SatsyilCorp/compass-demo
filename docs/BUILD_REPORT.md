@@ -1,212 +1,218 @@
-# Compass — Build & Integration Report
+# Compass candidate verification report
 
-**Written by the integration review pass, 2026-08-10.** Audience: the person
-who has to deploy this stack and record the demo. Brutally honest by design:
-every claim below states whether it was *verified offline*, *fixed during this
-review*, or *cannot be verified without a live AWS deploy*.
+**Report date:** 2026-08-11
+**Purpose:** evaluator orientation and recording release gate
 
----
+This report describes the current integrated source candidate and the manual
+live verification completed in Satsyil AWS on 2026-08-11. The HA stack,
+identity preparation, fixed baseline, four Scale Runs, governed exports, CORS,
+and interactive browser path passed their stated checks. The working tree is
+not yet an exact committed revision with GitHub workflow evidence. The
+candidate is not the recording release until that evidence and one timed human
+rehearsal pass exist.
 
-## 1. What was verified offline (all passing)
+## 1. Current implementation by source inspection
 
-| Check | Result |
+| Area | Current evidence |
 |---|---|
-| `pnpm i && pnpm build` (Next.js 15 static export, strict TS) | **PASS** — 25 pages generated to `frontend/out/`, type-check clean |
-| `python3 -m py_compile` over every `src/**/*.py` + `scripts/` | **PASS** |
-| `sam validate --lint` on `template.yaml` | **PASS** ("valid SAM Template") |
-| `ruff check src scripts` | **PASS** after fixing 2 unused imports; 9 cosmetic E741 warnings remain (`l` loop vars in `license/app.py`, `rmf_artifact/app.py`, `seed_data.py`) — style only, no behavior |
-| `src/common/tests/smoke.py` (compass_common offline smoke) | **PASS** — "9 tests, fully offline" |
-| `src/functions/analytics/tests/test_topic_model.py` | **NOT RUN here** — needs `numpy` + `pytest`, not installed on this machine. Pure-offline test; run `pip install numpy pytest` and `PYTHONPATH=src/functions/analytics pytest src/functions/analytics/tests/` to verify |
-| Contract audit: all 16 CONTRACTS.md routes present in `template.yaml` AND implemented by a Lambda | **PASS** (after fix #1 below) |
-| OpenAPI document (`export/openapi.py`) covers all 16 routes | **PASS** |
-| State machine ↔ Lambda action contract (`fetch`/`validate`/`quarantine`/`persist`, `$.gate`, manifest fields) | **PASS** — field names line up end to end |
-| Repo hygiene: hardcoded account IDs, secrets/keys, real emails/PII in seed data, localhost leaks | **CLEAN** — none found. Only `example.com` demo emails in RUNBOOK; `localhost:3000` appears only as documented dev defaults |
+| API | 25 JWT-protected method-and-path operations across 23 URL paths, including eight Scale operations, the reviewer inbox, and `GET /system/evidence` |
+| Identity | Shared Cognito group normalization for native JWT and request-authorizer events; verified groups override forwarded roles and conflicting organizations fail closed |
+| CORS | Exact-origin allowlist in API Gateway and shared Lambda response helpers |
+| Database security | FORCE RLS, non-owner runtime role, corporate GUC gate, explicit runtime grants, and append-only audit trigger |
+| Export approval | Exact `exp-` fingerprint, separate-persona decision, opaque token with stored SHA-256 verifier, expiration, row lock, and one-time consumption |
+| Backend visibility | Poweruser-only System Inspector with sanitized application projections and explicit live or replay mode |
+| Delivery | Pull-request quality workflow and manually dispatched protected-environment deployment through AWS OIDC |
+| Demo preparation | Explicitly confirmed, synthetic-only bounded reset and seed; fixed non-triggering staged fixtures; real baseline analytics; redacted readiness receipt; one-shot live drop release |
+| Scale data plane | Deterministic six-domain generator, maximum 25,000 records per partition, one-active-run gate, Standard workflow, SQS and DLQ, DynamoDB ledger, governed lake zones, Glue, Athena, and asynchronous Parquet export |
+| Observability | 14-day API, workflow, and centralized application log groups, function-specific streams, X-Ray, 11 alarms, and 2 CloudWatch dashboards |
+| Database resilience | Satsyil HA deployment with one private encrypted writer and one reader, 14-day backups, and deletion protection |
+| Frontend | Responsive mission shell, mobile drawer, server-backed scoped dashboard filters, tab-scoped evidence selection, Scale receipt Decision Brief, presenter rehearsal guide, accessible interactions, interactive Scale Lab, and static deployment |
+| Replay | One persistent deterministic scenario shared by ingest, catalog, lineage, analytics, dashboard, approvals, export, stream, and evidence |
+| Lineage | Query-based `/catalog/lineage/?batch=<id>` route supports batches created after static frontend build |
+| Activity ticker | Ordered database projection is authoritative; recent Kinesis receipts merge by stable ID; missing transport organization scope is corporate-only |
+| Deployed compute | 17 Lambda functions behind the narrow API, workflow, queue, and data adapters |
 
-## 2. Integration defects found and fixed in this pass
+## 2. Required automated gate
 
-These were real live-mode breakages (mock mode masked all of them, because the
-mock fixtures are typed against `frontend/lib/types.ts` but the Lambdas were
-not):
+`.github/workflows/quality.yml` is the release authority for source checks. It
+runs these categories from a clean checkout:
 
-1. **`GET /dashboard` was wired to the wrong Lambda.** `template.yaml` routed
-   it to `SummarizeFunction`, whose response shape (`as_of/org_unit/series{...}`)
-   does not match the locked `DashboardResponse` contract the frontend renders.
-   The purpose-built `src/functions/dashboard/` (which matches the contract
-   exactly) was never referenced by the template — the phase-2 flag was
-   correct. **Fixed:** added `DashboardFunction` (VPC, secret+KMS policies) and
-   moved the `GET /dashboard` event to it; `SummarizeFunction` keeps
-   `GET /anomalies` and the weekly-summary direct invoke.
-   *Side effect to know:* the `?refresh=true` corporate summary-regeneration
-   branch in summarize is no longer HTTP-reachable; the weekly summary is
-   still generated via direct invoke `{"action":"weekly_summary"}`.
-2. **`POST /chat` request/response field mismatch.** Frontend sends
-   `{message}` and renders `res.model`; the Lambda required `question` and
-   returned `model_id`. Every live chat call would have been a 400, and the
-   model line would render `undefined`. **Fixed** in `rag_chat/app.py`:
-   accepts `message` (with `question` as alias), returns both `model` and
-   `model_id`.
-3. **`GET /analytics/{run_id}` shape did not match `AnalyticsRunDetail`.**
-   The stored `trend_jsonb` is a rich object (`{by_fy, window, growth_pct}`)
-   but the contract's `Topic.trend` is `[{period, value}]` — the live
-   analytics page would have crashed on `topics[0].trend.map`. Topics also
-   lacked `grant_count` / `total_funding_usd`, and the run lacked `status`.
-   **Fixed** in `analytics/app.py`: topics are reshaped to the contract
-   (`trend` = per-FY dominant-grant counts, full model output preserved as
-   `trend_detail`), `grant_count` computed, `total_funding_usd` summed via the
-   CLS-guarded `grants_curated_corp` view for the corporate persona only
-   (null/masked otherwise, inside a SAVEPOINT so a missing grant fails closed),
-   `status: "completed"` added, `metrics.grants_scored` aliased from `n_docs`
-   for the RecommendationPanel. POST now returns `status: "completed"`
-   (was non-contract `"complete"`).
-4. **Cognito callback URL mismatch.** The SPA's OIDC `redirect_uri` is
-   `/login/` (react-oidc-context + `trailingSlash: true` static export) but
-   the template registered `http://localhost:3000/callback` — live sign-in
-   would fail with `redirect_mismatch` (there is no `/callback` page at all).
-   **Fixed:** template registers `/login/` for callback and logout;
-   RUNBOOK §3/§7 URLs corrected to `https://<CloudFrontDomain>/login/`.
-5. **Hygiene scrub:** removed internal project names (`GovSentry`,
-   `exim-eol-poc`) and `~/Documents/...` home-directory paths from
-   code comments across template.yaml, frontend components, and Lambda
-   docstrings (replaced with generic provenance wording). "Satsyil Corp"
-   UI branding is intentional and retained. Re-verified with grep: clean.
-6. Removed 2 unused imports (ruff F401) in `rag_chat/rag.py`,
-   `rag_chat/retrieval.py`.
-
-All fixes re-verified: `py_compile`, `sam validate --lint`, and a full
-`pnpm build` pass after the changes.
-
-## 3. Response-shape audit (live Lambda vs. frontend contract)
-
-Verified by reading both sides, route by route:
-
-| Route | Verdict |
+| Gate | Failure meaning |
 |---|---|
-| `GET /me` | Match (`sub/email/display_name/role/org_unit/groups`) |
-| `GET /catalog` | Match + extras (formula/masking metadata — additive, safe). Note: `quality_score` can be **null** for a batch with no recorded gate run; the TS type says `number`. UI renders it through a score chip — cosmetic risk only |
-| `GET /catalog/{id}/lineage` | Match (`run_id/nodes/edges`, honest empty graph + `note` when none recorded) |
-| `POST /ingest/simulate` | Match; returns 202 (fetch wrapper accepts any 2xx) |
-| `GET /ingest/status` | Match (`batches[]` with quality rules, overall_score, origin) |
-| `GET /stream/recent` | Match (`records[]` + `source: kinesis|database`) |
-| `POST /analytics/run`, `GET /analytics/{run_id}` | Match **after fix #3** |
-| `GET /dashboard` | Match **after fix #1** (dashboard/app.py mirrors `DashboardResponse` field-for-field, Decimal→float coercion included) |
-| `POST /chat` | Match **after fix #2** |
-| `GET /anomalies` | Match + extras (`summary/filters`); served by SummarizeFunction per template (approvals/app.py contains a second, richer implementation — unrouted, documented as such in its docstring) |
-| `POST /approvals` | Match (`{approval: {...}}` + `approval_token` — the token feeds /export guard clearing) |
-| `GET /licenses` | Match + extras (`alerts/summary/thresholds` — additive) |
-| `POST /export` | Match (`export_id/row_count/format/download_url/audited`); 428 body matches `ExportApprovalRequiredBody` exactly |
-| `GET /openapi.json` | Served OpenAPI 3.1 with all routes |
+| Repository content policy | A tracked or untracked source file contains the prohibited U+2014 code point |
+| Python lint | Backend or operator code fails the configured static rules |
+| Production dependency audits | A Python or frontend runtime dependency fails the configured audit |
+| Offline tests | Identity, CORS, database contract, analytics, evidence, export, or other function tests fail |
+| Migration synchronization | Packaged migrator SQL differs from root source SQL |
+| SAM validation and build | Infrastructure is invalid or deployable artifacts cannot be produced |
+| Frontend typecheck | Live or replay contracts do not satisfy TypeScript |
+| Replay invariants | Cross-screen deterministic state or quarantine behavior is inconsistent |
+| Static frontend build | The deployable site cannot be exported |
+| Responsive browser smoke | Core routes, mobile navigation, or accessibility checks fail |
 
-Mock fixtures are typed against the same `lib/types.ts` and compile under
-strict TS, so mock ⇄ live shape parity holds wherever the table above says
-Match.
+The recording tag must point to a commit whose quality workflow is green. A
+local pass is useful but does not replace the clean-checkout workflow record.
 
-Known cosmetic seam (not fixed, low risk): several Lambdas serialize
-timestamps via `json.dumps(default=str)`, which renders Python datetimes as
-`"2026-08-10 19:56:47+00:00"` (space, not ISO-8601 `T`). Fields the UI parses
-with `new Date()` may misparse in stricter engines (Safari). Where the code
-explicitly calls `.isoformat()` (catalog, approvals, licenses, stream ticks)
-this is a non-issue; dashboard/analytics/summarize rows rely on `default=str`.
-If a date renders "Invalid Date" during rehearsal, this is why.
+## 3. Controlled deployment gate
 
-## 4. What still needs a live AWS deploy to verify
+`.github/workflows/deploy.yml` is manually dispatched into the protected demo
+environment. The reviewed workflow:
 
-Nothing below can be validated offline; all of it is exercised only by a real
-deploy + the RUNBOOK smoke checks:
+1. obtains short-lived AWS credentials through OIDC
+2. stamps the short source revision
+3. validates the protected export-threshold and database-resilience values
+4. stages migrations and container-builds backend artifacts
+5. sends the additive source migrations to the deployed migrator before code
+   on an existing stack
+6. derives the CloudFront origin and Cognito `/login/` values from stack
+   outputs, using an automatic two-phase deployment for a fresh stack
+7. deploys the SAM stack with those reviewed policy values
+8. invokes the newly bundled migrations with `{"migrate":"all"}`
+9. requires `ok` and a `granted` runtime-role bootstrap from both applicable
+   migration passes
+10. builds the frontend with live identity and API values
+11. publishes static output and invalidates CloudFront
+12. checks the expected public security headers and confirms the UI is
+    reachable
+13. checks that unauthenticated `GET /system/evidence` returns 401
 
-- Aurora provisioning, the migrator run (`001_schema` + `002_rls`), the
-  `GRANT compass_app TO CURRENT_USER` role bootstrap, and that
-  RLS/CLS actually behave as designed under the two personas (the biggest
-  demo claim — rehearse the persona switch explicitly).
-- pgvector extension availability on Aurora PG 16.4 (`CREATE EXTENSION vector`).
-- The intake state machine end-to-end (S3 → EventBridge → Express SFN →
-  fetch/validate/persist), including the quarantine path with
-  `drop_incompatible_bad.json`.
-- Bedrock model access (`amazon.nova-lite-v1:0`, `amazon.titan-embed-text-v2:0`)
-  — account-level opt-in required (RUNBOOK §0); chat/summary/embeddings all
-  fail without it.
-- Cognito Hosted UI + TOTP enrollment + the JWT authorizer round trip.
-- CloudFront/OAC/KMS/WAF serving path and the path-rewrite function.
-- Kinesis ticker (schedule → put_records → `GET /stream/recent` read path).
-- `sam build --use-container` producing working arm64 layers
-  (psycopg2-binary, numpy, PyJWT+cryptography) — a macOS-native build WILL
-  produce broken layers (RUNBOOK troubleshooting covers it).
-- Analytics runtime at real corpus size (offline unit tests exist but were
-  not run here — no numpy on this machine).
-- `/catalog/[id]` static params: the exported site pre-renders lineage pages
-  for the **fixture** batch ids (or live ids if the API is reachable at build
-  time). A live batch created *after* the frontend build (e.g. the three demo
-  drops) has **no static page** → CloudFront 404 on `/catalog/<new-batch>/`.
-  For the recording either (a) rebuild+resync the frontend after the demo
-  drops are ingested, or (b) demo lineage from a pre-seeded batch. This is a
-  real recording-day tripwire — plan for it.
+The GitHub environment configuration and AWS OIDC trust policy are external
+deployment controls. Verify required reviewers, allowed branches, role trust,
+and environment values before the recording release.
 
-## 5. Day-0 human steps to deploy (condensed; full detail in docs/RUNBOOK.md)
+## 4. Contract reconciliation
 
-1. **Prereqs:** AWS admin creds (us-east-1 only — WAF is CLOUDFRONT scope),
-   AWS CLI v2, SAM CLI, **Docker**, Python 3.11+, Node 20+, pnpm. Enable
-   Bedrock model access for Nova Lite + Titan Embed v2 in the console.
-2. `cp samconfig.toml.template samconfig.toml` (leave `Web*` empty).
-3. `./src/functions/migrator/prepare_migrations.sh && sam build --use-container && sam deploy`
-   (~20–30 min; capture stack outputs).
-4. **Second deploy:** fill `WebCallbackUrl=https://<CloudFrontDomain>/login/`,
-   `WebLogoutUrl=https://<CloudFrontDomain>/login/`,
-   `WebOrigin=https://<CloudFrontDomain>` in samconfig; `sam deploy` again.
-5. Migrate: `aws lambda invoke --function-name compass-demo-migrator
-   --payload '{"migrate":"all"}' ...` — expect `001_schema`, `002_rls` applied.
-6. Seed: upload `seed/grants_portfolio.json` to `s3://<RawBucket>/drops/`
-   (pipeline curates it); load `seed/licenses.json` via the RUNBOOK §5 inline
-   SQL snippet. **Do not** upload the three demo drops before recording.
-7. Enroll `demo-poweruser@` / `demo-viewer@` (admin-create, set password, add
-   to `compass-poweruser` / `compass-viewer` groups), then complete each
-   account's **TOTP enrollment in the Hosted UI well before recording day**.
-8. Frontend: `.env.local` with `USE_MOCK=false`, `AUTH_DISABLED=false`, the
-   stack outputs, and both redirect URIs `= https://<CloudFrontDomain>/login/`;
-   `pnpm build`; `aws s3 sync out/ s3://<WebBucket>/ --delete`; CloudFront
-   invalidation.
-9. Run `POST /analytics/run` once as poweruser so dashboard/analytics are
-   populated; redeploy with `ExportMaxRows=250` so the 428 guard trips on
-   camera; rehearse per `docs/DEMO_SCRIPT.md`.
+The following previously risky seams are now represented in the candidate:
 
-## 6. Gaps & risks vs. the 7 elements / 5 prompts / Volume IV
+- Every handler uses a shared identity contract that derives the two personas
+  from Cognito groups.
+- A forwarded role or organization cannot override the verified group mapping.
+- CORS no longer uses a wildcard Lambda response.
+- The runtime database role no longer has broad write access to every table.
+- Corporate funding access requires both the corporate view and corporate
+  transaction context.
+- `audit_log` has no runtime mutation path and has a trigger backstop.
+- Export approval cannot be unbound, reused after expiry, or spent twice.
+- Backend evidence is no longer a build-time architecture snapshot only.
+- Replay data no longer fabricates independent contradictory state on each
+  page.
+- A live batch lineage page no longer depends on static route generation.
+- CI and controlled deployment are executable repository workflows, not a
+  narrated future state.
 
-**Coverage is genuinely complete on paper**: every L 11.3 element and L 11.4
-prompt has running code, a route, a page, and a scripted segment
-(`docs/ARCHITECTURE.md` §3 mapping, `docs/DEMO_SCRIPT.md`). Honest residuals:
+## 5. Live acceptance evidence
 
-- **Element 2 (IaC):** RMF artifact + migrator are direct-invoke only (per
-  contract). The demo depends on the presenter driving them from a terminal —
-  rehearse those two invokes; they have no UI fallback.
-- **Element 3:** the "streaming" story is a 1-minute-scheduled Kinesis
-  producer with an honest DB fallback labeled in the response (`source`).
-  Fine, but don't narrate it as high-throughput streaming.
-- **Element 5:** the topic model is transparent TF-IDF+NMF (deliberate,
-  documented). `metrics.coherence` is not computed — the UI renders "—".
-- **Element 6:** the exec summary on the dashboard page is computed
-  client-side + `POST /chat` narrative; the richer Bedrock weekly summary in
-  `summarize/` is direct-invoke only after fix #1. If the script promises "a
-  stored Bedrock weekly brief on the dashboard", adjust either the script or
-  re-route (`GET /dashboard/summary`) — currently it is NOT on the page.
-- **Element 7:** parquet requires uncommenting pyarrow in
-  `export/requirements.txt` + container rebuild (RUNBOOK §8). Without it the
-  API honestly downgrades to CSV with a note — the script has a branch, but
-  decide before recording which branch you're on.
-- **Volume IV shells** (`volume_iv/*.md`) are templates with `[FILL]` fields —
-  timestamps, presenter names, and links must be filled after recording; Key
-  Personnel names must match Attachment 7 exactly.
-- **Unrouted duplicate:** `approvals/app.py` also implements `GET /anomalies`
-  (summarize's is the routed one). Both are real code; the docstring
-  discloses the tie-breaker. Acceptable, but an evaluator reading the repo
-  may ask — the answer is in the approvals docstring.
-- **Not load-tested.** Nothing here has seen concurrency; Aurora min 0.5 ACU
-  cold-resume may add seconds to the first query after idle. Warm the stack
-  (load the dashboard, run one chat) minutes before recording.
+The following checks passed against the Satsyil HA deployment on 2026-08-11:
 
-## 7. Bottom line
+| Observed check | Result |
+|---|---|
+| Stack | Deployment completed with 17 functions, 11 alarms, and 2 dashboards |
+| Database | Private encrypted Aurora writer and reader available, 14-day backups configured, deletion protection enabled, all four migrations applied, and runtime-role bootstrap granted |
+| Identity | Poweruser, reviewer, and viewer accounts enabled with their expected groups and distinct TOTP factors |
+| Preparation | Redacted receipt reported ready with all 19 of 19 checks passing |
+| API contract | OpenAPI described 25 protected operations across 23 URL paths |
+| CORS | Exact-origin verification passed all 25 protected operations |
+| Browser | Real Cognito password and TOTP login loaded all nine screens without `Failed to fetch` or browser command errors; Scale controls worked, the 1M cost gate was enabled, and the selected 1M receipt replaced the 400-grant Decision Brief with 1,000,000 total records and 200,000 grants |
+| Public protection | CSP, Permissions Policy, HSTS, and WAF were present on the live boundary |
+| Scale data plane | 1K, 10K, 100K, and 1M runs completed, reconciled, and produced ready governed Parquet exports |
+| Local automation | 209 backend tests, 28 scenario tests, 30 browser tests with 6 intentional mobile skips, dependency audits, lint, typecheck, SAM validation, container build, and database security checks passed |
 
-The codebase is coherent, contract-conformant (after the four seam fixes
-above), compiles/builds clean on all three toolchains that run offline, and
-has no secrets/PII/hardcoded-account leakage. The four fixes in §2 were the
-kind that only bite in live mode — which is exactly where the recording runs
-— so a full live rehearsal (personas, ingest drops, analytics run, export
-guard, chat) is **mandatory** before recording day. Budget one working day
-for the first deploy + rehearsal loop.
+The direct acceptance path invoked the deployed Scale Control Lambda through
+AWS IAM with a staged `/prod` event. It exercised the production route handler
+and live SQS, Lambda, S3, DynamoDB, Step Functions, Glue, Athena, and export
+flow. It bypassed Cognito, API Gateway transport, WAF, and the browser. Those
+interfaces were verified separately through the real Cognito browser pass and
+the 25-operation CORS check.
+
+| Profile | Partitions | Duration | Quality | Passed | Quarantined | Anomalies | Export rows | Planned | Accrued estimate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1K | 6 | 21.351 s | 98.90 | 989 | 11 | 143 | 989 | $0.01898818 | $0.01227206 |
+| 10K | 6 | 20.329 s | 98.91 | 9,891 | 109 | 1,403 | 9,891 | $0.01915314 | $0.01232190 |
+| 100K | 11 | 25.853 s | 98.92 | 98,921 | 1,079 | 13,727 | 98,921 | $0.03380464 | $0.01785423 |
+| 1M | 41 | 72.615 s | 98.98 | 989,852 | 10,148 | 137,852 | 989,852 | $0.13937136 | $0.05309299 |
+
+The 1M run analyzed the full 200,000-record grant corpus. Planned incremental
+cost totaled $0.21131732 and accrued model estimates totaled $0.09554118.
+These values are estimates, not observed billing.
+
+The technical acceptance matrix is complete. Recording release still requires
+an exact committed revision with successful quality and deployment workflow
+records and a continuous human rehearsal between 38 and 40 minutes.
+
+## 6. Strategic prompt truth table
+
+| Prompt | Demonstrated capability | Explicit boundary |
+|---|---|---|
+| Legacy sustainment | Compatible renamed schema adapter, canonical contract, and quarantine for incompatible input | This demonstrates an incremental adapter pattern, not migration of an actual legacy system |
+| Financial integration | Governed award obligations, fiscal-year and program trends, anomalies, and a computed even-spend baseline | No appropriation, PB, or authoritative budget-authority feed is loaded |
+| Zero Trust and IL4 or IL5 | MFA, JWT, RLS, CLS, private subnets, KMS, WAF, audit, Bedrock boundary, and generated RMF candidates | Commercial demo with equivalent controls; no ATO or IL4 or IL5 accreditation |
+| Disaster recovery | Source-reproducible stack plus deployed HA mode with one reader, 14-day backups, and deletion protection | No cross-region DR and no tested production RTO or RPO |
+| Vendor and lifecycle management | License register, entitlements, utilization, dataset names, and renewal urgency | Renewal timing is browser-computed; no scheduled notification job and no relational dataset foreign keys |
+
+## 7. Scale posture
+
+Exhibit B provides a target baseline of approximately 500 to 1,000 users, 100
+to 200 concurrent users, 10 to 20 sources, 1 to 20 TB, three ingestion
+velocities, 5 to 10 applications, 20 to 30 dashboards, and 10 to 20 production
+models.
+
+The demonstration now includes bounded measured evidence through 1,000,000
+synthetic records, 41 partitions, a ready 989,852-row Parquet export, and
+full-corpus deterministic intelligence over 200,000 grants. Aurora Serverless
+scaling, stateless Lambda handlers, event-driven intake, on-demand Kinesis,
+static web delivery, and replaceable adapters also provide design evidence.
+
+This is not evidence for the Exhibit B user or concurrency ranges, sustained
+load, unlimited load, 1 to 20 TB, the stated application, dashboard, or model
+counts, Government data, or an accredited environment. Those claims require
+separate tests in the target landing zone.
+
+## 8. Recording constraints
+
+- The target run is 39:15 and must remain below 50:00.
+- The seven scenario elements appear in required order.
+- All five strategic prompts are explicitly named and indexed.
+- The primary proof uses the live service.
+- Replay is identified as a separate evaluator and rehearsal mode.
+- The video is one continuous take.
+- The screen shows the live application, terminal, and repository only.
+- Presenter Guide is closed before recording.
+- No slides, marketing overlays, post-production edits, or generated claims
+  are added to the video.
+- Key Personnel lead and narrate the technical content.
+
+## 9. External inputs still required
+
+The implementation must not invent these values:
+
+- recording date and final runtime
+- actual timestamps
+- presenter names and exact proposed positions
+- video URL and password
+- repository URL and access method
+- recording tag and full commit SHA
+- offeror legal-name confirmation
+- evaluator access duration and support contact
+- GitHub environment and OIDC deployment configuration
+- Bedrock model-access confirmation for the final recording path
+- actual database instance placement before any AZ-specific narration
+- exact-commit controlled deployment and quality workflow records
+- final timed human rehearsal result
+
+The files under `volume_iv/` label each of these as `EXTERNAL INPUT`.
+
+## 10. Release decision
+
+Release the candidate for recording only when all conditions are true:
+
+1. Quality workflow is green on the exact commit.
+2. Controlled deployment is green on the exact commit.
+3. All four migrations are present in the deployed database. Verified on 2026-08-11.
+4. The bounded preparation receipt says ready for the exact fixture revision. Passed 19 of 19 checks on 2026-08-11.
+5. The complete technical live acceptance matrix passes. Passed in Satsyil on 2026-08-11.
+6. A continuous rehearsal finishes between 38 and 40 minutes.
+7. No narration claim exceeds the boundaries in this report.
+8. Volume IV access values have owners and completion dates.
+
+Until then, the correct status is live acceptance candidate, not final
+recording release. `recording_release` remains false.

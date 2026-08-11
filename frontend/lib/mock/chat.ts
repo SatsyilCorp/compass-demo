@@ -1,8 +1,8 @@
 /**
- * POST /chat — fixture. Element 6 (NL Q&A, RAG over curated grants via
+ * POST /chat fixture. Element 6 (NL Q&A, RAG over curated grants via
  * Bedrock in the deployed system). Canned but grounded in the same
  * synthetic portfolio the rest of the mock data uses, with real citations
- * into it — not a generic chatbot echo.
+ * into it, not a generic chatbot echo.
  */
 import type { ChatCitation, ChatRequest, ChatResponse, Role } from "@/lib/types";
 import { visibleGrants } from "./grants";
@@ -23,7 +23,7 @@ export function answerChat(req: ChatRequest, role: Role | null, orgUnit: string 
 
   const answer =
     top.length > 0
-      ? `Based on ${top.length} matching grant${top.length === 1 ? "" : "s"} in the portfolio visible to your role, ${top[0]!.program_area} is the most relevant area — see "${top[0]!.title}" (${top[0]!.grant_no}). ${
+      ? `Based on ${top.length} matching grant${top.length === 1 ? "" : "s"} in the portfolio visible to your role, ${top[0]!.program_area} is the most relevant area. See "${top[0]!.title}" (${top[0]!.grant_no}). ${
           role === "viewer" ? "Note: award amounts are masked for the viewer role per column-level security." : ""
         }`.trim()
       : "No grants in your visible portfolio match that question. Try asking about a program area (e.g. Autonomous Systems, Undersea Warfare, Directed Energy).";

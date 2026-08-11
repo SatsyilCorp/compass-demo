@@ -1,4 +1,4 @@
-# analytics — topic model + funding anomalies
+# analytics - topic model + funding anomalies
 
 `POST /analytics/run` / `GET /analytics/{run_id}` (see `docs/CONTRACTS.md`, element 5).
 
@@ -41,4 +41,4 @@ python3 -m venv .venv && .venv/bin/pip install numpy==2.2.6
 .venv/bin/python src/functions/analytics/tests/test_topic_model.py
 ```
 
-Runs against `seed/grants_portfolio.json` (synthetic corpus) — no AWS, no DB.
+Runs against `seed/grants_portfolio.json` (synthetic corpus) - no AWS, no DB.

@@ -13,15 +13,15 @@ import { LineageGraph } from "./lineage-graph";
 import { formatInt } from "./format";
 
 /**
- * Element 4 — end-to-end lineage graph for one dataset (batch).
+ * Element 4 - end-to-end lineage graph for one dataset (batch).
  *
  * Batch id resolution order:
- *   1. `?batch=<id>` query param  — served by the STATIC /catalog/lineage/ page.
+ *   1. `?batch=<id>` query param  - served by the STATIC /catalog/lineage/ page.
  *      This is the path the catalog table links to, and the only one that works
  *      for a batch ingested AFTER the frontend was built (e.g. a live demo
  *      drop): `output: 'export'` pre-renders a fixed set of dynamic segments,
  *      so a brand-new id under /catalog/<id>/ would 404 at CloudFront.
- *   2. `/catalog/<id>/` path segment — retained for the pre-rendered batches
+ *   2. `/catalog/<id>/` path segment - retained for the pre-rendered batches
  *      and any existing bookmarks.
  */
 export function LineageView() {
@@ -74,12 +74,12 @@ export function LineageView() {
       </Link>
 
       <PageHeader
-        kicker="Element 4 · Lineage"
+        kicker="Mission flow | Trace"
         icon={<GitBranch className="size-[18px]" aria-hidden />}
         title={entry ? entry.dataset_name : "Dataset lineage"}
         lead={
           entry
-            ? `End-to-end trace for run ${entry.run_id} — source file → quality gate → curated table → topic model → executive dashboard.`
+            ? `End-to-end trace for run ${entry.run_id} - source file → quality gate → curated table → topic model → executive dashboard.`
             : "Source file → quality gate → curated table → topic model → executive dashboard."
         }
         actions={

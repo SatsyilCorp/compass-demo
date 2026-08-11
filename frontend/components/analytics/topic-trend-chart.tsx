@@ -13,7 +13,7 @@ const TOOLTIP_STYLE = {
 } as const;
 
 /**
- * Emerging-topic trend chart — grant count per topic across fiscal years.
+ * Emerging-topic trend chart - grant count per topic across fiscal years.
  * One line per topic, colored by the same fixed slot order as
  * <TopicList>'s dots so identity carries across both views (never re-cycled
  * per filter). A legend is always present for ≥2 series per the dataviz

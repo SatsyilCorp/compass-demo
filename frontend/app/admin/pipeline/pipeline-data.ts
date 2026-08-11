@@ -1,9 +1,9 @@
 /**
  * Data mirror of the deployed intake state machine
- * (statemachines/intake.asl.yaml) — an AWS Step Functions EXPRESS workflow
+ * (statemachines/intake.asl.yaml) - an AWS Step Functions EXPRESS workflow
  * fired by RawObjectCreatedRule (every object created in the raw bucket) and
  * by POST /ingest/simulate. This is a build-time snapshot of the real ASL
- * definition, not a live parse of it — kept in one file so drift is a single
+ * definition, not a live parse of it - kept in one file so drift is a single
  * diff to review.
  */
 
@@ -127,7 +127,7 @@ export const PIPELINE_STATES: PipelineState[] = [
     kind: "Task",
     lambda: "QualityGateFunction",
     action: "quarantine",
-    comment: "Batch below threshold — held in grants_raw with a batch anomaly. Nothing is persisted.",
+    comment: "Batch below threshold - held in grants_raw with a batch anomaly. Nothing is persisted.",
     next: "Quarantined",
     retry: "Lambda faults × 3 (backoff ×2)",
     catch: "States.ALL → Failed",
@@ -162,7 +162,7 @@ export const PIPELINE_STATES: PipelineState[] = [
     id: "Failed",
     kind: "Fail",
     comment:
-      "Every Task retries transient Lambda faults and catches everything else here — an ingest that silently \"succeeds\" after an error is worse than one that stops loudly.",
+      "Every Task retries transient Lambda faults and catches everything else here - an ingest that silently \"succeeds\" after an error is worse than one that stops loudly.",
     excerpt: 'Failed:\n  Type: Fail\n  Error: CompassIntakeFailed\n  Cause: "Intake pipeline failed. ..."',
   },
 ];
@@ -176,8 +176,8 @@ export function stateById(id: string): PipelineState {
 }
 
 /**
- * Environment variables the intake/quality-gate Lambdas actually read —
- * src/functions/quality_gate/app.py + rules.py — the levers that decide
+ * Environment variables the intake/quality-gate Lambdas actually read:
+ * src/functions/quality_gate/app.py + rules.py - the levers that decide
  * gate/curate/quarantine, not just a description of the workflow.
  */
 export const RUNTIME_CONFIG: { key: string; value: string; note: string }[] = [
@@ -189,7 +189,7 @@ export const RUNTIME_CONFIG: { key: string; value: string; note: string }[] = [
   {
     key: "QUALITY_PASS_THRESHOLD",
     value: "90 (default)",
-    note: "Batch row pass-rate needed to curate — this is what the QualityGate choice's $.gate is computed from.",
+    note: "Batch row pass-rate needed to curate - this is what the QualityGate choice's $.gate is computed from.",
   },
   {
     key: "QUALITY_FY_MIN / QUALITY_FY_MAX",
@@ -204,11 +204,11 @@ export const RUNTIME_CONFIG: { key: string; value: string; note: string }[] = [
   {
     key: "EMBED_ON_INGEST",
     value: "true (default)",
-    note: "Persist embeds each curated abstract with Titan v2 for the RAG chat route (element 6).",
+    note: "Persist embeds each curated abstract with Titan v2 for retrieval-grounded mission chat.",
   },
   {
     key: "EMBED_MAX_ROWS",
     value: "200 (default)",
-    note: "Cap on embedding calls per batch — a slow model call never holds the write transaction open.",
+    note: "Cap on embedding calls per batch - a slow model call never holds the write transaction open.",
   },
 ];

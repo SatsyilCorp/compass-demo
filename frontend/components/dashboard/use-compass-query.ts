@@ -11,7 +11,7 @@ import { useAppAuth } from "@/lib/auth/use-app-auth";
  *
  *  1. **Persona correctness.** `lib/auth/token-sync.tsx` publishes the bearer
  *     token / role / org_unit into `lib/api.ts`, but it lives in `Providers`
- *     — a *parent* — and React runs child effects before parent effects. On
+ *     (a parent), and React runs child effects before parent effects. On
  *     first paint a page's fetch would therefore fire before the persona is
  *     published and the mock RLS filter would see `org_unit = null` (zero
  *     rows). Publishing it here too (idempotent, same values) makes the very
@@ -33,13 +33,16 @@ export function describeError(e: unknown): string {
   if (e instanceof ApiError) {
     const body = e.body as { error?: string; message?: string } | null;
     const detail = body?.error ?? body?.message;
-    return detail ? `HTTP ${e.status} — ${detail}` : `HTTP ${e.status}`;
+    return detail ? `HTTP ${e.status}: ${detail}` : `HTTP ${e.status}`;
   }
   if (e instanceof Error) return e.message;
   return "Unexpected error";
 }
 
-export function useCompassQuery<T>(loader: () => Promise<T>): QueryState<T> {
+export function useCompassQuery<T>(
+  loader: () => Promise<T>,
+  queryKey = "default",
+): QueryState<T> {
   const auth = useAppAuth();
 
   // The caller passes an inline arrow; keep it in a ref so a new function
@@ -79,7 +82,7 @@ export function useCompassQuery<T>(loader: () => Promise<T>): QueryState<T> {
     return () => {
       cancelled = true;
     };
-  }, [isLoading, idToken, role, orgUnit, nonce]);
+  }, [isLoading, idToken, role, orgUnit, nonce, queryKey]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   return { data, error, loading, reload };

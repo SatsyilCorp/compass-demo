@@ -1,4 +1,4 @@
--- 001_schema.sql — Compass core schema (idempotent)
+-- 001_schema.sql - Compass core schema (idempotent)
 -- Applied via the migrator Lambda in-VPC. All objects live in schema `compass`.
 
 CREATE SCHEMA IF NOT EXISTS compass;

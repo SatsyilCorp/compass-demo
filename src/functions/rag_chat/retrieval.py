@@ -1,18 +1,18 @@
 """pgvector retrieval over ``grants_curated.abstract_embedding``.
 
 Adapted from the ``satsyil_search.pgvector`` building block
-(the satsyil-blocks library, satsyil_search) — same shape: a pure SQL
+(the satsyil-blocks library, satsyil_search) - same shape: a pure SQL
 builder that unit-tests with no database, plus a thin executor that takes a
 live connection. Specialized here for the Compass grants table:
 
 * cosine distance (``<=>``) over the Titan-v2 1024-dim ``abstract_embedding``;
 * returns ``similarity = 1 - cosine_distance`` so the UI can show relevance;
-* ``amount_usd`` is DELIBERATELY not selected — it is column-revoked from
+* ``amount_usd`` is DELIBERATELY not selected - it is column-revoked from
   ``compass_app`` (002_rls.sql CLS), and chat answers must not leak dollars;
 * rows with no embedding yet (mid-ingest) are excluded.
 
 RLS: the caller must run :func:`search_grants` inside
-``compass_common.db.set_org(conn, claims.org_unit)`` — the SELECT then only
+``compass_common.db.set_org(conn, claims.org_unit)`` - the SELECT then only
 sees rows the caller's org is allowed to see, so retrieval (and therefore the
 answer) respects row-level security by construction.
 """
@@ -40,7 +40,7 @@ def embedding_to_vector_literal(embedding: Sequence[float]) -> str:
 def build_grant_search_sql() -> str:
     """Parameterized cosine-ranked search over curated grants.
 
-    Params (positional): ``(vector_literal, vector_literal, top_k)`` — the
+    Params (positional): ``(vector_literal, vector_literal, top_k)`` - the
     vector appears twice (similarity expression + ORDER BY).
     """
     cols = ", ".join(GRANT_COLUMNS)

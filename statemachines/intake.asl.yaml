@@ -1,7 +1,7 @@
-# Compass intake pipeline — EXPRESS workflow.
+# Compass intake pipeline - EXPRESS workflow.
 #
-# Fired by the RawObjectCreatedRule EventBridge rule whenever an object lands in
-# the raw bucket, and by POST /ingest/simulate (which sends the same shape).
+# Fired by the RawObjectCreatedRule EventBridge rule whenever an object lands
+# under the raw bucket's drops/ prefix, and by POST /ingest/simulate.
 #
 # Input: an S3 "Object Created" event; only `$.detail` is read.
 #   { "detail": { "bucket": { "name": ... }, "object": { "key": ..., "size": ... } } }
@@ -14,7 +14,7 @@
 #                                       └─fail─► Quarantine ──► Quarantined (Succeed)
 #
 # FetchGate exists because the EventBridge rule matches EVERY object created in
-# the bucket — including the export and RMF artifacts other functions write
+# the bucket - including the export and RMF artifacts other functions write
 # there. The intake Lambda classifies those as `skipped` and the workflow ends
 # cleanly instead of failing a run for a file that was never an ingest drop.
 #
@@ -24,13 +24,13 @@
 #
 # Every Task retries the transient Lambda faults (throttles, service errors,
 # and the cold-start VPC connect timeouts an Aurora-backed function can hit)
-# and catches everything else into a loud Fail state — an ingest that silently
+# and catches everything else into a loud Fail state - an ingest that silently
 # "succeeds" after an error is worse than one that stops.
 #
 # ARNs are ${...} substitutions supplied by DefinitionSubstitutions in
 # template.yaml (IntakeFunctionArn, QualityGateFunctionArn).
 
-Comment: Compass ingest — land a dropped grants file, gate it, curate or quarantine it.
+Comment: Compass ingest - land a dropped grants file, gate it, curate or quarantine it.
 StartAt: Fetch
 
 States:
@@ -89,8 +89,6 @@ States:
         batch_id.$: $.batch_id
         run_id.$: $.run_id
         source_file.$: $.source_file
-        bucket.$: $.bucket
-        key.$: $.key
         checked_at.$: $$.State.EnteredTime
     Retry:
       - ErrorEquals:
@@ -163,7 +161,7 @@ States:
   # --- Hold the batch ------------------------------------------------------
   Quarantine:
     Type: Task
-    Comment: Batch below threshold — held in grants_raw with a batch anomaly.
+    Comment: Batch below threshold - held in grants_raw with a batch anomaly.
     Resource: arn:aws:states:::lambda:invoke
     OutputPath: $.Payload
     Parameters:
@@ -209,6 +207,6 @@ States:
     Type: Fail
     Error: CompassIntakeFailed
     Cause: >-
-      Intake pipeline failed. The captured error is at $.error in the execution
-      history (Logging is ALL with IncludeExecutionData), and the failing stage
-      logged a structured event to its own CloudWatch log group.
+      Intake pipeline failed. Stage logs remain enabled without raw execution
+      data, and the failing Lambda emits a sanitized structured event to its
+      own CloudWatch log group.

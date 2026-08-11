@@ -1,4 +1,4 @@
-"""RMF evidence generator — Ports/Protocols/Services + topology, parsed from the IaC.
+"""RMF evidence generator - Ports/Protocols/Services + topology, parsed from the IaC.
 
 The claim this function backs up is narrow and checkable: **the security
 documentation is generated from the same file that creates the infrastructure,
@@ -13,8 +13,8 @@ What it produces
 A single markdown artifact containing:
 
 * a **Ports, Protocols and Services** registration table in the shape a PPSM
-  submission wants — split into boundary-crossing inbound flows, internal
-  flows, and outbound service dependencies — derived from security-group rules,
+  submission wants - split into boundary-crossing inbound flows, internal
+  flows, and outbound service dependencies - derived from security-group rules,
   database ports, edge resources, and the AWS API actions each function's IAM
   policy actually grants;
 * a **network topology**: VPC/subnet/routing inventory plus a Mermaid diagram
@@ -39,7 +39,7 @@ As a CLI, against the repo's template, with nothing deployed::
     python3 src/functions/rmf_artifact/app.py -o /tmp/pps.md
     python3 src/functions/rmf_artifact/app.py path/to/template.yaml
 
-As a Lambda (direct invoke — this function has no API route in CONTRACTS.md)::
+As a Lambda (direct invoke - this function has no API route in CONTRACTS.md)::
 
     {}                                            # uses the bundled template.yaml
     {"template_body": "<yaml text>"}
@@ -54,7 +54,7 @@ Packaging note: ``sam build`` packages only this function's ``CodeUri``, so for
 the Lambda to read the stack's own template it needs one of the event sources
 above, or a copy of ``template.yaml`` placed next to ``app.py`` at build time.
 The bundled-file path is checked first and the failure message names every
-source that was tried — no silent fallback to stale content.
+source that was tried - no silent fallback to stale content.
 """
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ _parents = HERE.parents
 REPO_TEMPLATE = (_parents[2] / "template.yaml") if len(_parents) > 2 else (HERE / "template.yaml")
 BUNDLED_TEMPLATE = HERE / "template.yaml"
 
-ARTIFACT_TITLE = "Compass — Ports, Protocols & Services and System Topology"
+ARTIFACT_TITLE = "Compass - Ports, Protocols & Services and System Topology"
 
 
 # --------------------------------------------------------------------------- #
@@ -337,7 +337,7 @@ def edge_flows(template: Dict[str, Any]) -> List[Dict[str, Any]]:
     ):
         rows.append(
             {
-                "service": f"HTTPS — web UI ({logical_id})",
+                "service": f"HTTPS - web UI ({logical_id})",
                 "protocol": "TCP/HTTPS",
                 "ports": "443",
                 "source": "User workstation (Internet)",
@@ -349,7 +349,7 @@ def edge_flows(template: Dict[str, Any]) -> List[Dict[str, Any]]:
         )
         rows.append(
             {
-                "service": "HTTPS — origin fetch",
+                "service": "HTTPS - origin fetch",
                 "protocol": "TCP/HTTPS",
                 "ports": "443",
                 "source": f"{logical_id} (CloudFront, origin access control)",
@@ -365,7 +365,7 @@ def edge_flows(template: Dict[str, Any]) -> List[Dict[str, Any]]:
     ):
         rows.append(
             {
-                "service": f"HTTPS — REST API ({logical_id})",
+                "service": f"HTTPS - REST API ({logical_id})",
                 "protocol": "TCP/HTTPS",
                 "ports": "443",
                 "source": "Authenticated browser session (Internet)",
@@ -379,7 +379,7 @@ def edge_flows(template: Dict[str, Any]) -> List[Dict[str, Any]]:
     for logical_id, _res in resources_of(template, "AWS::Cognito::UserPoolDomain"):
         rows.append(
             {
-                "service": f"HTTPS — hosted authentication UI ({logical_id})",
+                "service": f"HTTPS - hosted authentication UI ({logical_id})",
                 "protocol": "TCP/HTTPS",
                 "ports": "443",
                 "source": "User workstation (Internet)",
@@ -395,7 +395,7 @@ def edge_flows(template: Dict[str, Any]) -> List[Dict[str, Any]]:
 def _iam_actions(policies: Any) -> Tuple[List[str], List[str]]:
     """Collect IAM actions from a SAM ``Policies`` block.
 
-    Returns ``(actions, unparsed)`` — ``unparsed`` names SAM policy *templates*
+    Returns ``(actions, unparsed)`` - ``unparsed`` names SAM policy *templates*
     (``S3ReadPolicy`` and friends), which expand at transform time and so cannot
     be resolved from the source template. They are reported rather than dropped.
     """
@@ -549,9 +549,9 @@ def data_store_facts(template: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "kind": "Aurora PostgreSQL cluster",
                 "at_rest": "SSE-KMS (customer-managed key)"
                 if p.get("StorageEncrypted")
-                else "NOT ENCRYPTED — review",
+                else "NOT ENCRYPTED - review",
                 "key": flatten(p.get("KmsKeyId")) or "aws/rds default",
-                "public": "no" if not p.get("PubliclyAccessible") else "YES — review",
+                "public": "no" if not p.get("PubliclyAccessible") else "YES - review",
                 "evidence": f"{lid}.Properties.StorageEncrypted / .KmsKeyId",
             }
         )
@@ -571,7 +571,7 @@ def data_store_facts(template: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "id": lid,
                 "kind": "S3 bucket",
                 "at_rest": f"SSE ({algo})" if algo else "bucket default (review)",
-                "key": key or "—",
+                "key": key or " - ",
                 "public": "blocked (all four PAB flags)"
                 if len(pab) >= 4 and all(bool(v) for v in pab.values())
                 else "review PublicAccessBlockConfiguration",
@@ -587,7 +587,7 @@ def data_store_facts(template: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "id": lid,
                 "kind": "Kinesis data stream",
                 "at_rest": f"{flatten(se.get('EncryptionType')) or 'none'}",
-                "key": flatten(se.get("KeyId")) or "—",
+                "key": flatten(se.get("KeyId")) or " - ",
                 "public": "n/a",
                 "evidence": f"{lid}.Properties.StreamEncryption",
             }
@@ -728,7 +728,7 @@ def control_mapping(
     """Map observed template facts to candidate NIST SP 800-53 Rev 5 controls.
 
     Every row must name the resource/property it was derived from. A control
-    with no template evidence is not listed — an assessor's time is wasted by a
+    with no template evidence is not listed - an assessor's time is wasted by a
     mapping that asserts more than the artifact can show.
     """
     rows: List[Dict[str, str]] = []
@@ -749,7 +749,7 @@ def control_mapping(
         add(
             "SC-7(4)",
             "External telecommunications services",
-            f"Egress is via NAT gateway(s) {', '.join(net['nat'])} — private subnets "
+            f"Egress is via NAT gateway(s) {', '.join(net['nat'])} - private subnets "
             "have no inbound route from the Internet",
         )
     if resources_of(template, "AWS::WAFv2::WebACL"):
@@ -775,7 +775,7 @@ def control_mapping(
             "SC-12 / SC-13",
             "Cryptographic key establishment and management",
             f"Customer-managed KMS key(s) {', '.join(keys)}"
-            + (" with automatic rotation enabled" if rotation else " (rotation not enabled — review)"),
+            + (" with automatic rotation enabled" if rotation else " (rotation not enabled - review)"),
         )
     if stores:
         add(
@@ -829,7 +829,8 @@ def control_mapping(
             "AU-2 / AU-12",
             "Event logging / audit record generation",
             "; ".join(
-                f"{l['id']} retention={l['retention_days']}d" for l in logs
+                f"{log_item['id']} retention={log_item['retention_days']}d"
+                for log_item in logs
             )
             + "; application audit trail in compass.audit_log (every export and approval)",
         )
@@ -893,7 +894,7 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
 
     a(f"# {ARTIFACT_TITLE}\n")
     a(
-        "> **Generated artifact — do not hand-edit.** Every table below was parsed "
+        "> **Generated artifact - do not hand-edit.** Every table below was parsed "
         f"from `{source}`. Regenerate with "
         "`python3 src/functions/rmf_artifact/app.py`.\n"
     )
@@ -901,13 +902,13 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
     a(_table(
         ["Field", "Value"],
         [
-            ["System", "Compass — S&T Portfolio Intelligence (demonstration)"],
+            ["System", "Compass - S&T Portfolio Intelligence (demonstration)"],
             ["Template source", f"`{source}`"],
             ["Template SHA-256", f"`{digest}`"],
             ["Generated (UTC)", generated],
             ["Generator", "src/functions/rmf_artifact/app.py (deterministic, no LLM)"],
             ["Resources parsed", str(len(resources))],
-            ["Data sensitivity", "Synthetic demonstration data only — no real CUI or PII"],
+            ["Data sensitivity", "Synthetic demonstration data only - no real CUI or PII"],
         ],
     ))
     if description:
@@ -959,7 +960,7 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
 
     a("\n### 2.4 Outbound service dependencies\n")
     a(
-        "Derived from the IAM actions each function is actually granted — a "
+        "Derived from the IAM actions each function is actually granted - a "
         "dependency the template does not authorize does not appear here, and one "
         "it does authorize cannot be omitted.\n"
     )
@@ -994,7 +995,7 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
         ]
         + [["Internet gateway", i, "public egress/ingress"] for i in net["igw"]]
         + [["NAT gateway", n, "private-subnet egress only"] for n in net["nat"]]
-        + [["Route table", rt, "—"] for rt in net["route_tables"]]
+        + [["Route table", rt, " - "] for rt in net["route_tables"]]
         + [["Security group", g["id"], g["description"]] for g in net["security_groups"]],
     ))
 
@@ -1005,10 +1006,10 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
             [
                 f["id"],
                 "yes" if f["in_vpc"] else "no",
-                f["security_groups"] or "—",
-                str(f["memory"] or "—"),
-                str(f["timeout"] or "—"),
-                ", ".join(f["routes"]) or "—",
+                f["security_groups"] or " - ",
+                str(f["memory"] or " - "),
+                str(f["timeout"] or " - "),
+                ", ".join(f["routes"]) or " - ",
             ]
             for f in funcs
         ],
@@ -1034,7 +1035,7 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
     a(_table(
         ["User pool", "MFA", "MFA methods", "Min password length", "Evidence"],
         [
-            [p["id"], p["mfa"], p["mfa_methods"], str(p["min_password_length"] or "—"), f"`{p['evidence']}`"]
+            [p["id"], p["mfa"], p["mfa_methods"], str(p["min_password_length"] or " - "), f"`{p['evidence']}`"]
             for p in identity["pools"]
         ],
     ))
@@ -1064,7 +1065,15 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
     a("\n## 6. Audit and monitoring\n")
     a(_table(
         ["Log group", "Name", "Retention (days)", "Evidence"],
-        [[l["id"], l["name"], str(l["retention_days"] or "—"), f"`{l['evidence']}`"] for l in logs],
+        [
+            [
+                log_item["id"],
+                log_item["name"],
+                str(log_item["retention_days"] or "Not available"),
+                f"`{log_item['evidence']}`",
+            ]
+            for log_item in logs
+        ],
     ))
     a(
         "\nApplication-level audit records are appended to `compass.audit_log` by "
@@ -1076,7 +1085,7 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
     # --- 7. Controls ------------------------------------------------------- #
     a("\n## 7. Candidate NIST SP 800-53 Rev 5 control evidence\n")
     a(
-        "> **Candidate mapping — requires assessor validation.** These rows say "
+        "> **Candidate mapping - requires assessor validation.** These rows say "
         "\"the template contains this configuration\", not \"this control is "
         "satisfied\". Control satisfaction depends on procedures, personnel and "
         "an assessment this generator has no visibility into.\n"
@@ -1122,7 +1131,7 @@ def generate_markdown(template: Dict[str, Any], *, source: str, digest: str) -> 
 def load_template_text(event: Dict[str, Any]) -> Tuple[str, str]:
     """Return ``(text, source_label)``, trying every configured source in order.
 
-    Raises ``FileNotFoundError`` naming every source that was tried — a
+    Raises ``FileNotFoundError`` naming every source that was tried - a
     generator that silently fell back to a stale bundled copy would produce an
     artifact that looks authoritative and isn't.
     """
@@ -1157,7 +1166,7 @@ def load_template_text(event: Dict[str, Any]) -> Tuple[str, str]:
             body = resp["TemplateBody"]
             text = body if isinstance(body, str) else json.dumps(body)
             return text, f"cloudformation:GetTemplate({stack})"
-        except Exception as exc:  # permission or stack missing — report, don't mask
+        except Exception as exc:  # permission or stack missing - report, don't mask
             tried.append(f"cloudformation:GetTemplate({stack}) -> {exc}")
     else:
         tried.append("cloudformation:GetTemplate (no stack_name / STACK_NAME)")
@@ -1264,7 +1273,7 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# CLI — runs offline against the repo template
+# CLI - runs offline against the repo template
 # --------------------------------------------------------------------------- #
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(

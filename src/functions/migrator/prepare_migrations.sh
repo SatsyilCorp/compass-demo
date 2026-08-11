@@ -13,7 +13,7 @@
 # Not required for local runs: the handler also walks up from its own directory
 # and finds db/migrations directly (see migrator/app.py:candidate_roots).
 #
-# The alternative — no staging at all — is to have the deploy script read the
+# The alternative - no staging at all - is to have the deploy script read the
 # files itself and invoke with
 #   {"migrate":"all","migrations":[{"name":"001_schema","sql":"..."}]}
 # which the handler supports and which keeps a single copy of the SQL.

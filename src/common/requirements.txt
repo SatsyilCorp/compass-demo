@@ -1,4 +1,4 @@
-# CommonLayer dependencies — installed into python/ by `sam build`
+# CommonLayer dependencies - installed into python/ by `sam build`
 # (Metadata.BuildMethod: python3.12 on the CommonLayer resource).
 #
 # Keep this lean: boto3/botocore ship with the Lambda runtime and are

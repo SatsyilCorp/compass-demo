@@ -1,7 +1,7 @@
 version = 0.1
 
 # =============================================================================
-# Compass demo — SAM deploy config.
+# Compass demo - SAM deploy config.
 #
 # Rename to `samconfig.toml` before deploying. Region is PINNED to us-east-1:
 # the WAF WebACL is Scope CLOUDFRONT, which only exists there.
@@ -12,7 +12,7 @@ version = 0.1
 #   2. Read the CloudFrontDomain stack output, fill WebCallbackUrl /
 #      WebLogoutUrl / WebOrigin, and deploy again.
 #
-# NOTE: parameter_overrides is a TOML ARRAY — one "Key=Value" string per
+# NOTE: parameter_overrides is a TOML ARRAY - one "Key=Value" string per
 # element. Do not put whitespace inside a value; SAM CLI re-splits on spaces.
 #
 # BUILD NOTE: the CommonLayer pip-installs psycopg2-binary for Lambda
@@ -21,7 +21,7 @@ version = 0.1
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Default — the single demo stack `compass-demo`.
+# Default - the single demo stack `compass-demo`.
 # -----------------------------------------------------------------------------
 [default]
 [default.global.parameters]
@@ -48,10 +48,20 @@ parameter_overrides = [
   "WafRateLimit=2000",
   "StreamTickerState=ENABLED",
   "DeploySecurityBaseline=false",
+  "DeployRevision=local",
+  "DatabaseResilienceMode=demo",
+  "ScaleFeatureEnabled=false",
+  "ScaleMaxRecords=100000",
+  "ScaleMaxConcurrency=4",
+  "ScaleExportConcurrency=2",
+  "ScaleMaxEstimatedCostUsd=10",
+  "ScaleDataRetentionDays=7",
+  "ScaleEvidenceRetentionDays=30",
+  "ScaleAthenaBytesScannedCutoff=10737418240",
 ]
 
 # -----------------------------------------------------------------------------
-# Dev — an isolated second stack (`sam deploy --config-env dev`) for trying
+# Dev - an isolated second stack (`sam deploy --config-env dev`) for trying
 # template changes without touching the demo stack. Ticker off, baseline off.
 # Bucket names and the default Cognito domain prefix derive from the stack
 # name, so the two stacks coexist without overrides.
@@ -81,4 +91,14 @@ parameter_overrides = [
   "WafRateLimit=2000",
   "StreamTickerState=DISABLED",
   "DeploySecurityBaseline=false",
+  "DeployRevision=local",
+  "DatabaseResilienceMode=demo",
+  "ScaleFeatureEnabled=false",
+  "ScaleMaxRecords=100000",
+  "ScaleMaxConcurrency=4",
+  "ScaleExportConcurrency=2",
+  "ScaleMaxEstimatedCostUsd=10",
+  "ScaleDataRetentionDays=7",
+  "ScaleEvidenceRetentionDays=30",
+  "ScaleAthenaBytesScannedCutoff=10737418240",
 ]

@@ -7,7 +7,7 @@ Data flow
 ---------
 ``Fetch`` reads the dropped object, parses and normalizes it
 (``normalize.py``), and upserts one ``grants_raw`` row per source record. It
-returns only a small manifest — batch id, run id, counts — never the records
+returns only a small manifest - batch id, run id, counts - never the records
 themselves, so the Step Functions payload stays far below the 256 KB state
 limit no matter how large the drop is. Every later stage re-reads the rows it
 needs from ``grants_raw`` by ``batch_id``.
@@ -21,12 +21,12 @@ Identity and RLS
 This is machine-to-machine work with no end user, so the pipeline runs under
 the corporate org context (``compass.org_unit = 'ONR-Corporate'``). That is the
 one context the ``grants_curated`` INSERT policy accepts for rows belonging to
-*any* unit — a batch legitimately contains Code-30, Code-32 and Code-34 awards.
+*any* unit - a batch legitimately contains Code-30, Code-32 and Code-34 awards.
 It is still the real policy doing the work: the connection is
 ``compass_app`` (``compass_common.db`` sets the role), the table is
 ``FORCE ROW LEVEL SECURITY``, and the GUC is set with ``SET LOCAL`` inside the
 transaction so it cannot leak to the next invocation. The corporate context is
-also what makes ``INSERT … RETURNING id`` legal here — under RLS, ``RETURNING``
+also what makes ``INSERT … RETURNING id`` legal here - under RLS, ``RETURNING``
 reads the new row back through the SELECT policy, which a unit context would
 refuse for another unit's award.
 
@@ -36,7 +36,7 @@ The batch id is deterministic (from the drop envelope, else derived from the
 object key), and every write is an upsert keyed on ``(batch_id, row_index)``
 for raw rows, ``grant_no`` for curated rows, and the primary keys for lineage.
 Re-dropping the same file therefore re-runs the same batch instead of doubling
-it — which matters, because a demo drops the same file more than once.
+it - which matters, because a demo drops the same file more than once.
 """
 from __future__ import annotations
 
@@ -51,10 +51,9 @@ import normalize
 PIPELINE_ORG_UNIT = config.CORPORATE_ORG_UNIT     # "ONR-Corporate"
 PIPELINE_ACTOR = "compass-intake-pipeline"
 
-# EventBridge fires on EVERY object created in the raw bucket, and other parts
-# of the stack write there too (exports, RMF artifacts). Those prefixes are not
-# ingest drops and are skipped without an error.
-DEFAULT_SKIP_PREFIXES = "exports/,rmf/,quarantine/,tmp/,athena-results/"
+# EventBridge is restricted to ``drops/``. The skip list remains as defense in
+# depth for direct function or state-machine invocations with another key.
+DEFAULT_SKIP_PREFIXES = "demo-stage/,exports/,rmf/,quarantine/,tmp/,athena-results/"
 INGESTIBLE_SUFFIXES = (".json", ".jsonl", ".ndjson")
 DEFAULT_MAX_OBJECT_BYTES = 8 * 1024 * 1024
 
@@ -62,7 +61,7 @@ _S3 = None
 
 
 def run_id_for(batch_id: str) -> str:
-    """``run-<batch_id>`` — the convention the catalog and lineage routes join on."""
+    """``run-<batch_id>`` - the convention the catalog and lineage routes join on."""
     return f"run-{batch_id}"
 
 
@@ -121,7 +120,7 @@ def read_object(bucket: str, key: str) -> str:
 # Lineage
 # --------------------------------------------------------------------------- #
 def upsert_lineage_nodes(cur, run_id: str, nodes: Sequence[Dict[str, Any]]) -> None:
-    """Write ``lineage_nodes`` for this run (upsert — a re-run refreshes meta)."""
+    """Write ``lineage_nodes`` for this run (upsert - a re-run refreshes meta)."""
     for node in nodes:
         cur.execute(
             "INSERT INTO lineage_nodes (run_id, node_id, kind, label, meta_jsonb) "
@@ -199,13 +198,12 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "status": "skipped",
             "reason": reason if bucket else "no bucket in the event and RAW_BUCKET is unset",
-            "bucket": bucket,
-            "key": key,
+            "source_file": f"landing://drops/{os.path.basename(key)}" if key else None,
         }
 
     text = read_object(bucket, key)
-    source_file = f"s3://{bucket}/{key}"
-    envelope = normalize.parse_drop(text, key=key, source_file=source_file)
+    logical_source = f"landing://drops/{os.path.basename(key)}"
+    envelope = normalize.parse_drop(text, key=key, source_file=logical_source)
     records = normalize.normalize_envelope(envelope)
     batch_id = envelope.batch_id
     run_id = run_id_for(batch_id)
@@ -213,7 +211,7 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
     meta = {
         "batch_id": batch_id,
         "run_id": run_id,
-        "source_file": source_file,
+        "source_file": logical_source,
         "schema_variant": envelope.schema_variant,
         "fetched_at": normalize.utc_now_iso(),
     }
@@ -222,7 +220,7 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
 
     conn = db.get_conn()
     with db.set_org(conn, PIPELINE_ORG_UNIT) as c, c.cursor() as cur:
-        inserted, updated = _upsert_raw_rows(cur, batch_id, source_file, raw_envelopes)
+        inserted, updated = _upsert_raw_rows(cur, batch_id, logical_source, raw_envelopes)
         upsert_lineage_nodes(
             cur,
             run_id,
@@ -230,10 +228,8 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
                 {
                     "node_id": "src-file",
                     "kind": "source",
-                    "label": source_file,
+                    "label": logical_source,
                     "meta": {
-                        "bucket": bucket,
-                        "key": key,
                         "schema_variant": envelope.schema_variant,
                         "record_count": len(records),
                         "parse_errors": envelope.parse_errors,
@@ -260,7 +256,7 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
             action="ingest_fetch",
             resource=f"grants_raw:{batch_id}",
             detail={
-                "source_file": source_file,
+                "source_file": logical_source,
                 "run_id": run_id,
                 "rows": len(raw_envelopes),
                 "inserted": inserted,
@@ -274,9 +270,7 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
         "action": "fetch",
         "batch_id": batch_id,
         "run_id": run_id,
-        "bucket": bucket,
-        "key": key,
-        "source_file": source_file,
+        "source_file": logical_source,
         "schema_variant": envelope.schema_variant,
         "rows_raw": len(raw_envelopes),
         "rows_inserted": inserted,
@@ -305,7 +299,7 @@ def _embed_abstract(text: Optional[str]) -> Optional[str]:
 
         vector = llm.embed(text)
         return "[" + ",".join(f"{float(v):.6f}" for v in vector) + "]"
-    except Exception as exc:  # noqa: BLE001 — logged, never fatal
+    except Exception as exc:  # noqa: BLE001 - logged, never fatal
         print(json.dumps({"event_type": "embed_failed", "error": str(exc)}))
         return None
 
@@ -339,7 +333,7 @@ def persist_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
     with conn.cursor() as cur:            # autocommit read; no RLS on grants_raw
         rows = _passing_rows(cur, batch_id)
 
-    # Embeddings are network calls to Bedrock — done before the write
+    # Embeddings are network calls to Bedrock - done before the write
     # transaction opens, so a slow model never holds a DB transaction open.
     embed_enabled = os.environ.get("EMBED_ON_INGEST", "true").lower() != "false"
     embed_cap = int(os.environ.get("EMBED_MAX_ROWS", "200"))

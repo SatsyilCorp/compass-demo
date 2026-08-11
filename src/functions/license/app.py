@@ -1,4 +1,4 @@
-"""Data-license lifecycle API — element 6 of the Compass demo.
+"""Data-license lifecycle API - element 6 of the Compass demo.
 
 Route (docs/CONTRACTS.md):
 
@@ -18,7 +18,7 @@ Two honesty rules the implementation follows:
   derived from ``renews_on`` against today's date *in the database* (so the
   clock is the DB's, not a Lambda's), and keeps the stored value alongside as
   ``status_stored`` so a discrepancy is visible rather than papered over. The
-  one stored value that always wins is ``suspended`` — that is an
+  one stored value that always wins is ``suspended`` - that is an
   administrative state a date cannot infer.
 * **Thresholds are stated, not implied.** The response carries the day windows
   it used, so "expiring" always comes with the number that made it so.
@@ -37,7 +37,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from compass_common import config, db, http
+from compass_common import db, http
 
 log = logging.getLogger()
 log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -49,32 +49,12 @@ WARNING_DAYS = int(os.environ.get("LICENSE_WARNING_DAYS", "90"))
 # Seat utilisation at or above this fraction raises a capacity alert.
 SEAT_WARN_RATIO = float(os.environ.get("LICENSE_SEAT_WARN_RATIO", "0.9"))
 
-GROUP_TO_ROLE = {"compass-poweruser": "poweruser", "compass-viewer": "viewer"}
-ROLE_TO_ORG = {"poweruser": config.CORPORATE_ORG_UNIT, "viewer": "Code-30"}
-
 LEVEL_ORDER = {"expired": 0, "critical": 1, "warning": 2, "ok": 3}
 
 
 def resolve_identity(claims: http.Claims) -> Tuple[Optional[str], Optional[str]]:
-    """``(role, org_unit)`` for the caller, or ``(None, None)`` to deny.
-
-    Mirrors src/functions/catalog/app.py: the native Cognito JWT authorizer
-    supplies ``cognito:groups`` but not role/org_unit, so the CONTRACTS.md
-    group mapping is applied here as a fallback. No default role.
-    """
-    role = (claims.role or "").strip().lower() or None
-    org = (claims.org_unit or "").strip() or None
-    if role is None:
-        for g in claims.groups:
-            mapped = GROUP_TO_ROLE.get(str(g).strip().lower())
-            if mapped:
-                role = mapped
-                break
-    if role and org is None:
-        org = ROLE_TO_ORG.get(role)
-    if role not in ROLE_TO_ORG or not org:
-        return None, None
-    return role, org
+    """Delegate to the shared deny-by-default identity contract."""
+    return http.resolve_identity(claims)
 
 
 def _iso(value: Any) -> Optional[str]:
@@ -100,7 +80,7 @@ def renewal_alert(days: Optional[int], renews_on: Any) -> Dict[str, Any]:
         return {
             "level": "warning",
             "days_to_renewal": None,
-            "message": "No renewal date recorded — term cannot be verified.",
+            "message": "No renewal date recorded - term cannot be verified.",
         }
     if days < 0:
         return {
@@ -113,14 +93,14 @@ def renewal_alert(days: Optional[int], renews_on: Any) -> Dict[str, Any]:
         return {
             "level": "critical",
             "days_to_renewal": days,
-            "message": f"Renews in {days} day(s) on {when} — inside the "
+            "message": f"Renews in {days} day(s) on {when} - inside the "
                        f"{CRITICAL_DAYS}-day critical window; start the renewal action now.",
         }
     if days <= WARNING_DAYS:
         return {
             "level": "warning",
             "days_to_renewal": days,
-            "message": f"Renews in {days} day(s) on {when} — inside the "
+            "message": f"Renews in {days} day(s) on {when} - inside the "
                        f"{WARNING_DAYS}-day planning window.",
         }
     return {
@@ -137,18 +117,18 @@ def seat_alert(used: Optional[int], total: Optional[int]) -> Dict[str, Any]:
             "level": "ok",
             "utilization_pct": None,
             "seats_available": None,
-            "message": "Unmetered entitlement — no seat cap.",
+            "message": "Unmetered entitlement - no seat cap.",
         }
     used = used or 0
     pct = round(100.0 * used / total, 1)
     available = total - used
     if used >= total:
         level = "critical"
-        message = (f"All {total} seat(s) assigned — new users cannot be onboarded "
+        message = (f"All {total} seat(s) assigned - new users cannot be onboarded "
                    "without buying seats.")
     elif pct >= SEAT_WARN_RATIO * 100:
         level = "warning"
-        message = f"{used} of {total} seats assigned ({pct}%) — {available} left."
+        message = f"{used} of {total} seats assigned ({pct}%) - {available} left."
     else:
         level = "ok"
         message = f"{used} of {total} seats assigned ({pct}%)."
@@ -228,15 +208,29 @@ def summarize(licenses: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "total": len(licenses),
         "by_status": by_status,
-        "expired": sum(1 for l in licenses if l["renewal_alert"]["level"] == "expired"),
+        "expired": sum(
+            1
+            for license_item in licenses
+            if license_item["renewal_alert"]["level"] == "expired"
+        ),
         "renewing_within_critical_days": sum(
-            1 for l in licenses if l["renewal_alert"]["level"] == "critical"
+            1
+            for license_item in licenses
+            if license_item["renewal_alert"]["level"] == "critical"
         ),
         "renewing_within_warning_days": sum(
-            1 for l in licenses if l["renewal_alert"]["level"] == "warning"
+            1
+            for license_item in licenses
+            if license_item["renewal_alert"]["level"] == "warning"
         ),
-        "at_seat_capacity": sum(1 for l in licenses if l["seat_alert"]["level"] == "critical"),
-        "needs_action": sum(1 for l in licenses if l["needs_action"]),
+        "at_seat_capacity": sum(
+            1
+            for license_item in licenses
+            if license_item["seat_alert"]["level"] == "critical"
+        ),
+        "needs_action": sum(
+            1 for license_item in licenses if license_item["needs_action"]
+        ),
         "seats_used": seats_used,
         "seats_total": seats_total,
         "seat_utilization_pct": round(100.0 * seats_used / seats_total, 1)
@@ -280,7 +274,7 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
     role, org_unit = resolve_identity(claims)
     if not role:
         return http.forbidden(
-            "no Compass role on this identity — expected one of the "
+            "no Compass role on this identity - expected one of the "
             "compass-poweruser / compass-viewer Cognito groups"
         )
 
@@ -307,7 +301,7 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
             "scope": {
                 "org_unit": org_unit,
                 "note": "The license register is a corporate asset table with no "
-                        "org_unit column and no RLS policy — both personas see "
+                        "org_unit column and no RLS policy - both personas see "
                         "the same rows by design.",
             },
         }

@@ -21,7 +21,7 @@ const STATUS_TONE: Record<IngestBatch["status"], string> = {
   failed: "text-danger",
 };
 
-/** One row of the live batch status list — expands to the quality-gate
+/** One row of the live batch status list - expands to the quality-gate
  * breakdown. Element 3. */
 export function BatchRow({
   batch,
@@ -62,7 +62,7 @@ export function BatchRow({
         </span>
         <span className="shrink-0 text-right text-[11px] text-text-muted">
           <span className="block font-mono font-semibold text-text-strong">
-            {batch.status === "passed" || batch.status === "failed" ? batch.overall_score.toFixed(1) : "—"}
+            {batch.status === "passed" || batch.status === "failed" ? batch.overall_score.toFixed(1) : " - "}
           </span>
           <span className="block">{new Date(batch.ingested_at).toLocaleString()}</span>
         </span>

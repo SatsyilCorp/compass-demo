@@ -24,12 +24,12 @@ import { getMe } from "@/lib/api";
 import type { MeResponse } from "@/lib/types";
 
 /**
- * /login — element 1 (identity).
+ * /login - element 1 (identity).
  *
  *   1. Cognito Hosted UI redirect (or, in the offline demo, a persona
- *      switcher standing in for it — see lib/auth/demo-persona.ts).
- *   2. An MFA explainer, grounded in the real UserPool config in
- *      template.yaml (MfaConfiguration: ON, SOFTWARE_TOKEN_MFA).
+ *      switcher standing in for it - see lib/auth/demo-persona.ts).
+ *   2. An access-assurance explainer, grounded in the team-demo UserPool
+ *      config in template.yaml (MfaConfiguration: OFF).
  *   3. A zero-trust / least-privilege panel, grounded in the real
  *      deny-by-default JWT authorizer + RLS/CLS story in docs/CONTRACTS.md
  *      and db/migrations/002_rls.sql.
@@ -79,18 +79,18 @@ export default function LoginPage() {
         </header>
 
         <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1200px] px-4 py-10 sm:px-6 sm:py-14">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-gov-primary">Element 1 · Identity</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-gov-primary">Secure mission access</p>
           <h1 className="mt-1.5 text-2xl font-bold text-text-strong sm:text-3xl">Sign in to Compass</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
-            Identity, MFA, and every downstream row a user can see all derive from one Cognito JWT —
-            this page walks through how.
+            This team demo uses password-only Cognito access. Roles and every downstream row a user can see still
+            derive from one short-lived Cognito JWT.
           </p>
 
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
             <IdentityCard auth={auth} me={me} meLoading={meLoading} onContinue={() => router.push("/dashboard/")} />
 
             <div className="space-y-5">
-              <MfaExplainer />
+              <AccessAssuranceExplainer />
               <ZeroTrustExplainer />
             </div>
           </div>
@@ -127,8 +127,8 @@ function IdentityCard({
           <LogIn className="size-4 text-gov-primary" aria-hidden /> Cognito Hosted UI
         </p>
         <p className="mt-2 text-[12.5px] leading-relaxed text-text-muted">
-          Compass has no password form of its own — signing in redirects to the Cognito Hosted UI,
-          which challenges for a password and then a TOTP code before issuing a JWT carrying{" "}
+          Compass has no password form of its own. Team demo access redirects to the Cognito Hosted UI, which
+          verifies the password before issuing a JWT carrying{" "}
           <code className="font-mono text-[11.5px]">cognito:groups</code>.
         </p>
         <button
@@ -152,7 +152,7 @@ function IdentityCard({
 
       {AUTH_DISABLED && (
         <div className="mt-3 rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-[11.5px] text-warn">
-          Demo mode — the Hosted UI redirect above is bypassed (
+          Demo mode - the Hosted UI redirect above is bypassed (
           <code className="font-mono">NEXT_PUBLIC_AUTH_DISABLED=true</code>). Pick a persona to see
           how role and org_unit change what &ldquo;/me&rdquo; returns.
           <label className="mt-2 flex items-center gap-2">
@@ -184,8 +184,8 @@ function IdentityCard({
           <Field label="role" value={me.role} mono />
           <Field label="org_unit" value={me.org_unit} mono />
           <Field label="email" value={me.email} />
-          <Field label="sub" value={me.sub} mono truncate />
-          <Field label="groups" value={me.groups.join(", ") || "—"} mono />
+          <Field label="groups" value={me.groups.join(", ") || " - "} mono />
+          <Field label="assurance" value="Password only" />
         </dl>
       )}
 
@@ -211,26 +211,26 @@ function IdentityCard({
   );
 }
 
-function Field({ label, value, mono, truncate }: { label: string; value: string; mono?: boolean; truncate?: boolean }) {
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="min-w-0">
       <dt className="text-[9.5px] font-semibold uppercase tracking-wide text-text-subtle">{label}</dt>
-      <dd className={`mt-0.5 text-text-strong ${mono ? "font-mono text-[11.5px]" : ""} ${truncate ? "truncate" : ""}`}>{value}</dd>
+      <dd className={`mt-0.5 text-text-strong ${mono ? "font-mono text-[11.5px]" : ""}`}>{value}</dd>
     </div>
   );
 }
 
-function MfaExplainer() {
+function AccessAssuranceExplainer() {
   return (
     <section className="rounded-lg border border-border bg-surface p-5 shadow-card">
       <p className="flex items-center gap-2 text-[13px] font-semibold text-text-strong">
-        <Smartphone className="size-4 text-gov-primary" aria-hidden /> Multi-factor authentication
+        <Smartphone className="size-4 text-gov-primary" aria-hidden /> Team demo access
       </p>
       <ul className="mt-3 space-y-2 text-[12px] leading-relaxed text-text-muted">
         <li className="flex gap-2">
           <KeyRound className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          MFA is enforced pool-wide (<code className="font-mono text-[11px]">MfaConfiguration: ON</code>) with a TOTP
-          software token — no SMS fallback.
+          Team-demo MFA is disabled (<code className="font-mono text-[11px]">MfaConfiguration: OFF</code>) so invited
+          teammates can sign in with their password without enrolling an authenticator.
         </li>
         <li className="flex gap-2">
           <Lock className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
@@ -239,18 +239,22 @@ function MfaExplainer() {
         </li>
         <li className="flex gap-2">
           <Users className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          Sign-up is admin-only — the two demo personas are seeded, never self-registered.
+          Sign-up is admin-only - the three demo identities are seeded, never self-registered.
         </li>
         <li className="flex gap-2">
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          ID and access tokens live 1 hour, refresh tokens 8 hours — short-lived by design, re-issued through the
-          same MFA-gated flow.
+          ID and access tokens live 1 hour and refresh tokens live 8 hours. Password-only access does not change
+          route authorization, role checks, or row-level policy.
+        </li>
+        <li className="flex gap-2">
+          <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
+          Production target: require MFA under the approved security baseline before processing operational data.
         </li>
       </ul>
       {AUTH_DISABLED && (
         <p className="mt-3 border-t border-border-2 pt-3 text-[11px] text-text-subtle">
-          None of this runs in this walkthrough — the Hosted UI redirect is bypassed for the offline demo. It is
-          real configuration on the deployed user pool.
+          The offline walkthrough also bypasses the Hosted UI. Deployed team-demo access still uses Cognito,
+          password policy, signed tokens, route authorization, and scoped data access.
         </p>
       )}
     </section>
@@ -265,36 +269,36 @@ function ZeroTrustExplainer() {
       </p>
       <ul className="mt-3 space-y-2 text-[12px] leading-relaxed text-text-muted">
         <li>
-          <strong className="text-text-strong">Deny-by-default on every route</strong> — the HttpApi's default
+          <strong className="text-text-strong">Deny-by-default on every route</strong> - the HttpApi's default
           authorizer is the Cognito JWT authorizer; there is no unauthenticated route.
         </li>
         <li>
-          <strong className="text-text-strong">Re-verified, not just trusted</strong> — a second Lambda authorizer
+          <strong className="text-text-strong">Re-verified, not just trusted</strong> - a second Lambda authorizer
           independently checks the same token's signature against the pool's live JWKS, issuer, and expiry before
           deriving <code className="font-mono text-[11px]">role</code>/<code className="font-mono text-[11px]">org_unit</code>.
           Anything it can't fully verify is denied.
         </li>
         <li>
-          <strong className="text-text-strong">One group, one row scope</strong> —{" "}
+          <strong className="text-text-strong">One group, one row scope</strong>  - {" "}
           <code className="font-mono text-[11px]">compass-poweruser</code> → org_unit{" "}
           <code className="font-mono text-[11px]">ONR-Corporate</code> (whole portfolio);{" "}
           <code className="font-mono text-[11px]">compass-viewer</code> → org_unit{" "}
           <code className="font-mono text-[11px]">Code-30</code> (its own rows only).
         </li>
         <li>
-          <strong className="text-text-strong">Enforced again at the database</strong> —{" "}
+          <strong className="text-text-strong">Enforced again at the database</strong>  - {" "}
           <code className="font-mono text-[11px]">grants_curated</code> runs{" "}
           <code className="font-mono text-[11px]">FORCE ROW LEVEL SECURITY</code>, and the app's runtime role isn't
           the table owner, so it can't bypass the policy even by accident.
         </li>
         <li>
-          <strong className="text-text-strong">Column-level, too</strong> — the viewer role has no{" "}
+          <strong className="text-text-strong">Column-level, too</strong> - the viewer role has no{" "}
           <code className="font-mono text-[11px]">SELECT</code> grant on{" "}
           <code className="font-mono text-[11px]">amount_usd</code>; award dollar figures are unreadable, not just
           hidden in the UI.
         </li>
         <li>
-          <strong className="text-text-strong">Every export is audited</strong> — writes an immutable{" "}
+          <strong className="text-text-strong">Every export is audited</strong> - writes an immutable{" "}
           <code className="font-mono text-[11px]">audit_log</code> row, and rows above the export cap require an
           approval before they'll run.
         </li>

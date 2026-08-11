@@ -4,7 +4,7 @@ import { seriesColor } from "./colors";
 import { formatInt, formatUsd, isEmerging } from "./trend";
 
 /**
- * Topics (top terms) — one card per topic_model output topic, colored to
+ * Topics (top terms) - one card per topic_model output topic, colored to
  * match its line in <TopicTrendChart> so the reader can connect the two
  * without relying on the legend alone.
  */

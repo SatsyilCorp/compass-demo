@@ -1,43 +1,58 @@
-# Volume IV — Technical Demonstration Submission Link
+# Volume IV: Technical demonstration submission link
 
-**Solicitation:** N0001426R4002 · **Factor 3 — Pre-Recorded Technical Demonstration**
-**Offeror:** Satsyil Corp `[CONFIRM legal name as proposed]`
-**Date submitted:** `[FILL: YYYY-MM-DD]`
+**Solicitation:** N0001426R4002
+**Factor:** Factor 3, Pre-Recorded Technical Demonstration
+**Offeror:** `[EXTERNAL INPUT: confirm exact legal name]`
+**Submission date:** `[EXTERNAL INPUT: YYYY-MM-DD]`
 
-> Shell per L 11.2(a): a single page containing a secure, private,
-> password-protected URL to the pre-recorded video, with all necessary login
-> credentials. Fill every `[FILL]` field, delete the shell notes, and verify
-> access from a clean browser and a phone before submission.
+## Private demonstration video
 
----
+| Field | Submission value |
+|---|---|
+| Private video URL | `[EXTERNAL INPUT: approved password-protected video URL]` |
+| Access password | `[EXTERNAL INPUT: evaluator password]` |
+| Additional login | `[EXTERNAL INPUT: none, or exact account instructions and credentials delivery process]` |
+| Final runtime | `[EXTERNAL INPUT: MM:SS, must not exceed 50:00]` |
+| Recording date | `[EXTERNAL INPUT: YYYY-MM-DD]` |
+| File or stream format | `[EXTERNAL INPUT: approved platform and playback format]` |
 
-## Pre-recorded demonstration video
+The submitted video is one continuous take of the live application, live cloud
+service, terminal, and exact source repository. It follows scenario Elements 1
+through 7 in order and addresses strategic prompts (a) through (e). It uses no
+slides, marketing overlays, post-production edits, or post-production
+callouts.
+
+All demonstrated data is synthetic. No CUI, PII, classified data, or real
+award information appears in the recording.
+
+## Availability and support
+
+The link, password, and any approved account access will remain available for
+the required evaluation period.
 
 | Field | Value |
 |---|---|
-| Video URL (private, password-protected) | `[FILL: https://vimeo.com/… or unlisted YouTube URL]` |
-| Access password | `[FILL]` |
-| Additional login required? | `[FILL: none / account + credentials if the platform requires viewer sign-in]` |
-| Runtime | `[FILL: MM:SS — must be ≤ 50:00]` |
-| Recording date | `[FILL: YYYY-MM-DD]` |
-| Format note | Single continuous take; live cloud environment and live repositories; no slides; no post-production edits or overlays (per L 11.2(c)) |
+| Availability period | `[EXTERNAL INPUT: start and end date or solicitation-defined period]` |
+| Support contact | `[EXTERNAL INPUT: name, email, and phone]` |
+| Response commitment | `[EXTERNAL INPUT: approved restoration or access-support statement]` |
 
-**Availability statement:** The link and password will remain active and
-unchanged through award. If access fails for any reason, contact
-`[FILL: name]`, `[FILL: email]`, `[FILL: phone]` for immediate restoration.
-
-## Supporting access documentation (same volume)
+## Included Volume IV references
 
 | Document | Purpose |
 |---|---|
-| `PRESENTER_MAPPING.md` | Maps each on-screen presenter to the proposed Key Personnel position (L 11.2(e)) |
-| `TIMESTAMP_INDEX.md` | Timestamps for scenario elements 1–7 and strategic prompts (a)–(e) to aid evaluation |
-| `GIT_ACCESS.md` | Read-only access to the live code repository shown in the video |
+| `PRESENTER_MAPPING.md` | Maps on-screen presenters to proposed Key Personnel |
+| `TIMESTAMP_INDEX.md` | Indexes all seven scenario elements, five strategic prompts, and proof moments |
+| `GIT_ACCESS.md` | Provides read-only access to the exact recording repository revision |
 
-## Data statement
+## Pre-submission verification
 
-All data shown in the demonstration is synthetic, machine-generated mock data
-(mock S&T grant registry, mock license records). No CUI, PII, or classified
-data was uploaded to or demonstrated within the environment (per L 11.2(d)).
-The repository includes a per-file synthetic-data manifest
-(`seed/SYNTHETIC-DATA-MANIFEST.md`).
+- Open the video URL in a clean browser outside the offeror organization.
+- Test the password and any additional login requirement.
+- Play the beginning, middle, and end on desktop and phone.
+- Confirm the exact runtime is at or below 50:00.
+- Confirm the file has one continuous take and no prohibited overlay or edit.
+- Confirm the timestamp index matches the uploaded file.
+- Confirm the repository tag matches the revision shown in the video.
+- Confirm the access and support values remain valid for the required period.
+- Remove this checklist and all `EXTERNAL INPUT` labels after final values are
+  inserted and verified.

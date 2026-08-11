@@ -1,861 +1,876 @@
-# Compass — Pre-Recorded Technical Demonstration Script
+# Compass technical demonstration script
 
-**Solicitation:** N0001426R4002 — Volume IV, Factor 3 (Sub-Factor 3.1)
-**Total planned runtime:** 44:30 (hard ceiling per L 11.2(b): 50:00)
-**Format:** One continuous, uninterrupted screen recording with live narration.
+**Target runtime:** 39:15
+**Hard maximum:** 50:00
+**Format:** one continuous evidence-first recording
+**Required order:** Elements 1 through 7, with all five strategic prompts
 
-This is the word-for-word script. Spoken narration is in blockquotes. Stage
-directions — what is on screen, what the presenter clicks or types — are in
-*[bracketed italics]*. Per-segment **HARD STOP** times are cut-offs, not
-targets: if a segment runs long, the presenter jumps to the segment's marked
-**[CUT LINE]** and moves on. Nothing after a hard stop may be borrowed except
-from the 5:30 of reserve between 44:30 and the 50:00 ceiling.
+This script is a run sheet and narration guide. It is not a slide deck. During
+the submitted recording, show only the live application, terminal, and exact
+repository that produced the environment. Close Presenter Guide before the
+take. Do not add marketing overlays, post-production callouts, edits, or
+title cards.
 
----
+## Timing map
 
-## Single-take rules (from Section L 11.2 — read before recording)
+| Segment | Start | End | Duration |
+|---|---:|---:|---:|
+| Opening and environment attestation | 00:00 | 01:30 | 01:30 |
+| Element 1: Secure access and Zero Trust | 01:30 | 05:30 | 04:00 |
+| Element 2: IaC and automation | 05:30 | 10:30 | 05:00 |
+| Element 3: Ingestion, DataOps, and streaming | 10:30 | 16:00 | 05:30 |
+| Element 4: Governance, quality, and catalog | 16:00 | 20:00 | 04:00 |
+| Element 5: Decision-support analytics | 20:00 | 25:30 | 05:30 |
+| Element 6: Dashboard and process automation | 25:30 | 32:30 | 07:00 |
+| Element 7: Interoperability and secure export | 32:30 | 38:30 | 06:00 |
+| Close | 38:30 | 39:15 | 00:45 |
 
-1. **No slide decks.** PowerPoint or any static deck is strictly prohibited
-   (L 11.2(c)). Everything on screen is the live application, a live terminal,
-   or the live code repository.
-2. **No heavy editing.** Highly edited captures, post-production marketing
-   overlays, or simulated application videos draw an **Unacceptable** rating
-   (L 11.2(c)). Record in one take. A single hard cut between takes only if a
-   technical failure forces a restart — no overlays, no speed-ups, no dubbing.
-3. **≤ 50 minutes total** (L 11.2(b)). This script plans 44:30.
-4. **Elements run sequentially, 1 through 7** (L 11.3). Strategic prompts
-   (L 11.4) are narrated while executing the elements, plus one dedicated
-   segment for Prompt (d).
-5. **Key Personnel present and narrate all technical content** (L 11.2(e)).
-   No business-development or sales narration anywhere in the recording.
-6. **Live, functioning cloud environment** (L 11.2(c)): the recording runs
-   against the deployed `compass-demo` stack — not mock mode — plus the live
-   git repository.
-7. **Synthetic data only** (L 11.2(d)): every record shown is machine-generated
-   (see `seed/SYNTHETIC-DATA-MANIFEST.md`). No CUI, no PII, no classified data.
+Strategic prompts are named explicitly at these planned starts:
 
----
+| Prompt | Topic | Planned start | Embedded in |
+|---|---|---:|---|
+| (c) | Zero Trust and IL4 or IL5 baseline | 04:15 | Element 1 |
+| (d) | Disaster recovery, resilience, and failover | 08:45 | Element 2 |
+| (a) | Sustainment of the legacy footprint | 13:15 | Element 3 |
+| (b) | Financial and budgetary analytical integration | 23:15 | Element 5 |
+| (e) | Data vendor and lifecycle management | 29:30 | Element 6 |
 
-## Run of show
+## Roles and prepared surfaces
 
-| Segment | Time | HARD STOP | Presenter (Key Personnel) | Covers |
-|---|---|---|---|---|
-| Opening & environment attestation | 00:00–02:00 | 02:00 | Chief Enterprise Architect | Intro, rules of the recording |
-| **Element 1** — Secure Access, Authentication, Zero Trust | 02:00–07:00 | 07:00 | DevSecOps Engineer | L 11.3 E1 + Prompt (c) part 1 |
-| **Element 2** — Infrastructure as Code & Automation | 07:00–13:00 | 13:00 | DevSecOps Engineer | L 11.3 E2 + Prompt (c) part 2 + RMF-as-code |
-| **Element 3** — Ingestion, Data Operations, Streaming | 13:00–19:00 | 19:00 | Data Architect | L 11.3 E3 + Prompt (a) legacy sustainment |
-| **Element 4** — Governance, Quality, Cataloging | 19:00–24:00 | 24:00 | Chief Enterprise Architect | L 11.3 E4 |
-| **Element 5** — Decision-Support Analytics & Modeling | 24:00–30:00 | 30:00 | Data Scientist | L 11.3 E5 + Prompt (b) financial analytics |
-| **Element 6** — Unified Dashboard & Process Automation | 30:00–36:00 | 36:00 | Web Software Developer | L 11.3 E6 + Prompt (e) data-vendor licenses |
-| **Element 7** — Interoperability, Portability, Secure Export | 36:00–41:00 | 41:00 | Chief Enterprise Architect | L 11.3 E7 + aggregation guard |
-| **Prompt (d)** — DR, Resilience, Failover (dedicated address) | 41:00–43:30 | 43:30 | DevSecOps Engineer | L 11.4(d) |
-| Close | 43:30–44:30 | 44:30 | Chief Enterprise Architect | Recap, strategic alignment |
+Replace position labels with the approved Key Personnel names only after they
+are confirmed against Attachment 7 and Volume II.
 
-Strategic-prompt coverage map (all five are mandatory — L 11.4):
-
-| Prompt | Where addressed |
+| Position | Primary segments |
 |---|---|
-| (a) Sustainment of the legacy footprint | Element 3, 16:30–19:00 |
-| (b) Financial & budgetary analytical integration | Element 5, 27:45–30:00 |
-| (c) Zero Trust & cybersecurity compliance (IL4/IL5) | Elements 1 & 2, 05:30–07:00 and 11:00–13:00 |
-| (d) Disaster recovery, resilience, failover | Dedicated segment, 41:00–43:30 |
-| (e) Data vendor & lifecycle management | Element 6, 33:45–36:00 |
+| Chief Enterprise Architect | Opening, Elements 4 and 7, close |
+| DevSecOps Engineer | Elements 1 and 2, prompts (c) and (d) |
+| Data Architect | Element 3 and prompt (a) |
+| Data Scientist | Element 5 and prompt (b) |
+| Web Software Developer | Element 6 and prompt (e) |
 
----
+Prepare these surfaces before pressing Record:
 
-## Pre-recording checklist (do all of this BEFORE pressing record)
+- Live CloudFront application on the public landing page
+- Three authenticated browser profiles: scoped viewer, poweruser requester,
+  and poweruser reviewer
+- Poweruser requester profile on `/export/`, with its session retained for
+  Element 7
+- Poweruser reviewer profile ready for the approval reviewer inbox
+- Terminal in the repository root with safe environment variables already set
+- Redacted `artifacts/demo-preflight.json` verified as ready off camera, with
+  all three live drop keys absent
+- Redacted `artifacts/scale/` receipts for the completed 1K, 10K, 100K, and 1M
+  acceptance runs, opened only when presenting their transport disclosure
+- Repository viewer at `template.yaml`, `.github/workflows/quality.yml`,
+  `.github/workflows/deploy.yml`, `db/migrations/003_security_hardening.sql`,
+  and `db/migrations/004_opaque_approval_capability.sql`
+- No notifications, secrets, tokens, account numbers, ARNs, bucket names,
+  password manager popups, or unrelated tabs visible
 
-- [ ] Stack `compass-demo` deployed and healthy in us-east-1; frontend
-      published to CloudFront; second deploy done so Cognito callbacks point at
-      the CloudFront domain (see `docs/RUNBOOK.md` §3–§7).
-- [ ] **`ExportMaxRows=250` for this recording** (parameter override at deploy).
-      The synthetic portfolio is ~480 curated rows; the default 5,000-row guard
-      threshold would never trip on it. 250 makes the aggregation guard
-      demonstrable on real data with no code changes. Say this on camera —
-      it is a configuration fact, not a trick.
-- [ ] **pyarrow enabled** on the export function (uncomment the pin in
-      `src/functions/export/requirements.txt`, `sam build --use-container`,
-      redeploy) so the parquet export is real. If it is NOT enabled, the API
-      returns CSV with an explicit note — present that honestly and skip the
-      parquet click (Element 7 has a stage direction for both cases).
-- [ ] `StreamTickerState=ENABLED` so the Kinesis ticker is live.
-- [ ] Database migrated and seeded: baseline portfolio curated
-      (`batch_id=seed-initial-2026`), at least one analytics run already
-      completed earlier (so the catalog and dashboard are not empty at minute
-      2), licenses loaded. The three demo drops (`drop_good`,
-      `drop_compatible_variant`, `drop_incompatible_bad`) NOT yet ingested —
-      they are ingested live during Element 3.
-- [ ] Demo users enrolled with TOTP already registered in an authenticator app:
-      `demo-poweruser@…` (group `compass-poweruser`) and `demo-viewer@…`
-      (group `compass-viewer`). RUNBOOK §6.
-- [ ] Browser window A (normal): logged OUT, at the app login page. Browser
-      window B (separate profile/incognito): logged OUT. Terminal at repo root,
-      font ≥ 16pt, `AWS_REGION=us-east-1`, helper env vars set:
-      `API` (the HttpApi base URL), `RAW_BUCKET`, `VIEWER_TOKEN`/`POWER_TOKEN`
-      left UNSET (tokens are obtained on camera).
-- [ ] One full rehearsal timed within 30 seconds of plan. Screen resolution
-      1920×1080, notifications off, single monitor recorded.
+The recording operator controls switching and timing. Technical narration is
+performed by proposed Key Personnel.
 
----
----
+## 00:00 to 01:30: Opening and environment attestation
 
-## 00:00 — Opening & environment attestation
+### Screen
 
-**Presenter: Chief Enterprise Architect** · *HARD STOP 02:00*
+Show the public landing page at desktop width. The Government site banner,
+Compass mission statement, workflow, and synthetic-data disclosure should be
+visible. Do not open Presenter Guide.
 
-*[Screen: the live Compass login page in browser window A — visibly a real URL
-on a `cloudfront.net` domain. Terminal visible in a side pane at repo root.]*
+### Narration
 
-> Good morning. This is the Satsyil team's technical demonstration for the ONR
-> Code 08 Data and Analytics platform requirement. I'm the proposed Chief
-> Enterprise Architect, and over the next forty-five minutes you will also hear
-> from our proposed DevSecOps Engineer, Data Architect, Data Scientist, and Web
-> Software Developer. Everyone narrating today is proposed Key Personnel on
-> this contract, and everyone drives their own keyboard.
->
-> Three facts about what you are about to see. First: this is a live,
-> functioning cloud environment — a real AWS stack we call Compass, deployed
-> from the repository on screen, and you will watch us provision, ingest,
-> analyze, govern, and export against it in real time. No slides, and nothing
-> pre-rendered. Second: every record in this system is synthetic. The grant
-> portfolio is machine-generated mock data built to resemble a command S&T
-> registry — there is no CUI, no PII, and no real award anywhere in this
-> environment, and the repository carries a manifest proving that. Third: we
-> will execute all seven scenario elements in order, and address all five
-> strategic prompts as we go — we'll flag each one by name as we reach it.
->
-> The platform models the workload in Exhibit B: a scalable analytics
-> environment, row-level security for a distributed user hierarchy, automated
-> pipelines, AI/ML that inherits the platform's access controls, and an
-> automation-first operating posture. Two Exhibit B requirements most
-> platforms treat as paperwork — automated defense against mass data
-> extraction, and RMF artifacts generated from the infrastructure code itself —
-> are built into what you'll see, and we will demonstrate both live.
->
-> Let's begin with the front door. Over to our DevSecOps Engineer.
+> This is Compass, our working S&T Portfolio Intelligence demonstration for
+> N0001426R4002. This is one continuous recording. We will use the live
+> application, the live cloud service, and the exact source repository that
+> built it. There are no slides or marketing overlays.
 
----
+> Every record shown today is machine-generated synthetic data. There is no
+> CUI, PII, classified data, or real award information in this environment.
 
-## 02:00 — Element 1: Secure Access, Authentication, and Zero Trust
+Point to the landing-page trust indicator, which must read Live services and
+Synthetic data.
 
-**Presenter: DevSecOps Engineer** · *HARD STOP 07:00*
-*(L 11.3 Element 1 — MFA, identity provider, DoD Zero Trust alignment; begins
-Prompt (c).)*
+> This public indicator says Live services and Synthetic data. After sign-in,
+> the protected System Inspector will identify its backend source separately.
+> Compass also has a deterministic replay adapter for rehearsal and evaluator
+> reproduction, but replay is labeled separately and is not used as evidence
+> of cloud execution in this recording.
 
-*[02:00 — Screen: terminal.]*
+> We will follow all seven required elements in order. For each one, we will
+> make a claim, perform an action, show the resulting receipt, and state the
+> boundary of what this demonstration proves.
 
-> Before anyone logs in, let me show you what an unauthenticated caller gets.
-> This platform's API is deny-by-default: every route sits behind a JSON Web
-> Token authorizer, and there are no exceptions in the route table.
+Transition to the signed-out login surface.
 
-*[Type — and read the output aloud:]*
+## 01:30 to 05:30: Element 1, Secure access, authentication, and Zero Trust
+
+### 01:30 to 02:35: Strong authentication
+
+Sign in as the poweruser through the Cognito hosted UI. Complete the already
+enrolled TOTP challenge. Do not show enrollment secrets or a QR code.
+
+### Narration
+
+> Element 1 starts with identity. Self-registration is disabled, TOTP MFA is
+> required, and the API validates the Cognito token before an application
+> handler runs.
+
+After redirect, point to the signed-in identity and organization scope.
+
+> The verified Cognito group is authoritative. The shared identity module maps
+> `compass-poweruser` to the poweruser role and the ONR-Corporate scope. It
+> handles both native API Gateway JWT events and request-authorizer events. A
+> forwarded role cannot override the verified group, and conflicting
+> organization context fails closed.
+
+### 02:35 to 03:15: Deny boundary
+
+In the prepared terminal, run only the status check:
 
 ```bash
-curl -si $API/dashboard | head -3
+curl --silent --output /dev/null --write-out '%{http_code}\n' \
+  "$API/system/evidence"
 ```
 
-> No token — 401, unauthorized. Not a redirect, not a partial page: the gateway
-> refuses the request before any of our code runs. That's the first Zero Trust
-> principle on display: never trust, always verify, on every single request.
+Point to `401`.
 
-*[02:45 — Switch to browser window B (the separate profile). Navigate to the
-app; click Sign in; authenticate as `demo-viewer@…`: password, then the TOTP
-prompt. Narrate while typing:]*
+> This request has no bearer token, so the protected evidence route stops at
+> the API boundary with 401. All 25 method-and-path operations across 23 URL
+> paths use the JWT authorizer by default, including Scale Run, OpenAPI, and System
+> Inspector.
 
-> Now the front door. Identity is an OIDC identity provider — Amazon Cognito
-> here — with multi-factor authentication set to ON, not optional, TOTP
-> software tokens only, and a sixteen-character minimum password policy.
-> Self-signup is disabled; accounts are provisioned by an administrator, which
-> mirrors how ICAM-governed accounts work. Here is the second factor —
-> *[enter TOTP code]* — and I'm in as our first persona: a program-office
-> **viewer** assigned to Code 30. In production this same OIDC seam is where
-> CAC-backed Navy ICAM federates in — the application trusts the identity
-> provider's tokens, so swapping Cognito for an approved IdP is a
-> configuration change at this seam, not a rebuild.
+### 03:15 to 04:15: Row and column policy
 
-*[03:45 — In window B, open the dashboard. Point at the org-unit chart and
-the KPI row.]*
+Switch to the prepared viewer browser profile on the dashboard. Point to the
+Code-30 scope, lower visible row count, and masked funding value. Return to the
+poweruser profile and point to the corporate value.
 
-> Look carefully at what this viewer can see: every number on this dashboard is
-> scoped to Code 30. That's not a front-end filter. The access token carries
-> the user's groups; the API derives the org unit from those claims; and the
-> database itself enforces row-level security on the curated grants table —
-> the policy is keyed to the org context that's bound inside each transaction.
-> The application never writes a WHERE clause for this; the database will not
-> hand back another code's rows, even to buggy or malicious application code.
-> We'll prove the enforcement is in the database layer, not the UI, when we
-> get to exports in Element 7.
+> The page did not filter these rows. Each request binds its organization with
+> `SET LOCAL` inside a database transaction, and PostgreSQL FORCE RLS makes the
+> decision. The application role is not the table owner.
 
-*[04:30 — Switch to browser window A. Sign in as `demo-poweruser@…` with
-password + TOTP, briskly. While typing:]*
+> Funding is a separate database entitlement. The base curated relation does
+> not grant the funding column to the shared runtime role. The corporate view
+> has its own ONR-Corporate context gate. The viewer cannot select or filter on
+> that hidden column.
 
-> Second persona: a corporate-level power user — ONR-Corporate — whose policy
-> branch reads across all codes. Same MFA ceremony, no shortcuts.
+### 04:15 to 05:30: Strategic prompt (c)
 
-*[05:00 — In window A, open the same dashboard; the totals are visibly larger.
-Then show identity explicitly in the terminal:]*
+### Narration
+
+> Strategic prompt (c) is Zero Trust and cybersecurity compliance for an IL4
+> or IL5 baseline. The demonstrated controls are MFA, deny-by-default JWT
+> authorization, transaction-scoped RLS, role-gated funding, private data
+> subnets, KMS encryption, WAF, append-only audit, and an in-boundary Bedrock
+> adapter.
+
+> The boundary matters. This stack runs in commercial us-east-1 with
+> security-baseline equivalents. It is not an accredited IL4 or IL5 enclave,
+> and this demonstration does not imply an ATO. The production path is to
+> deploy the versioned template into the Government landing zone, use approved
+> identity and FIPS endpoints, apply required STIG and Compliance-as-Code
+> profiles, forward events to the Government SIEM, and complete the formal
+> authorization process.
+
+Return to the poweruser profile and open Mission Control.
+
+## 05:30 to 10:30: Element 2, Infrastructure as Code and automation
+
+### 05:30 to 06:25: Deployed revision and source
+
+In System Inspector, point to Live service, deploy revision, generated time,
+request status and latency, correlation ID, and the explicit policy decision.
+Refresh once and show a new correlation ID.
+
+Run:
 
 ```bash
-curl -s $API/me -H "Authorization: Bearer $POWER_TOKEN" | python3 -m json.tool
+git rev-parse --short=12 HEAD
 ```
 
-*[Set `POWER_TOKEN` by copying the session's access token per the rehearsed
-step; keep it brisk.]*
+### Narration
 
-> Same platform, same URL — the full portfolio this time. And `/me` shows you
-> exactly what the platform believes about me: my role and my organizational
-> unit, derived from the token's group claims. Every downstream authorization
-> decision flows from these two fields.
+> Element 2 begins with traceability. The revision returned by the protected
+> service matches the exact source revision in this repository. Refreshing the
+> projection produces a new request receipt and correlation ID.
 
-**[CUT LINE — if behind schedule, jump to 05:30 narration now.]**
+> The projection is intentionally sanitized. It contains application evidence,
+> not account IDs, ARNs, resource names, credentials, tokens, personal data,
+> SQL, prompts, source records, presigned URLs, or raw exceptions.
 
-*[05:30 — Prompt (c), part 1. Stay on the dashboard; speak to camera.]*
+### 06:25 to 07:35: Quality and deployment workflows
 
-> This is also the start of our answer to **Strategic Prompt (c) — Zero Trust
-> and cybersecurity compliance at the IL4/IL5 baseline** — and I want to name
-> the principles precisely. **Least privilege:** the application's database
-> role is a deliberately unprivileged, non-owner role — it cannot create
-> objects, and it cannot even read the dollar-amount column, which is revoked
-> at the column level; entitlement to money data is a database grant, not an
-> if-statement. **Continuous authorization:** access tokens live for one hour,
-> every API call is re-verified at the gateway, and the org context is re-bound
-> inside every database transaction — nothing is trusted because it was
-> trusted a moment ago. **Micro-segmentation:** all data-touching compute runs
-> in private subnets with no inbound path; the database accepts port 5432 from
-> exactly one security group and nothing else; and the only ways in from
-> outside are TLS edges — CloudFront behind a web application firewall for
-> the UI, and the token-guarded API. My colleague will complete this answer in
-> Element 2, because the rest of it lives in the infrastructure code — which
-> is exactly where it should live.
+Show `.github/workflows/quality.yml` and the green run for the recording
+commit. Point to the source policy, lint, dependency audits, tests, migration
+comparison, SAM validation and build, typecheck, scenario tests, static build,
+and browser smoke stages.
 
----
+Show `.github/workflows/deploy.yml` and its green run for this environment.
+Point to protected environment dispatch, OIDC credential setup, deploy
+revision, expand-before-code migration, post-deploy bundled migration, live
+frontend build, publish, and boundary check.
 
-## 07:00 — Element 2: Infrastructure as Code (IaC) and Automation
+### Narration
 
-**Presenter: DevSecOps Engineer** · *HARD STOP 13:00*
-*(L 11.3 Element 2 — live walk-through of how the environment was provisioned;
-completes Prompt (c); demonstrates the RMF-as-code differentiator.)*
+> This is working CI and controlled deployment, not a future-state diagram.
+> The quality workflow rebuilds and tests the candidate from a clean checkout.
+> The deployment workflow is manually dispatched into a protected GitHub
+> environment and receives short-lived AWS credentials through OIDC. No
+> long-lived AWS key is committed here.
 
-*[07:00 — Screen: terminal, full screen, at the repo root.]*
+> For an existing stack, the deployment applies compatible additive
+> migrations before switching application code, then reruns the bundled
+> migration set after deployment. Both applicable passes require a successful
+> role bootstrap. It publishes the live frontend and verifies both the public
+> web edge and the unauthenticated 401 boundary.
 
-> Element 2: how this environment exists. The answer is one declarative
-> template under version control. Everything you have seen and will see —
-> network, database, identity, API, functions, pipeline, edge, encryption,
-> WAF — is defined in a single CloudFormation-based SAM template, deployed by
-> the AWS SAM toolchain. Let me show you, live.
+### 07:35 to 08:45: Template validation and RMF evidence
 
-*[Type each command; let output render; narrate over it:]*
-
-```bash
-git log --oneline -5
-```
-
-> Real history, real commits — this repository is the environment's source of
-> truth.
-
-```bash
-grep -c "Type: AWS::" template.yaml && wc -l template.yaml
-```
-
-> Several dozen resources, one file. VPC and subnets, Aurora PostgreSQL,
-> Cognito with MFA ON, the HTTP API with its JWT authorizer as the default,
-> every Lambda function, the Step Functions pipeline, S3, Kinesis, CloudFront,
-> the customer-managed KMS key, and the WAF — all in-template, which is why
-> the whole platform stands up from a clean account with two deploy commands.
+Run:
 
 ```bash
 sam validate --lint
+python3 src/functions/rmf_artifact/app.py -o /tmp/compass-rmf.md
+sed -n '1,45p' /tmp/compass-rmf.md
 ```
 
-> Static validation and linting — the same gate a pipeline runs. Our delivery
-> approach is that no change reaches an environment except through these
-> stages: validate, build, deploy, from a reviewed commit. What you're
-> watching here are exactly those stages run by hand so you can see them; in
-> the Government's NRE/NRDE landing zone the same stages run from the CI/CD
-> service the environment provides, with SAST, dependency, and infrastructure
-> scanning wired into the same pipeline — automation-first, per Exhibit B.
+### Narration
 
-*[08:45 — Database as code:]*
+> The SAM template provisions the network, identity, API, functions, workflow,
+> database, encryption, web edge, logs, alarms, and operations dashboard. The
+> validator checks the deployable source.
+
+> The RMF generator reads that same template and emits deterministic ports,
+> protocols, services, topology, protection inventory, and candidate NIST
+> mappings. It stamps the template hash and cites source properties. It does
+> not use an LLM, and it states what it cannot prove, including runtime drift
+> and non-technical controls.
+
+### 08:45 to 10:30: Strategic prompt (d)
+
+Show `DatabaseResilienceMode`, its condition, database cluster, writer, reader,
+backup retention, and deletion protection in `template.yaml`.
+
+### Narration
+
+> Strategic prompt (d) is disaster recovery, resilience, and failover. The
+> recorded stack declares its actual database mode. In the default demo mode,
+> Compass has one writer, seven-day backup retention, and deletion protection
+> off. That is reproducible and supports point-in-time backup retention, but it
+> is not database instance failover.
+
+> The optional `ha` mode adds a cluster reader, changes backup retention to 14
+> days, and enables deletion protection. That demonstrates a stronger
+> single-region database posture. It still does not provide cross-region
+> disaster recovery.
+
+> The cluster subnet group spans two availability zones, but this template does
+> not pin either instance to a named zone. We verify deployed placement before
+> making any AZ-specific claim.
+
+> Production recovery objectives come from the mission impact analysis and
+> must be proven by exercises. The production target adds approved cross-region
+> backup copy or replication, restore automation, reader promotion and traffic
+> failover, per-AZ egress, longer retention, capacity validation, monitoring
+> integration, and recurring drills. We do not claim a tested production RTO
+> or RPO from this demo.
+
+Navigate to Ingest.
+
+## 10:30 to 16:00: Element 3, Automated ingestion, DataOps, and streaming
+
+### 10:30 to 11:20: Pipeline definition and live state
+
+Point to the live mode label, the batch ledger, quality-rule columns, activity
+ticker, and three ingestion velocities. Do not call the ticker a
+high-throughput workload.
+
+### Narration
+
+> Element 3 is one event-driven intake path. A sanitized object-created event
+> starts the Express workflow. Workers pass a small manifest through Fetch,
+> Validate, Quality Gate, and either Persist or Quarantine. Complete records do
+> not travel in workflow state.
+
+> The ticker orders the governed database projection first, then merges recent
+> Kinesis transport receipts by stable event ID. A transport receipt with no
+> organization scope is corporate-only. The once-per-minute synthetic signal
+> proves stream integration and source labeling, not a measured production
+> throughput rate.
+
+### 11:20 to 12:05: Clean batch
+
+Run the prepared clean drop command. Watch the new batch appear and complete.
+Expand it.
 
 ```bash
-ls db/migrations/ && grep -n "FORCE ROW LEVEL SECURITY" db/migrations/002_rls.sql
+python3 scripts/prepare_demo.py release-drop good \
+  --stack compass-demo --region us-east-1
 ```
 
-> The database schema is code too — numbered, idempotent migrations applied by
-> a migrator function that lives inside the VPC, because the database has no
-> public endpoint. And this grep is the single most load-bearing line in the
-> security story: row-level security is *forced*, which in PostgreSQL means
-> even a table owner cannot bypass it. The migrator owns the tables; the
-> application runs as a separate non-owner role. That separation is what makes
-> the RLS you saw in Element 1 real rather than decorative.
+> This canonical synthetic drop passed the deterministic rules. The positive
+> curated count is the persist receipt.
 
-**[CUT LINE — if behind schedule, jump to 10:00 now.]**
+### 12:05 to 13:15: Defective batch
 
-*[09:30 — Optionally show the two-deploy parameter flow:]*
+Run the defective drop. Watch it reach quarantined status. Point to zero
+curated rows and failed-rule counts.
 
 ```bash
-head -30 samconfig.toml
+python3 scripts/prepare_demo.py release-drop bad \
+  --stack compass-demo --region us-east-1
 ```
 
-> Deployment configuration is versioned alongside the template — including a
-> second, isolated `dev` stack configuration we'll come back to in the
-> disaster-recovery answer.
+> This batch contains incompatible and malformed records. The gate retained
+> the raw evidence, reported the failed rules, quarantined the batch, and wrote
+> zero curated rows. Downstream catalog, model, and dashboard state cannot
+> treat this batch as governed data.
 
-*[10:00 — The differentiator: generate the RMF artifact live.]*
+### 13:15 to 14:35: Strategic prompt (a)
 
-> Now the part of Exhibit B most platforms handle with a Word document. The
-> baseline requires technical RMF artifacts — ports, protocols and services,
-> topology — to be **auto-generated from the IaC repositories**, so eMASS
-> reflects the true state of the environment. Compass does exactly that, and
-> I'll run it right now.
+Run the compatible legacy drop and show the detected schema variant and
+resulting disposition.
 
 ```bash
-python3 src/functions/rmf_artifact/app.py -o /tmp/pps-topology.md && head -40 /tmp/pps-topology.md
+python3 scripts/prepare_demo.py release-drop compatible \
+  --stack compass-demo --region us-east-1
 ```
 
-*[Open `/tmp/pps-topology.md` in the editor; scroll steadily through the PPS
-tables, the topology section, and the control-mapping table while narrating:]*
+### Narration
 
-> This generator parsed the same template that provisioned the environment and
-> produced, deterministically — no language model involved, same input gives
-> byte-identical output — a Ports, Protocols and Services registration table
-> split into boundary-crossing, internal, and outbound flows; the outbound
-> table is derived from the IAM actions each function is actually granted, so
-> a dependency the template doesn't authorize cannot appear, and one it does
-> authorize cannot be omitted. Below that: a network topology diagram built
-> from the parsed resources, the data-protection and identity inventories, and
-> a candidate NIST 800-53 control mapping where every row cites the template
-> property that evidences it. Note the artifact stamps the template's SHA-256,
-> and — just as important — it ends with a section titled "what this artifact
-> cannot assert." Evidence, not decoration. Because it regenerates on every
-> change, the security documentation cannot drift from the infrastructure:
-> that is continuous compliance as a property of the delivery system.
+> Strategic prompt (a) is sustainment of the legacy footprint. This file uses
+> compatible renamed fields. An edge adapter maps it to the canonical grant
+> contract, while the quality gate remains unchanged.
 
-*[11:45 — Prompt (c), part 2. To camera:]*
+> Our modernization pattern is incremental: observe the legacy source, place
+> an anti-corruption adapter at the edge, compare old and new outcomes, move
+> one bounded capability at a time, and retire it only after acceptance and
+> rollback criteria pass. The incompatible batch shows the other side of that
+> policy: Compass does not guess when meaning is unsafe.
 
-> Completing **Strategic Prompt (c)**: in a DoD IL5 hosting environment this
-> same template deploys into the Government-furnished landing zone —
-> boundary and tenancy are Government-provided under the shared responsibility
-> model, and everything you've seen remains our responsibility inside it.
-> Micro-segmentation is what I showed you: private subnets, one-way
-> security-group references, deny-by-default at every entry point, and a
-> data layer that enforces row- and column-level policy itself.
-> Least-privilege boundary configuration is per-function IAM scoped to named
-> resources, a non-owner database role, and a customer-managed KMS key with
-> rotation enabled over the database, both buckets, the stream, and the
-> database secret. Continuous compliance is the artifact you just watched
-> generate from the template, regenerated on every change, plus STIG and
-> vulnerability scanning stages in the same pipeline in production. This demo
-> runs in a commercial region configured to those baseline equivalents, as the
-> solicitation directs — and because it is all declarative code, the IL5
-> deployment is the same code, different landing zone.
+> This demonstrates the adapter and strangler pattern. It does not claim that
+> an actual Government legacy estate has already been migrated.
 
----
+> Each release command copied one previously validated synthetic fixture from
+> a non-triggering staging prefix into its fixed live landing key. It returned
+> only logical locators, so the terminal did not disclose the physical bucket
+> name. Each key is one-shot by default.
 
-## 13:00 — Element 3: Automated Ingestion, Data Operations, and Streaming
+### 14:35 to 16:00: Backend receipts
 
-**Presenter: Data Architect** · *HARD STOP 19:00*
-*(L 11.3 Element 3 — ingest a raw/semi-structured mock grants registry;
-automated detection, quality checks, schema variation; streaming; weaves in
-Prompt (a).)*
+Open System Inspector in the poweruser profile. Select each new run in turn.
+Point to stages, quality score, curated or quarantined outcome, generated time,
+and database projection source.
 
-*[13:00 — Screen: split — terminal left, browser window A on the Ingest page
-right. The stream ticker at the top of the page is visibly moving.]*
+> The product screen showed the decision. System view now shows the backend
+> receipts from the quality and curated projections. For the quarantined run,
+> Persist is skipped and no curated rows were written.
 
-> Element 3: data operations. I'm going to ingest three raw files into this
-> platform, live — a clean one, one in a legacy system's export format, and
-> one with deliberately bad rows — and you'll watch the pipeline make three
-> different decisions with no human in the loop.
->
-> The mechanics: dropping a file into the landing bucket emits an event;
-> an event rule starts an express Step Functions workflow — land and
-> normalize, then a quality gate, then either curate or quarantine. The
-> pipeline stages exchange only a small manifest — batch id, run id, counts —
-> so payload size can never break orchestration. First file: a clean batch of
-> forty mock grants.
+Navigate to Catalog.
 
-*[Type:]*
+## 16:00 to 20:00: Element 4, Data governance, quality, and cataloging
+
+### 16:00 to 17:20: Governed catalog
+
+Find the newly curated clean or legacy batch. Use the keyboard-accessible row
+action to open it. Point to source, record count, classification label,
+quality score, and rule explanation.
+
+### Narration
+
+> Element 4 turns an intake run into a governed data product. The catalog score
+> is calculated from recorded rule results. It is not a decorative health
+> number. Source, classification, row count, and quality provenance stay tied
+> to the batch.
+
+> The defective batch remains visible as operational quality evidence on the
+> ingest page, but it is not presented here as a curated data product.
+
+### 17:20 to 19:05: Live lineage
+
+Open `/catalog/lineage/?batch=<new-batch-id>`. Traverse the source, raw,
+quality, curated, and dashboard nodes that actually exist for this intake
+run. Do not describe an edge that is absent, and do not imply that a later
+analytics or export run shares this run identifier.
+
+### Narration
+
+> These nodes and edges were emitted by the run. The lineage view accepts the
+> live batch identifier as a query parameter, so this static web deployment can
+> open a batch created after the frontend build. There is no static-page
+> rebuild between ingestion and this graph.
+
+> Lineage stops where execution stops. A quarantined batch does not receive a
+> fictional curated, model, or dashboard path.
+
+### 19:05 to 20:00: Governance summary
+
+> The governance chain is therefore inspectable: source object, normalization,
+> quality decision, curated data product, downstream processing, and audit
+> evidence. The API still enforces the caller's row and column policy when a
+> user follows that chain.
+
+Navigate to Analytics.
+
+## 20:00 to 25:30: Element 5, Decision-support analytics and modeling
+
+### 20:00 to 21:05: Run the model
+
+Start one analytics run. Point to the run ID, status, parameters, and elapsed
+state. Wait for completion without filling silence with claims.
+
+### Narration
+
+> Element 5 runs a transparent topic model over governed curated records. The
+> implementation uses TF-IDF plus non-negative matrix factorization with
+> explicit topic count and seed. It persists the run, topics, grant weights,
+> metrics, recommendation, and lineage.
+
+### 21:05 to 22:20: Inspect results
+
+Select two topics. Point to top terms, grant count, trend values, any funding
+value available to the corporate persona, model metrics, and the persisted
+recommendation.
+
+> These terms and trends are model output, while grant counts and governed
+> funding totals are database evidence. Compass keeps those concepts separate.
+> The recommendation is tied to this stored run ID so an evaluator can follow
+> it back to parameters and inputs.
+
+### 22:20 to 23:15: Model evidence boundary
+
+Open System Inspector and point to latest model-run metadata. Do not claim a
+metric that is blank or absent.
+
+> System view confirms that a model run was stored and identifies its safe
+> metrics. It does not expose abstracts, prompts, embeddings, or raw portfolio
+> rows.
+
+### 23:15 to 25:00: Strategic prompt (b)
+
+Return to the analytics trend view and then open the dashboard funding by
+fiscal year card at the transition to Element 6.
+
+### Narration
+
+> Strategic prompt (b) is financial and budgetary analytical integration. The
+> demonstrated data is obligated award value joined to program area, fiscal
+> year, organization, topic, quality, and anomaly context. Compass can compare
+> concentration and change through the same governed model-run contract.
+
+> The fiscal-year card uses those obligated award values. Its dashed line is a
+> computed even-spend mean across the visible years. Compass does not ingest an
+> appropriation, Program and Budget, or authoritative budget-authority feed in
+> this demonstration, so we do not label that computed baseline as budget
+> authority.
+
+> The integration approach for approved financial sources is a versioned
+> source adapter, reconciliation controls, accounting dimensions and lineage,
+> and policy applied before analytics. This run proves the governed analytical
+> path, not production financial-system integration.
+
+### 25:00 to 25:30: Decision handoff
+
+> The analytical output now feeds the decision surface. We will keep the same
+> identity and data scope as we move into Element 6.
+
+## 25:30 to 32:30: Element 6, Unified dashboard, visualization, and automation
+
+### 25:30 to 27:00: Decision brief
+
+On the dashboard, point to identity scope, grants, governed funding, program
+areas, quality, open anomalies, pending approvals, summary, and charts. Apply
+one rehearsed program-area or fiscal-year filter. Point to the result count,
+decision brief, KPIs, and charts as they recut. Clear the filter, then open a
+chart's values table to demonstrate a non-visual alternative.
+
+### Narration
+
+> Element 6 assembles the current scope in one dashboard request. A leader can
+> see portfolio size, investment concentration, quality trend, topic mix,
+> findings, and pending decisions. The chart values table carries the same
+> evidence without relying on color or pointer interaction.
+
+> This filter is not client-only hiding. The selected predicate is sent to the
+> protected dashboard API, where parameterized SQL applies it inside the same
+> row-level security transaction. The allowed filter choices and returned
+> result set remain bounded by the signed-in identity.
+
+> Funding is visible here because this is the corporate persona. The viewer
+> saw the same product shell with a smaller row scope and masked funding in
+> Element 1.
+
+### 27:00 to 28:20: In-boundary question answering
+
+Ask one rehearsed question, for example:
+
+```text
+Which program areas have the strongest recent concentration, and which source records support that conclusion?
+```
+
+Point to the answer, citations, model label, and scope disclosure.
+
+### Narration
+
+> Ask Compass retrieves cited records inside the caller's RLS transaction and
+> sends the bounded context through the Bedrock adapter. The answer inherits
+> the data policy. This demonstrates governed RAG over synthetic data, not an
+> autonomous decision authority.
+
+### 28:20 to 29:30: Findings workflow
+
+Open the anomaly queue. Select one finding, generate its rehearsed two-sentence
+triage note, and request a review. Point to the returned approval record and
+its pending state. Do not use the cached dashboard counter as the immediate
+receipt for this write.
+
+> A finding becomes a human decision record. Request and decision are separate
+> states, and each state change appends audit evidence in the same database
+> transaction. We will complete a separate-persona approval in Element 7.
+
+### 29:30 to 31:15: Strategic prompt (e)
+
+Open Licenses. Point to renewal urgency, owner, entitlements, seat utilization,
+and named dataset dependencies.
+
+### Narration
+
+> Strategic prompt (e) is data vendor and lifecycle management. This register
+> connects vendor, product, entitlements, seats, renewal date, accountable
+> owner, and the named datasets that depend on the agreement. It exposes both
+> utilization risk and renewal risk before a source stops refreshing.
+
+> The boundary is explicit. Renewal urgency is computed in the browser from
+> `renews_on`; no scheduled notification job is implemented. Dataset
+> dependencies are stored names in this prototype, not enforced relational
+> foreign keys. A production service would make those dependencies canonical,
+> run renewal evaluation server-side, notify accountable owners, and link
+> procurement evidence and disposition workflow.
+
+### 31:15 to 32:30: Responsive and accessible interaction
+
+Briefly narrow the browser to the rehearsed mobile width. Open the navigation
+drawer, move to Dashboard, and close it. Restore desktop width.
+
+> The same mission workflow is usable at mobile and desktop widths. Navigation
+> is keyboard and touch accessible, focus is visible, and reduced-motion
+> preferences are honored. The responsive shell is part of the working
+> application, not a separate mockup.
+
+Switch to the prepared poweruser requester profile on Export.
+
+## 32:30 to 38:30: Element 7, Interoperability, portability, and secure export
+
+### 32:30 to 33:35: Trigger the aggregation guard
+
+As the poweruser requester, choose the rehearsed CSV export that exceeds the
+configured threshold. Submit it. Point to HTTP 428, matched row count,
+threshold, and exact `exp-` subject identifier.
+
+### Narration
+
+> Element 7 treats release as a governed decision. The API counted every row
+> matched by this normalized request, independent of a page limit. Because the
+> count exceeds the recording threshold, it returned HTTP 428 before creating
+> a file.
+
+> The subject identifier fingerprints this organization's exact format,
+> columns, and filters. Approval for a different request cannot clear it.
+
+### 33:35 to 34:20: Request approval
+
+Click Request approval. Point to requester, pending state, subject identifier,
+and the note that the requester cannot decide it. Leave this requester window
+open.
+
+> This poweruser can request the release, but four-eyes is enforced in this
+> deployed stack, so the same authenticated identity cannot approve its own
+> request. A second poweruser identity must make the decision.
+
+### 34:20 to 35:20: Independent reviewer inbox
+
+Switch to the separate poweruser reviewer browser profile. Open the approval
+reviewer inbox, which reads protected `GET /approvals`. Find the pending export
+by its subject identifier. Approve it and copy the issued opaque one-time
+token. Do not expose a bearer token; this is the application approval
+capability only.
+
+### Narration
+
+> This is a separate authenticated reviewer. The inbox is a live protected API
+> projection, not local browser state. The decision records requester,
+> reviewer, time, expiration, and exact subject. The issued capability is an
+> opaque, short-lived token that can be consumed once. Only its SHA-256 verifier
+> is stored.
+
+### 35:20 to 36:20: Exact retry and one-time release
+
+Return to the original poweruser requester session. Paste the opaque one-time
+approval token into the pending request and retry without changing the format,
+columns, or filters. Point to export ID, row count, format, audited status, and
+short-lived download.
+
+### Narration
+
+> The requester retried the same endpoint. The server locked the approval,
+> verified the exact fingerprint and expiry, marked it consumed in the
+> authorized transaction, appended the audit receipt, and only then returned
+> the release reference.
+
+Click Verify one-time use. The application replays the exact request once with
+the capability held only in page memory. Point to the 403 denial and the
+single-use verified receipt.
+
+> The second spend is denied. This approval is a one-time capability, not a
+> reusable bypass flag.
+
+### 36:20 to 37:20: Authoritative backend readback
+
+Switch to poweruser Mission Control. Open Control receipts and sanitized audit
+readback. Point to the approval and export categories, time, allowed safe
+detail, request correlation, and current live label.
+
+> The export page showed the interaction ledger. This System Inspector view is
+> the authoritative sanitized server projection from append-only audit and
+> application tables. Sensitive infrastructure, identity, source data, SQL,
+> prompts, and presigned URLs remain excluded.
+
+### 37:20 to 38:05: OpenAPI and portability
+
+Return to Export and open the protected OpenAPI 3.1 panel. Point to the served
+contract and the 25 protected operations across 23 URL paths. Mention the
+selected CSV format.
+
+### Narration
+
+> Interoperability starts with a contract the running service serves itself.
+> Data is stored in PostgreSQL with versioned SQL, identity uses OIDC and JWT,
+> and release formats are CSV, JSON, and optional parquet.
+
+> Managed AWS services are deliberate for this demonstration. Portability
+> means portable data, standard contracts, and replaceable adapters. It does
+> not mean the current stack has no cloud dependencies.
+
+### 38:05 to 38:30: Element 7 receipt
+
+> The evidence chain is complete: scoped request, threshold decision, exact
+> fingerprint, independent approval, expiry, one-time consumption, release,
+> server audit readback, and published interface contract.
+
+Return to the dashboard or landing page.
+
+## 38:30 to 39:15: Close
+
+### Narration
+
+> Compass has now demonstrated all seven elements in sequence and answered all
+> five strategic prompts. The same synthetic portfolio and the new batch moved
+> through identity, infrastructure, ingestion, governance, analytics, decision
+> support, and controlled release, with backend evidence available from the
+> product.
+
+> We have also kept the boundaries visible: replay is not live proof, the
+> commercial stack is not accredited IL5, the financial baseline is computed,
+> license alerts are not scheduled, and production disaster recovery requires
+> approved objectives and tested cross-region procedures.
+
+> The submitted repository tag matches the deployed revision shown today. The
+> Volume IV index provides the exact timestamps, presenters, video access, and
+> read-only repository access. Thank you.
+
+Stop the recording. Do not add a title card or edit the take.
+
+## Separate Scale Lab evaluator tour
+
+This tour is outside the fixed 39:15 Factor 3 sequence. Use it as a separate
+evaluator walkthrough or as a rehearsed extension only after the submission
+timing and required order are reapproved. Do not replace any of the seven
+required elements with this section.
+
+The Satsyil target completed all four direct-IAM acceptance runs on 2026-08-11.
+A separate live browser pass completed Cognito password and TOTP, loaded all
+nine screens without `Failed to fetch`, exercised the Scale controls, showed
+the 1M profile unlocked with its exact cost gate enabled, and found no browser
+command errors. Confirm that evidence is still current before the recording.
+Repository code, a Scale Plan, and a pre-run Cost Estimate alone are not
+measured execution evidence.
+
+### Scale Lab screen and bounded intent
+
+Sign in as the corporate poweruser and open `/admin/scale/`. Point to the Live
+source label, fixed Workload Profile cards, deterministic seed, interactive
+architecture, and empty or selected run console.
+
+### Narration
+
+> Scale Lab is a Mission Workspace for one bounded production Scale Run. The
+> browser chooses a fixed Workload Profile and a deterministic seed. It cannot
+> choose a raw record count, partition size, concurrency, retention, model
+> spend, or cost ceiling.
+
+> The profiles are `1k`, `10k`, `100k`, and `1m` total physical records across
+> six linked synthetic datasets. Every profile uses 20 percent grants, 30
+> percent finance, 20 percent milestones, 10 percent documents, 2 percent
+> licenses, and 18 percent stream events. For `10k`, that is exactly 2,000,
+> 3,000, 2,000, 1,000, 200, and 1,800 records.
+
+Select `10k`. Preview the Scale Plan and point to six exact partitions, seed,
+concurrency, official price snapshot, estimate, contingency, and upper bound.
+
+> This 15-minute Scale Plan is actor-bound and can be consumed once. The Run
+> Gate verifies identity, feature state, profile limit, one active run,
+> idempotency, price freshness, and both the profile and deployment cost caps.
+> The estimate includes 25 percent contingency. Missing or stale price
+> evidence fails closed.
+
+> The `1m` profile remains locked unless this deployment allows one million
+> records and a successful `100k` proof receipt remains in the durable ledger.
+> That prerequisite is evidence-based progressive capacity, not a browser
+> override.
+
+Launch once. Use the interactive four-plane architecture while the run console
+polls.
+
+> A Standard Step Functions workflow carries only the run identifier. It
+> dispatches bounded partitions through SQS to Lambda workers. Each worker
+> deterministically generates and validates linked records, writes compressed
+> landing, curated, or quarantine objects to S3, and commits a DynamoDB
+> Partition Receipt. Glue catalogs all six datasets. Athena converts them to
+> Parquet under a 10 GiB per-query cutoff and completes full-corpus
+> intelligence. The Scale Lab reads a compact Serving Projection instead of
+> scanning the lake during interaction.
+
+Point to stage progress, records, partitions, queue recovery depth, quality,
+intelligence coverage, observed performance, and cost status. If the run has
+not completed, say so and do not narrate projected values as results.
+
+> The terminal evidence chain is the Run Manifest plus Partition, Quality,
+> Intelligence, Performance, and Cost Receipts. Generated records must
+> reconcile to curated plus quarantined records, every part and terminal
+> receipt carries SHA-256 evidence, intelligence declares corpus coverage,
+> performance is observed, and cost is labeled estimated, metered, or billed
+> reconciliation pending.
+
+Open the compact acceptance summary or the corresponding redacted receipt and
+show one row at a time:
+
+| Profile | Partitions | Duration | Quality | Curated | Quarantined | Anomalies | Export rows |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1K | 6 | 21.351 s | 98.90 | 989 | 11 | 143 | 989 |
+| 10K | 6 | 20.329 s | 98.91 | 9,891 | 109 | 1,403 | 9,891 |
+| 100K | 11 | 25.853 s | 98.92 | 98,921 | 1,079 | 13,727 | 98,921 |
+| 1M | 41 | 72.615 s | 98.98 | 989,852 | 10,148 | 137,852 | 989,852 |
+
+### Measured result narration
+
+> These four bounded synthetic runs completed in this target environment. The
+> million-record run used 41 partitions, analyzed all 200,000 grant records,
+> reconciled 989,852 curated records and 10,148 quarantined records, detected
+> 137,852 deterministic anomalies, and exported 989,852 Parquet rows. Its
+> observed duration was 72.615 seconds.
+
+> The four pre-run estimates totaled $0.21131732. Their accrued model estimates
+> totaled $0.09554118. These are price-model outputs, not billed cost. The HA
+> monthly forecast is $163.70 for a 730-hour month and is not observed billing.
+
+Keep the completed run selected and open `Decision brief` from the mission
+navigation. Point to `Selected Scale Run`, `1,000,000 synthetic records`, and
+`200,000` grants analyzed.
+
+> The active evidence set follows us from Scale Lab into Decision Brief. This
+> view reads the selected run receipt, so it shows the million-record corpus
+> and its 200,000 grant records instead of mixing in the curated 400-grant
+> baseline. It is an aggregate receipt view for quality, quarantine,
+> anomalies, partitions, throughput, and modeled cost. Record filters,
+> citations, funding charts, and workflow dispositions remain in the curated
+> baseline because the Scale receipt does not contain those row-level views.
+
+Select `Use curated baseline`, confirm that the 400-grant record-level
+workspace returns, then reopen the completed Scale Run before continuing if
+you want the Scale context staged for questions.
+
+After a completed run, request the governed Parquet Export Job and wait for a
+ready receipt.
+
+> Export is asynchronous. Its receipt binds exact rows, bytes, format,
+> checksum, expiry, and audit evidence. Browser receipts use logical
+> `lake://scale-runs/...` and `run://...` locators. They do not reveal bucket
+> names, S3 keys, ARNs, queue URLs, table names, or workflow execution IDs.
+
+If showing an acceptance artifact, state its transport disclosure verbatim in
+substance:
+
+> This acceptance receipt exercised the deployed Scale Control route handler
+> and live data plane through direct AWS IAM. It bypassed API Gateway transport,
+> Cognito and TOTP, WAF, and the browser network path. Interactive identity was
+> verified separately, and the saved receipt removed the export download URL.
+
+Close by linking the architecture and cost boundaries.
+
+> The production architecture and cost model are source-controlled planning
+> evidence. The cost model compares demo and HA fixed monthly forecasts and
+> applies a fresh price-backed gate to each run. Only a completed receipt from
+> this target environment supports a measured Scale Run claim.
+
+> This proves a production-shaped bounded synthetic path. It does not prove an
+> ATO, unlimited load, sustained evaluator concurrency, multi-terabyte scale,
+> Government-data operation, or Exhibit B certification.
+
+## Rehearsal acceptance checklist
+
+Do not record until every item is true.
+
+- Runtime finishes between 38:00 and 40:00 in one take.
+- All seven elements are in order.
+- Each strategic prompt is named exactly once at its indexed primary moment.
+- Mode badge says Live service whenever runtime evidence is shown.
+- Recording revision equals `git rev-parse --short=12 HEAD`.
+- All three TOTP sessions are enrolled and stable.
+- Viewer and poweruser scopes differ as expected.
+- All 25 protected operations work with the intended identity when Scale Run is enabled.
+- Clean, legacy, and defective files are absent before the take.
+- The redacted preparation receipt says ready and all five fixture hashes
+  match.
+- Defective batch always curates zero rows.
+- Query-based lineage opens the newly created batch.
+- Analytics completes within the allotted time.
+- RAG response returns with governed citations.
+- Poweruser requester item appears in the separate poweruser reviewer inbox.
+- Requester cannot approve its own request.
+- Reviewer can issue the short-lived approval capability.
+- Exact request succeeds once and token reuse fails.
+- System Inspector shows server audit readback without sensitive fields.
+- OpenAPI reflects 25 operations across 23 URL paths.
+- Presenter Guide is closed.
+- No secret, token, account ID, ARN, bucket name, email notification, chat
+  message, or password manager appears on screen.
+- No slide, marketing overlay, or post-production edit is used.
+
+## Stop and restart conditions
+
+Restart the take after correcting the environment if any of these occurs:
+
+- The UI says Replay fixture during a cloud-proof segment.
+- The revision does not match the recording commit.
+- MFA, a protected route, database policy, or Bedrock call fails.
+- A quarantined batch shows curated rows or downstream curated lineage.
+- An analytics run does not complete.
+- Self-approval succeeds.
+- A changed fingerprint accepts an old approval.
+- An opaque approval capability succeeds more than once.
+- System Inspector exposes a prohibited field.
+- The run passes 43 minutes before Element 7 finishes.
+
+Do not hide a failed control with narration. Fix it, reset the synthetic
+scenario, and record a new continuous take.
+
+Use the bounded reset between takes:
 
 ```bash
-aws s3 cp seed/drops/drop_good.json s3://$RAW_BUCKET/drops/
+python3 scripts/prepare_demo.py prepare \
+  --stack compass-demo \
+  --region us-east-1 \
+  --confirm-synthetic-reset RESET_FIXED_SYNTHETIC_DEMO_DATA \
+  --receipt artifacts/demo-preflight.json
 ```
-
-*[13:50 — Refresh the Ingest page; the new batch appears; open its quality
-panel when it lands as curated. Narrate the rule rows:]*
-
-> There it is — detected automatically, no poll, no cron, no button. The
-> quality gate ran the rule set — required fields, type checks, value ranges,
-> duplicate award numbers — every rule reporting rows passed and failed, and
-> the batch score is displayed with its formula, not as a mystery number.
-> Forty of forty rows passed; the batch is curated and those grants are now
-> live in the portfolio you saw on the dashboard.
->
-> Second file — and this one matters for any command with legacy exporters.
-> Same grants, but shaped the way a real legacy reporting system would emit
-> them: columns renamed — `award_id` for the grant number, `fy` as a string
-> like "FY2026", dollar amounts with currency signs and commas — plus an
-> extra column our schema doesn't want.
-
-```bash
-aws s3 cp seed/drops/drop_compatible_variant.json s3://$RAW_BUCKET/drops/
-```
-
-*[14:50 — Refresh; when it lands, show it curated with the same pass profile:]*
-
-> The normalizer recognized the variant, mapped every renamed column back to
-> the canonical schema, parsed the typed values, dropped the stray column, and
-> the same quality gate passed it. Schema variation is handled as a mapping
-> concern at the edge — the core pipeline is parameterized, exactly the
-> modular, parameterized pipeline architecture Exhibit B calls for, so a new
-> source format is an adapter, not a rebuild.
->
-> Third file: sixty rows where fifteen are deliberately defective — missing
-> org units, negative dollar amounts, a duplicate award number, a fiscal year
-> of 1998, values of the wrong type.
-
-```bash
-aws s3 cp seed/drops/drop_incompatible_bad.json s3://$RAW_BUCKET/drops/
-```
-
-*[15:45 — Refresh; the batch shows quarantined. Open its quality panel:]*
-
-> Seventy-five percent pass rate — below the ninety-percent gate — so the
-> pipeline held the entire batch: nothing was curated, every row is retained
-> in the landing zone with its per-rule verdict, and a batch anomaly was
-> raised for a data steward. Bad data cannot leak into the analytics tier,
-> and nothing is silently dropped — quarantine is a visible, auditable state.
-
-**[CUT LINE — if behind schedule, jump to 16:30 now.]**
-
-*[16:15 — Point at the stream ticker and the velocity badges on the page:]*
-
-> And the streaming layer: this ticker is fed from a Kinesis data stream —
-> Kafka-equivalent, managed — with a producer publishing pipeline activity
-> continuously. The platform supports the three ingestion velocities in
-> Exhibit B, and the interface labels each batch with its velocity: scheduled
-> batch, like a nightly ERP pull; interval micro-batch; and on-demand — a
-> user-triggered live refresh, which is precisely what I did three times just
-> now from the command line, and which any authorized power user can do from
-> this page.
-
-*[16:30 — Prompt (a). To camera, over the Ingest page:]*
-
-> Which brings me to **Strategic Prompt (a) — sustainment of the legacy
-> footprint**. Our approach is strangler-fig modernization with the legacy
-> estate treated as a production system, never a demolition site. Concretely,
-> in phases. Phase one: assume operation of the current D&A Portal
-> application, reporting systems, databases, and the existing ETL pipelines
-> exactly as they run today — same schedules, same outputs — under our
-> monitoring, with runbooks and SLOs, changing nothing. The variant file you
-> just watched is the technical proof of phase two: the modern platform
-> ingests legacy exports *as they are*, renamed columns, typed quirks and all,
-> so both systems run in parallel on the same data with zero change demanded
-> of the legacy side, and reports are reconciled between old and new until the
-> numbers agree over an agreed soak period. Phase three: consumers cut over
-> workload by workload behind stable interfaces, each cutover reversible,
-> and a legacy pipeline is retired only after its replacement has run clean
-> through a full reporting cycle. Zero service degradation is not a slogan —
-> it falls out of never asking the legacy system to change, and never cutting
-> over without a parallel run and a way back.
-
----
-
-## 19:00 — Element 4: Data Governance, Quality, and Cataloging
-
-**Presenter: Chief Enterprise Architect** · *HARD STOP 24:00*
-*(L 11.3 Element 4 — catalog, metadata, quality scores, end-to-end visual
-lineage.)*
-
-*[19:00 — Screen: browser window A → Catalog page.]*
-
-> Element 4: governance. This is the platform's data catalog — the registry of
-> every dataset the platform holds: the curated grants portfolio, the landing
-> zone, the analytics outputs, and the commercial data feeds you'll see in
-> Element 6. For each entry: ownership, freshness, record counts, and — front
-> and center — a data quality score. One thing to notice about that score —
-> *[hover/click the score chip]* — it is shown **with its formula**. It is
-> computed from the same per-rule pass and fail counts the quality gate wrote
-> during the ingests my colleague just ran, so the catalog can never disagree
-> with the pipeline: they are reading the same ledger. A health score nobody
-> can explain is theater; this one is arithmetic you can check.
-
-*[20:15 — Click into the curated grants dataset → lineage view. The lineage
-graph renders. Trace it left to right with the cursor:]*
-
-> And here is end-to-end lineage, visually mapped: source file, landing zone,
-> normalization, the quality gate with its score, the curated table, the topic
-> model run, and the dashboard tier that consumes it. The important thing
-> about this graph is where it came from. Nobody drew it. Every node and every
-> edge was **emitted by the pipeline run itself** and stored as lineage
-> records at execution time — you can see the run identifier on the graph
-> matches the batch my colleague ingested minutes ago. Documentation of the
-> data flow that is generated by the data flow — the same design conviction as
-> the RMF artifact in Element 2: the description of the system falls out of
-> the system, so it cannot drift.
-
-**[CUT LINE — if behind schedule, jump to 22:45 now.]**
-
-*[21:45 — Briefly open the lineage for the quarantined batch:]*
-
-> Lineage exists for the failed batch too — it ends at the quarantine node
-> with the gate's score on the edge. Negative provenance — being able to show
-> an auditor exactly where bad data stopped — is as much a governance feature
-> as positive provenance.
-
-*[22:45 — Wrap the element:]*
-
-> Metadata capture, explainable quality scoring, and machine-generated lineage
-> from raw file to visualization tier: that is the governance layer, and none
-> of it depends on a human remembering to update a wiki. Now — what the
-> platform does with governed data. Our Data Scientist.
-
----
-
-## 24:00 — Element 5: Decision-Support Analytics and Modeling
-
-**Presenter: Data Scientist** · *HARD STOP 30:00*
-*(L 11.3 Element 5 — trigger and execute an analytical/ML routine live; show
-structured outputs and decision support; weaves in Prompt (b).)*
-
-*[24:00 — Screen: browser window A → Analytics page. Click **Run analysis**
-immediately so the model runs while narrating.]*
-
-> Element 5. I've just triggered a live analytical run against the portfolio —
-> including the eighty grants ingested minutes ago — and while it executes,
-> let me tell you exactly what it is, because we believe evaluators deserve
-> the algorithm, not adjectives. This is unsupervised topic modeling over the
-> full text of every grant title and abstract: TF-IDF vectorization, then
-> non-negative matrix factorization, seeded and deterministic — the same
-> corpus and parameters reproduce the same run, which is what makes an
-> analytical result auditable. Alongside it, a statistical anomaly screen
-> z-scores every award amount within its program area to flag outlier funding.
-> This is our own documented implementation — transparent linear algebra, and
-> the unit tests ship in the repository.
-
-*[25:00 — Results render. Walk the topic list:]*
-
-> Done — seconds, on live data. Eight discovered themes, each with its top
-> terms, its weight, and — the part leadership actually uses — a fiscal-year
-> trend. *[Open the trend chart for the top emerging topic.]* The trend is
-> computed as each topic's **share within its fiscal year**, so growth is
-> real concentration shift, not an artifact of the portfolio simply adding
-> more grants each year. This topic's share has grown across the trailing two
-> years — that is an emerging investment area, detected from raw abstracts
-> with no manual tagging.
-
-*[26:00 — Open the anomaly flags panel:]*
-
-> The anomaly screen flagged these awards as funding outliers relative to
-> their program area — each with its z-score, severity, and a plain-English
-> reason. These flow into the workflow queue you'll see in Element 6, so a
-> flag becomes a routed decision, not a forgotten chart.
-
-*[26:40 — Show the recommendation panel:]*
-
-> And the run ends in a sentence, not just a matrix: a recommendation derived
-> from the numbers — which topic is emerging, how fast its share is growing,
-> how many anomalies need review — stored with the run, alongside its
-> parameters and metrics, in a model registry table. Every run is versioned
-> and reproducible; that is the governance spine that MLOps re-training and
-> drift monitoring bolt onto, per the Exhibit B model-sustainment workload.
-
-**[CUT LINE — if behind schedule, jump to 27:45 now.]**
-
-*[27:00 — One decision-support beat on the dashboard link:]*
-
-> Strategic decision aid, concretely: a portfolio lead asking "where is the
-> field moving, and are we funding it?" gets: this topic is accelerating,
-> these codes hold the grants, these two awards are funding outliers worth a
-> look. That's a resourcing conversation, prepped by the platform in seconds.
-
-*[27:45 — Prompt (b). To camera:]*
-
-> **Strategic Prompt (b) — financial and budgetary analytical integration.**
-> Everything you just watched is domain-portable, and finance is where we'd
-> point it first. The ingestion tier treats financial ERP extracts exactly
-> like the legacy variant file in Element 3 — mapped, typed, quality-gated,
-> so obligation and expenditure data arrives clean and auditable.
-> For **execution tracking**: the same anomaly machinery that z-scored award
-> amounts monitors obligation and burn rates against plan by appropriation,
-> program, and fiscal year — the dashboard you'll see next already carries a
-> budget-execution view over the mock portfolio. For **predictive** support:
-> trend decomposition over execution history to project year-end positions
-> and flag lines trending toward under- or over-execution while there is
-> still time to act inside the fiscal year. For **prescriptive** support:
-> recommendation outputs like the one on screen, ranking candidate
-> reallocations against command resourcing priorities — the platform drafts
-> the option space, and leadership decides. And the team behind it is on this
-> recording: myself on models, the Data Architect on the financial data
-> foundation, working inside the governance you've already seen — because a
-> budget number nobody can trace is a number nobody will defend. That is
-> cost optimization as an analytical practice: find it early, explain it,
-> route it to a decision.
-
----
-
-## 30:00 — Element 6: Unified Dashboard, Visualizations, and Process Automation
-
-**Presenter: Web Software Developer** · *HARD STOP 36:00*
-*(L 11.3 Element 6 — executive BI for a non-technical leader; automated
-summaries, approval routing, anomaly flagging; weaves in Prompt (e).)*
-
-*[30:00 — Screen: browser window A → Dashboard.]*
-
-> Element 6: the view a leader actually opens. One page, one round trip —
-> the API assembles every KPI and every chart series server-side, so this
-> renders fast and reads as one coherent picture: portfolio value, award
-> counts, funding by program area, awards by code, budget execution, the
-> quality trend from the ingests you watched, and topic concentration from
-> the run my colleague just executed. Everything a non-technical user does
-> here is point and click: filter, hover for exact values, drill.
-
-*[30:45 — Point at the executive summary block:]*
-
-> The narrative summary at the top was generated by the platform — an
-> automated summary over these same numbers, produced by an AI model running
-> **inside the cloud boundary**, and it regenerates as the data changes.
-> Which sets up the feature I want to spend a minute on.
-
-*[31:15 — Ask Compass. Type the question live:]*
-
-> Natural-language Q&A over the governed portfolio.
-
-*[Type into Ask Compass: **"Which program area is growing fastest, and who are
-the top awardees in it?"** — submit; read the key line of the answer aloud.]*
-
-> Retrieval-augmented answering: the platform embeds the question, retrieves
-> the most relevant grants by vector similarity **from the curated table,
-> under this user's row-level security context**, and only then asks the
-> model to answer, from those retrieved records. Two properties matter.
-> In-boundary: both the embedding model and the chat model are AWS Bedrock
-> services invoked inside the environment — no data leaves for any public AI
-> API, which is the AI trust posture Exhibit B requires. And
-> policy-inheriting: a Code-30 viewer asking this exact question gets an
-> answer computed only from Code-30 rows, because retrieval runs under the
-> same database policies as every other query. The AI cannot leak what the
-> user cannot read.
-
-*[32:45 — Process automation: open the anomaly workflow panel; click one
-anomaly → Request review; switch briefly to the approvals view and approve it:]*
-
-> Process automation, end to end: the funding outliers from Element 5 arrive
-> here as a work queue. I take this flagged award, route it for review — and
-> as the power user I approve it, with a note. Flag, route, decide, done —
-> and every state change writes the audit trail. Repetitive workflow the
-> platform runs itself; judgment stays human.
-
-**[CUT LINE — if behind schedule, jump to 33:45 now.]**
-
-*[33:30 — Navigate to the Licenses page:]*
-
-> One more automation surface, and it answers a strategic prompt directly.
-
-*[33:45 — Prompt (e). Over the Licenses page, pointing at rows:]*
-
-> **Strategic Prompt (e) — data vendor and lifecycle management.** This is the
-> platform's commercial data subscription registry: eight mock vendor
-> licenses — bibliometric, patent, company-intelligence feeds — each with its
-> entitlements, seat utilization, renewal date, and owning team. The platform
-> watches the renewal horizon: these subscriptions *[point at the flagged
-> rows]* renew within forty-five days and are flagged automatically — surfaced
-> here and on the executive dashboard, so a renewal becomes a routed approval
-> through the workflow you just watched, months before it becomes an outage.
-> Critically, every license is linked to the **datasets** it feeds, and those
-> datasets are catalog entries with lineage — so before anyone lets a
-> subscription lapse, the platform answers "which pipelines and which
-> dashboards go dark if this expires," by traversal, not by memory. That
-> dependency mapping is how you manage renewals **without data gaps in
-> critical dashboards**. Quality compliance rides the same rails as
-> everything else: vendor feeds land through the Element 3 quality gate, so
-> a degrading feed shows up as a falling score on its catalog entry — which
-> is contract-management evidence at renewal time. Methodology in one line:
-> subscriptions are governed data, in the same catalog, quality, lineage, and
-> workflow machinery as the mission data they feed.
-
----
-
-## 36:00 — Element 7: Interoperability, Data Portability, and Secure Export
-
-**Presenter: Chief Enterprise Architect** · *HARD STOP 41:00*
-*(L 11.3 Element 7 — secure bulk export in non-proprietary formats, open
-schemas/APIs, no vendor lock-in; demonstrates the aggregation-guard
-differentiator.)*
-
-*[36:00 — Screen: browser window A (power user) → Export page.]*
-
-> Element 7: getting data out — because a platform that hoards data is a
-> platform you're locked into. Filtered export, live: fiscal years 2025 and
-> 2026, CSV.
-
-*[Set the filters; run the export; the file downloads via a presigned link.
-Open the CSV briefly in a text editor — show the header row.]*
-
-> Plain, non-proprietary CSV — column-headed, tool-agnostic; the same request
-> serves JSON, and parquet for columnar consumers. *[Run the same filter as
-> JSON; show the response metadata briefly.]* Notice the export carries its
-> own provenance: generated-at, the applied filters, row counts, and its
-> classification note. Every export also lands in the immutable audit log —
-> we'll look at that in a moment.
-
-*[Stage note — parquet: if pyarrow was enabled at deploy (preflight), run the
-parquet export and say: "and parquet, natively." If it was NOT enabled, either
-skip parquet entirely or show the honest response note — the API returns CSV
-and states the parquet layer is not installed. Do not claim parquet bytes that
-were not produced.]*
-
-*[37:15 — The guard. Clear the filters; request the full portfolio:]*
-
-> Now the control this platform is proudest of, and the second Exhibit B
-> requirement I flagged at the top: defense against **mass extraction** — the
-> aggregation risk. This system holds roughly five hundred curated grants,
-> and for this recording the extraction threshold is set to two hundred fifty
-> rows so you can watch the control fire on real data — that's a deploy-time
-> parameter, five thousand by default. I'm now requesting the entire
-> portfolio, unfiltered.
-
-*[Submit. The 428 response renders. Read it:]*
-
-> Refused — HTTP 428: the filter matched about four hundred eighty rows,
-> over the threshold, so the platform demands an approval before this much
-> data leaves in one pull. Three details make this a real control and not a
-> speed bump. It counts the rows the **filter matched**, not the page size —
-> you cannot page your way underneath it. The refusal names a **fingerprint
-> of this exact query** — approving it authorizes this specific extraction,
-> for this org, in this shape; it is not a standing license to bulk-export.
-> And this refusal is already in the audit log.
-
-*[38:15 — Clear it through the approval workflow: request approval for the
-returned subject id; approve it as the power user; re-run with the token:]*
-
-> So: I request approval for that fingerprint, the approving authority — me,
-> wearing the approver hat, as recorded by the workflow — approves it, and I
-> re-run the same export with the approval token attached. *[The full export
-> succeeds.]* Delivered — and the guard block, the approval, and the release
-> are now three linked entries in the audit trail. *[Open the audit trail
-> panel; point at the sequence.]* Blocked, approved, released — with actor,
-> timestamp, and the query fingerprint on each. The audit row is written
-> before bytes leave; the trail can over-record but never under-record.
-
-**[CUT LINE — if behind schedule, jump to 39:45 now.]**
-
-*[39:00 — RLS/CLS proof in the export path. Switch to browser window B — the
-still-signed-in viewer — Export page:]*
-
-> And the promise from Element 1, kept in the riskiest path. Same export
-> screen, viewer persona. The rows: only Code 30 — row-level security,
-> enforced by the database inside the export query itself. The columns:
-> watch what happens when the viewer asks for the dollar amount. *[Request an
-> export including `amount_usd`.]* Refused, 403 — column-level security. Not
-> silently dropped: refused, explicitly, because a column you quietly omit is
-> a governance bug you'll never find. Filtering **on** the hidden column is
-> refused for the same reason — otherwise you could binary-search a value you
-> aren't entitled to read.
-
-*[39:45 — Open `$API/openapi.json` in a tab (authenticated request):]*
-
-> Finally, interoperability by contract. The platform serves its own OpenAPI
-> 3.1 document — from the running API, not a wiki — so any enterprise
-> platform, Advana or Cloud One included, integrates against a published,
-> versioned contract: token-authenticated HTTPS, JSON in, JSON or bulk files
-> out, non-proprietary formats end to end. And beneath the API: the store is
-> standard PostgreSQL, schema versioned in this repository as plain SQL, and
-> exports are CSV, JSON, and parquet. Interoperability posture in one
-> sentence: portable data, standard contracts, replaceable adapters — leave
-> the platform any day with your data, your schema, and your history. That is
-> the opposite of lock-in.
-
----
-
-## 41:00 — Strategic Prompt (d): Disaster Recovery, Resilience, and Failover
-
-**Presenter: DevSecOps Engineer** · *HARD STOP 43:30*
-*(Dedicated narrated address, as L 11.4 permits. On-screen evidence, no
-slides.)*
-
-*[41:00 — Screen: terminal — `template.yaml` open at the VPC/subnet block;
-scroll slowly to the Aurora block, then `samconfig.toml` `[dev]` section,
-while narrating:]*
-
-> Strategic Prompt (d) — continuity, in three parts, with the evidence on
-> screen.
->
-> **Objectives.** For a platform of this class we commit to a Recovery Point
-> Objective of **fifteen minutes or better** — Aurora's continuous backup with
-> point-in-time recovery makes the achievable RPO minutes, not hours — and
-> tiered Recovery Time Objectives: **one hour** for the critical read path —
-> dashboards and reporting — and **four hours** for full platform
-> functionality including ingest and analytics. Those targets are grounded in
-> the architecture you're looking at, and we validate them by drill, not by
-> assertion.
->
-> **Availability patterns.** What's on screen: every tier is either stateless
-> or managed-multi-AZ. Two availability zones across public and private
-> subnets; Aurora with a multi-AZ topology and automated failover under a
-> stable endpoint; compute is serverless functions with no state to lose;
-> the UI is served from edge-replicated storage; and the data plane is
-> encrypted and continuously backed up. And the deepest pattern is Element 2
-> itself: because the entire environment is one declarative template plus
-> versioned migrations plus seedable data, **region-loss recovery is a
-> redeploy** — the same two commands you watched, pointed at a recovery
-> region, then restore the database from backup. One honest note, in the
-> spirit of this whole demonstration: this demo stack carries two
-> cost-conscious settings a production deployment changes — one NAT gateway
-> instead of one per AZ, and short backup retention; both are one-line
-> parameter changes in the template, and the production baseline sets
-> per-AZ egress and thirty-five-day point-in-time retention.
->
-> **Non-disruptive annual exercises.** *[Point at `[dev]` in samconfig.]*
-> The deploy configuration you're looking at already defines a second,
-> fully isolated stack of this same template. Our annual DR exercise deploys
-> exactly that: a parallel environment in the recovery region, database
-> restored from production backups to a point in time, the full seven-element
-> workflow you watched today executed against it as the validation script,
-> RTO and RPO measured against the commitments I just stated, results
-> written into the continuity plan, exercise stack torn down. Production is
-> never touched — zero disruption, by construction, and the exercise is
-> cheap enough to run more than annually.
-
----
-
-## 43:30 — Close
-
-**Presenter: Chief Enterprise Architect** · *HARD STOP 44:30*
-
-*[43:30 — Screen: browser window A → Dashboard.]*
-
-> Let's land it. In one unedited take, on a live cloud environment, you
-> watched all seven scenario elements in order: MFA'd Zero Trust access with
-> database-enforced row and column security; the environment provisioned from
-> one version-controlled template, generating its own RMF evidence; live
-> ingestion that curated clean data, normalized a legacy format, and
-> quarantined bad rows; a catalog with explainable quality scores and
-> machine-generated lineage; a deterministic, documented analytical model
-> turning raw abstracts into decisions; an executive surface with in-boundary
-> AI, automated summaries, and routed approvals; and governed bulk export in
-> open formats — including watching the platform refuse a mass extraction,
-> then release it under audited approval. And all five strategic prompts,
-> answered by name by the Key Personnel who will do this work.
->
-> On agility, one closing thought: everything that made this demonstration
-> possible on synthetic data — declarative infrastructure, adapters at the
-> edges, portable data, contracts published by the running system — is the
-> same property that lets this platform absorb a new data source, a new
-> mission workload, or a new hosting environment without a rebuild. That is
-> the platform, and the team, we're proposing to bring to ONR. Thank you.
-
-*[STOP RECORDING. Target elapsed: 44:30. Ceiling: 50:00.]*
-
----
-
-## After the recording
-
-1. Watch the take end to end. Verify: all 7 elements sequential and complete,
-   all 5 prompts explicitly named, no dead air over 10 seconds, every claim
-   matches what happened on screen.
-2. Fill in the actual timestamps in `volume_iv/TIMESTAMP_INDEX.md`.
-3. Upload per `volume_iv/SUBMISSION_LINKS.md` (private, password-protected
-   link; test from a clean browser and a phone).
-4. Complete `volume_iv/PRESENTER_MAPPING.md` with the recorded
-   presenter-to-segment mapping.
-5. Reset `ExportMaxRows` if the stack stays up for a live follow-on session
-   (the Government reserves a 90-minute live validation session).

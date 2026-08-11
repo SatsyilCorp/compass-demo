@@ -7,7 +7,7 @@ import { BarList, type BarListItem } from "./bar-list";
 import { allMasked, num, usd, usdFull } from "../format";
 
 /**
- * Portfolio by program area — `GET /dashboard` → `funding_by_program_area`.
+ * Portfolio by program area: `GET /dashboard` to `funding_by_program_area`.
  *
  * When the caller's role has `amount_usd` revoked (viewer/CLS) every amount
  * comes back null. The chart then plots grant counts and says so, rather than
@@ -34,7 +34,7 @@ export function ProgramFundingBar({
 
   return (
     <ChartCard
-      title={masked ? "Portfolio by program area — grant count" : "Portfolio by program area"}
+      title={masked ? "Portfolio by program area: grant count" : "Portfolio by program area"}
       hint={
         masked
           ? "Award amounts are withheld from your role by column-level security, so this ranks program areas by grant count."

@@ -1,10 +1,10 @@
-"""RAG chat Lambda — POST /chat (element 6, docs/CONTRACTS.md).
+"""RAG chat Lambda - POST /chat (element 6, docs/CONTRACTS.md).
 
-Flow (all in-boundary, Bedrock only — no public LLM API):
+Flow (all in-boundary, Bedrock only - no public LLM API):
   1. Authenticate via the authorizer-injected claims (deny-by-default).
   2. Embed the question with Titan Embed Text v2 (1024-dim) through the
      ``compass_common.llm`` gateway.
-  3. Retrieve the top-k curated grants by pgvector cosine similarity — INSIDE
+  3. Retrieve the top-k curated grants by pgvector cosine similarity - INSIDE
      ``db.set_org(conn, claims.org_unit)``, so row-level security filters
      retrieval to the caller's org (Code-30 viewer sees only Code-30 grants;
      ONR-Corporate sees all). The answer respects RLS by construction: the
@@ -65,7 +65,7 @@ def handler(event, context):
             return http.bad_request("'top_k' must be an integer")
         top_k = max(1, min(top_k, MAX_TOP_K))
 
-        # 1) Embed the question (Titan v2, 1024-dim — matches the column type).
+        # 1) Embed the question (Titan v2, 1024-dim - matches the column type).
         query_embedding = llm.embed(question)
 
         # 2) Retrieve under the caller's RLS context.

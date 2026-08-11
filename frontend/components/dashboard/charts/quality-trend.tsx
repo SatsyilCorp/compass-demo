@@ -25,7 +25,7 @@ import {
 import { dateShort } from "../format";
 
 /**
- * Data-quality score across ingest runs — `GET /dashboard` → `quality_trend`.
+ * Data-quality score across ingest runs: `GET /dashboard` to `quality_trend`.
  *
  * One series, so no legend box (the title names it) and no number on every
  * point: the latest score is called out above the plot and the rest live in

@@ -191,7 +191,7 @@ export function LineageGraph({ nodes: rawNodes, edges: rawEdges }: { nodes: Line
         {!selected ? (
           <>
             <p className="text-xs leading-relaxed text-text-muted">
-              Click any node in the graph to inspect its metadata — this is the same DAG the ingest and analysis
+              Click any node in the graph to inspect its metadata - this is the same DAG the ingest and analysis
               pipeline emits into <code className="font-mono text-[11px]">lineage_nodes</code> /{" "}
               <code className="font-mono text-[11px]">lineage_edges</code> for this run.
             </p>

@@ -27,15 +27,15 @@ import {
 import { num, usdFull } from "../format";
 
 /**
- * Awards by org unit — `GET /dashboard` → `org_unit_breakdown`.
+ * Awards by org unit: `GET /dashboard` to `org_unit_breakdown`.
  *
  * Counts, not dollars: the count is the measure both personas can see, so the
  * chart keeps its shape when column-level security masks money (the exact
  * dollar figure rides in the tooltip and reads "Masked" when withheld).
  *
  * When row-level security scopes the caller to a single org unit there is
- * nothing to compare, so the card degrades to a stat tile — a one-bar bar
- * chart is never the right form — and names the reason.
+ * nothing to compare, so the card degrades to a stat tile. A one-bar bar
+ * chart is never the right form, and the card names the reason.
  */
 type Row = { org_unit: string; grant_count: number; amount_usd: number | null };
 

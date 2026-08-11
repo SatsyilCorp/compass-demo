@@ -1,34 +1,70 @@
 /**
- * GET /anomalies — fixture. Element 6. Mirrors `anomalies` in
- * db/migrations/001_schema.sql.
+ * Anomaly projection. A defective replay batch creates a visible quarantine
+ * finding, while baseline grant findings retain deterministic timestamps.
  */
 import type { Anomaly, AnomaliesResponse, Role } from "@/lib/types";
 import { visibleGrants } from "./grants";
+import { getScenarioState, visibleScenarioBatches } from "./scenario-store";
 
-const TEMPLATES: { kind: string; severity: Anomaly["severity"]; reason: (n: string) => string }[] = [
-  { kind: "amount_outlier", severity: "high", reason: (n) => `Award amount on ${n} is 3.2x the program-area median for its fiscal year.` },
-  { kind: "duplicate_grant_no", severity: "critical", reason: (n) => `${n} shares a normalized title with another grant_no in the same batch.` },
-  { kind: "missing_abstract", severity: "low", reason: (n) => `${n} was curated with an empty or truncated abstract.` },
-  { kind: "org_unit_mismatch", severity: "medium", reason: (n) => `${n}'s org_unit does not match the submitting program office on the source file.` },
-  { kind: "fiscal_year_drift", severity: "medium", reason: (n) => `${n}'s fiscal_year is outside the batch's declared appropriation year.` },
+const TEMPLATES: { kind: string; severity: Anomaly["severity"]; reason: (grantNo: string) => string }[] = [
+  {
+    kind: "amount_outlier",
+    severity: "high",
+    reason: (grantNo) => `Award amount on ${grantNo} is 3.2x the program area median for its fiscal year.`,
+  },
+  {
+    kind: "duplicate_grant_no",
+    severity: "critical",
+    reason: (grantNo) => `${grantNo} shares a normalized title with another grant number in the same batch.`,
+  },
+  {
+    kind: "missing_abstract",
+    severity: "low",
+    reason: (grantNo) => `${grantNo} was curated with an empty or truncated abstract.`,
+  },
+  {
+    kind: "org_unit_mismatch",
+    severity: "medium",
+    reason: (grantNo) => `${grantNo} has an org unit that does not match its submitting office.`,
+  },
+  {
+    kind: "fiscal_year_drift",
+    severity: "medium",
+    reason: (grantNo) => `${grantNo} has a fiscal year outside the declared appropriation year.`,
+  },
 ];
 
 export function getAnomalies(role: Role | null, orgUnit: string | null): AnomaliesResponse {
+  const failedBatches = visibleScenarioBatches(role, orgUnit).filter(
+    (batch) => !batch.baseline && batch.status === "failed",
+  );
+  const replayFindings: Anomaly[] = failedBatches.map((batch, index) => ({
+    id: 9000 + index,
+    grant_id: null,
+    kind: "quality_gate_quarantine",
+    severity: "critical",
+    reason: `${batch.batch_id} failed the replay quality threshold at ${batch.overall_score.toFixed(1)} and curated zero rows.`,
+    status: "open",
+    created_at: batch.ingested_at,
+  }));
+
   const visible = visibleGrants(role, orgUnit);
-  const n = Math.min(9, visible.length);
-  const anomalies: Anomaly[] = Array.from({ length: n }, (_, i) => {
-    const g = visible[(i * 3) % visible.length]!;
-    const t = TEMPLATES[i % TEMPLATES.length]!;
+  const count = Math.min(Math.max(0, 9 - replayFindings.length), visible.length);
+  const anchor = new Date(getScenarioState().logical_now).getTime();
+  const baseline: Anomaly[] = Array.from({ length: count }, (_, index) => {
+    const grant = visible[(index * 3) % visible.length]!;
+    const template = TEMPLATES[index % TEMPLATES.length]!;
     return {
-      id: i + 1,
-      grant_id: g.id,
-      grant_no: g.grant_no,
-      kind: t.kind,
-      severity: t.severity,
-      reason: t.reason(g.grant_no),
-      status: i % 4 === 0 ? "resolved" : i % 3 === 0 ? "acknowledged" : "open",
-      created_at: new Date(Date.now() - i * 86_400_000).toISOString(),
+      id: index + 1,
+      grant_id: grant.id,
+      grant_no: grant.grant_no,
+      kind: template.kind,
+      severity: template.severity,
+      reason: template.reason(grant.grant_no),
+      status: index % 4 === 0 ? "resolved" : index % 3 === 0 ? "acknowledged" : "open",
+      created_at: new Date(anchor - (index + 1) * 86_400_000).toISOString(),
     };
   });
-  return { anomalies };
+
+  return { anomalies: [...replayFindings, ...baseline] };
 }

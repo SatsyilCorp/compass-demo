@@ -1,20 +1,20 @@
 """In-VPC SQL runner: applies ``db/migrations/*.sql`` to the private cluster.
 
 Adapted from the ``db-conn-schema-isolation`` block's ``migrator_handler``
-(satsyil-blocks/code/py/satsyil_db/satsyil_db/migrator.py) — same operator
+(satsyil-blocks/code/py/satsyil_db/satsyil_db/migrator.py) - same operator
 story: the Aurora cluster has no public endpoint, so the only way in is a
 Lambda that already lives in the VPC. Extended here with a ``{"migrate":"all"}``
 mode that applies a whole migration set in order and records each file in
 ``compass._schema_migrations``.
 
 **Why this function does NOT use ``compass_common.db``**
-``compass_common.db.get_conn`` issues ``SET ROLE compass_app`` — the
+``compass_common.db.get_conn`` issues ``SET ROLE compass_app`` - the
 least-privilege, non-owner role every application Lambda runs as, and the role
 that ``FORCE ROW LEVEL SECURITY`` and the ``amount_usd`` column REVOKE bind to.
 The migrator is the *owner*: it must create schemas, tables, roles and
 policies, which ``compass_app`` cannot do. So it connects with the login
-credentials directly and never assumes the app role. That split — "migrator
-owns; app connects as compass_app" — is exactly what docs/CONTRACTS.md
+credentials directly and never assumes the app role. That split - "migrator
+owns; app connects as compass_app" - is exactly what docs/CONTRACTS.md
 requires for RLS to be real rather than decorative.
 
 Event shapes
@@ -25,7 +25,7 @@ Event shapes
     skip any already recorded in ``_schema_migrations``, and record each one.
 ``{"migrate": "all", "migrations": [{"name": "001_schema", "sql": "..."}]}``
     Same, but the caller supplies the files (the deploy script reads
-    ``db/migrations`` locally and passes the contents — no bundling needed).
+    ``db/migrations`` locally and passes the contents - no bundling needed).
 ``{"migrate": "all", "force": true}``
     Re-apply files even if already recorded (every migration in this repo is
     written to be idempotent).
@@ -38,19 +38,20 @@ Event shapes
 Role bootstrap
 --------------
 ``002_rls.sql`` creates ``compass_app`` as a ``NOLOGIN`` role and grants it
-table privileges, but nothing makes the *login* user a member of it — and
+table privileges, but nothing makes the *login* user a member of it - and
 without membership every application Lambda's ``SET ROLE compass_app`` fails.
 After a successful ``migrate: all`` this handler runs
-``GRANT compass_app TO CURRENT_USER`` (idempotent). It is reported in the
-result as ``role_bootstrap`` and a failure is surfaced as a warning rather
-than failing the migration, so the operator sees exactly what happened. Set
-``BOOTSTRAP_APP_ROLE=false`` to skip it.
+``GRANT compass_app TO CURRENT_USER`` (idempotent). The deployment fails closed
+if this grant cannot be established because every application transaction
+depends on ``SET ROLE compass_app``. Set ``BOOTSTRAP_APP_ROLE=false`` only for
+an explicitly pre-provisioned runtime role.
 
 Environment
 -----------
 DB_HOST / DB_NAME / DB_SECRET_ARN / DB_SCHEMA  (compass_common.config contract)
 MIGRATIONS_DIR       Explicit migrations root, checked first.
 BOOTSTRAP_APP_ROLE   "true"/"false".                        default "true"
+DEMO_FIXTURE_BUCKET  Private bucket containing fixed ``demo-stage/`` fixtures.
 
 Dependency injection: ``handler(event, context, connect=..., secret_loader=...)``
 takes the same fakes as the block, so the whole flow can be exercised with no
@@ -65,11 +66,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from compass_common import config
 
+import demo_prep
+
 APP_ROLE = config.APP_ROLE  # "compass_app"
 
 
 # --------------------------------------------------------------------------- #
-# Connection (owner role — see the module docstring)
+# Connection (owner role - see the module docstring)
 # --------------------------------------------------------------------------- #
 def _default_secret_loader() -> dict:
     import boto3
@@ -101,7 +104,7 @@ def _open(connect, secret_loader, schema: str):
     cannot be parameterized) so unqualified DDL in the migration files lands in
     ``compass``, never ``public``. Note ``001_schema.sql`` creates the schema
     itself, so the very first run sets a search_path whose first entry does not
-    exist yet — Postgres tolerates that and resolves it once the schema exists.
+    exist yet - Postgres tolerates that and resolves it once the schema exists.
     """
     from psycopg2 import sql
 
@@ -200,7 +203,7 @@ def bootstrap_app_role(cur) -> Dict[str, Any]:
     """Make the login user a member of ``compass_app`` (idempotent).
 
     Without this, ``compass_common.db``'s ``SET ROLE compass_app`` fails and
-    every application Lambda is dead on arrival — see the module docstring.
+    every application Lambda is dead on arrival - see the module docstring.
     """
     from psycopg2 import sql
 
@@ -209,9 +212,11 @@ def bootstrap_app_role(cur) -> Dict[str, Any]:
             sql.SQL("GRANT {} TO CURRENT_USER").format(sql.Identifier(APP_ROLE))
         )
         return {"status": "granted", "role": APP_ROLE}
-    except Exception as exc:  # noqa: BLE001 — reported, never fatal
+    except Exception as exc:  # noqa: BLE001 - converted to a deployment failure
         cur.connection.rollback()
-        return {"status": "warning", "role": APP_ROLE, "error": str(exc)}
+        raise RuntimeError(
+            f"failed to grant required database role {APP_ROLE}"
+        ) from exc
 
 
 def apply_migrations(
@@ -262,6 +267,54 @@ def handler(
 
     conn = _open(connect, secret_loader, schema)
     try:
+        demo_action = event.get("demo_action")
+        if demo_action == "prepare":
+            out = demo_prep.prepare(conn)
+            print(
+                json.dumps(
+                    {
+                        "event_type": "demo_prepare_complete",
+                        "status": out["status"],
+                        "loaded": out["loaded"],
+                    },
+                    default=str,
+                )
+            )
+            return out
+        if demo_action == "finalize":
+            out = demo_prep.finalize_analytics(conn, event.get("analytics_run_id"))
+            print(
+                json.dumps(
+                    {
+                        "event_type": "demo_finalize_complete",
+                        "status": out["status"],
+                        "run_id": out["run_id"],
+                        "topics": out["topics"],
+                    },
+                    default=str,
+                )
+            )
+            return out
+        if demo_action == "preflight":
+            out = demo_prep.preflight(conn)
+            print(
+                json.dumps(
+                    {
+                        "event_type": "demo_preflight_complete",
+                        "status": out["status"],
+                        "ready": out["ready"],
+                        "checks_passed": sum(
+                            check["status"] == "pass" for check in out["checks"]
+                        ),
+                        "checks_total": len(out["checks"]),
+                    },
+                    default=str,
+                )
+            )
+            return out
+        if demo_action:
+            raise ValueError("demo_action must be prepare, finalize, or preflight")
+
         if event.get("bootstrap_role") and not event.get("migrate"):
             with conn.cursor() as cur:
                 out = {"status": "ok", "role_bootstrap": bootstrap_app_role(cur)}
@@ -304,7 +357,8 @@ def handler(
         sql_text = event.get("sql")
         if not sql_text:
             raise ValueError(
-                'event must include "sql", {"migrate":"all"}, or {"bootstrap_role":true}'
+                'event must include "sql", {"migrate":"all"}, '
+                '{"bootstrap_role":true}, or a supported "demo_action"'
             )
         fetch = event.get("fetch")
         migration_name = event.get("migration_name")

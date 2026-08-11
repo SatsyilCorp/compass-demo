@@ -1,6 +1,6 @@
 """Parse a dropped grants file and normalize it to the curated schema.
 
-Pure functions only — no AWS, no database, no imports beyond the stdlib — so
+Pure functions only - no AWS, no database, no imports beyond the stdlib - so
 this module is directly runnable (``python3 normalize.py`` runs its self-test)
 and the ingest Lambda's most fiddly logic is testable offline.
 
@@ -9,7 +9,7 @@ What it handles
 **Envelope shapes.** A drop is either the envelope
 ``{"source_file","batch_id","schema_variant","records":[...]}`` that
 ``scripts/seed_data.py`` writes, a bare JSON array of records, or JSON Lines
-(one record per line — the ``.jsonl`` form the catalog's ``source_file`` values
+(one record per line - the ``.jsonl`` form the catalog's ``source_file`` values
 advertise).
 
 **Field aliases.** Real exporters rename columns. Every canonical field has an
@@ -24,7 +24,7 @@ the demo's quality story honest: a value under a *canonical* name must already
 be the canonical type, while a value under an *alias* gets the documented
 adapter transform. So ``fy: "FY2026"`` normalizes to ``2026`` (the legacy
 exporter's known format) but ``fiscal_year: "FY2026"`` is a type violation the
-quality gate must catch — which is exactly how ``seed/SYNTHETIC-DATA-MANIFEST.md``
+quality gate must catch - which is exactly how ``seed/SYNTHETIC-DATA-MANIFEST.md``
 labels those two rows. Same for money: ``obligated_amount_usd: "$6,429,000.00"``
 parses; ``amount_usd: "TBD"`` does not.
 
@@ -213,7 +213,7 @@ def _lookup(record: Dict[str, Any], canonical: str) -> Tuple[Optional[str], Any]
     for key in FIELD_ALIASES[canonical]:
         if key in record:
             return key, record[key]
-    # Case-insensitive second pass — exporters love SHOUTING columns.
+    # Case-insensitive second pass - exporters love SHOUTING columns.
     lowered = {str(k).lower(): k for k in record}
     for key in FIELD_ALIASES[canonical]:
         actual = lowered.get(key)
@@ -379,7 +379,7 @@ def utc_now_iso() -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Self-test — `python3 normalize.py`
+# Self-test - `python3 normalize.py`
 # --------------------------------------------------------------------------- #
 def _selftest() -> None:
     canonical = {

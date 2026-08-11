@@ -4,20 +4,25 @@
 # Reads ApiBaseUrl, CognitoDomain, UserPoolId, WebClientId, CloudFrontDomain
 # from the CFN stack outputs and exports them as the NEXT_PUBLIC_* vars read
 # by frontend/lib/api.ts and frontend/lib/auth/{providers.tsx,use-app-auth.ts}
-# (see frontend/.env.example / docs/RUNBOOK.md §7). Live mode only — this
+# (see frontend/.env.example / docs/RUNBOOK.md §7). Live mode only - this
 # script always sets USE_MOCK=false and AUTH_DISABLED=false.
 #
-# Usage: ./scripts/build-frontend.sh [stack-name]
+# Usage: ./scripts/build-frontend.sh [stack-name] [aws-profile]
 set -euo pipefail
 
 STACK="${1:-compass-demo}"
+PROFILE="${2:-${AWS_PROFILE:-}}"
 REGION="${REGION:-us-east-1}"
+AWS_CLI=(aws)
+if [ -n "$PROFILE" ]; then
+  AWS_CLI+=(--profile "$PROFILE")
+fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 
 outputs() {
-  aws cloudformation describe-stacks \
+  "${AWS_CLI[@]}" cloudformation describe-stacks \
     --region "$REGION" \
     --stack-name "$STACK" \
     --query "Stacks[0].Outputs[?OutputKey==\`$1\`].OutputValue" \
@@ -30,6 +35,7 @@ COGNITO_DOMAIN_HOST="$(outputs CognitoDomain)"
 USER_POOL_ID="$(outputs UserPoolId)"
 WEB_CLIENT_ID="$(outputs WebClientId)"
 CLOUDFRONT_DOMAIN="$(outputs CloudFrontDomain)"
+PUBLIC_WEB_DOMAIN="${WEB_CUSTOM_DOMAIN_NAME:-$CLOUDFRONT_DOMAIN}"
 
 for name_val in "ApiBaseUrl:$API_BASE_URL" "CognitoDomain:$COGNITO_DOMAIN_HOST" \
     "UserPoolId:$USER_POOL_ID" "WebClientId:$WEB_CLIENT_ID" "CloudFrontDomain:$CLOUDFRONT_DOMAIN"; do
@@ -47,8 +53,8 @@ export NEXT_PUBLIC_API_BASE_URL="$API_BASE_URL"
 export NEXT_PUBLIC_COGNITO_AUTHORITY="https://cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}"
 export NEXT_PUBLIC_COGNITO_DOMAIN="https://${COGNITO_DOMAIN_HOST}"
 export NEXT_PUBLIC_COGNITO_CLIENT_ID="$WEB_CLIENT_ID"
-export NEXT_PUBLIC_COGNITO_REDIRECT_URI="https://${CLOUDFRONT_DOMAIN}/login/"
-export NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI="https://${CLOUDFRONT_DOMAIN}/login/"
+export NEXT_PUBLIC_COGNITO_REDIRECT_URI="https://${PUBLIC_WEB_DOMAIN}/login/"
+export NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI="https://${PUBLIC_WEB_DOMAIN}/login/"
 
 echo "==> Frontend env:"
 echo "  NEXT_PUBLIC_USE_MOCK=$NEXT_PUBLIC_USE_MOCK"
@@ -61,10 +67,12 @@ echo "  NEXT_PUBLIC_COGNITO_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_REDIRECT_URI"
 echo "  NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI"
 
 cd "$repo/frontend"
-echo "==> pnpm i --frozen-lockfile=false"
-pnpm i --frozen-lockfile=false
-echo "==> pnpm build"
-pnpm build
+readonly PNPM_VERSION="10.33.2"
+PNPM=(corepack "pnpm@$PNPM_VERSION")
+echo "==> pnpm $PNPM_VERSION install --frozen-lockfile"
+"${PNPM[@]}" install --frozen-lockfile
+echo "==> pnpm $PNPM_VERSION build"
+"${PNPM[@]}" build
 
 echo
-echo "Static export written to $repo/frontend/out/ — publish with scripts/upload-to-cloudfront.sh"
+echo "Static export written to $repo/frontend/out/ - publish with scripts/upload-to-cloudfront.sh"

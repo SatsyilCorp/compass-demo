@@ -1,9 +1,9 @@
 /**
- * Fixed categorical color order for the topic trend chart — the dataviz
+ * Fixed categorical color order for the topic trend chart - the dataviz
  * skill's validated 8-hue set (adjacent-pair CVD-safe: worst adjacent ΔE
  * 9.1 OKLab×100 against an ≥8 target; worst adjacent normal-vision ΔE 19.6
  * against a ≥15 floor). Assigned by fixed slot order and never re-derived
- * per filter — see the `dataviz` skill's references/palette.md.
+ * per filter - see the `dataviz` skill's references/palette.md.
  */
 export const TOPIC_SERIES_COLORS = [
   "#2a78d6", // 1 blue

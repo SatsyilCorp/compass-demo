@@ -1,256 +1,507 @@
-"""DashboardFunction — GET /dashboard (element 6, docs/CONTRACTS.md).
+"""Server-backed executive dashboard projection.
 
-One round trip: every KPI tile + every chart series the executive dashboard
-page needs, computed from the live `compass` schema and shaped to exactly
-match `frontend/lib/types.ts::DashboardResponse` (the locked wire contract
-the frontend already builds against). Mirrors the single-endpoint aggregation
-pattern proven in a prior production dashboard service: one Lambda,
-several small GROUP BY queries against a shared cursor, assembled into one
-JSON body, cached in-process for 60s.
+GET /dashboard returns the portfolio metrics used by the decision workspace.
+The endpoint accepts four optional filters: program_area, fiscal_year,
+org_unit, and q. Request values are never interpolated into SQL. PostgreSQL
+row-level security remains the source of truth for row scope and column-level
+security remains the source of truth for funding visibility.
 
-RLS / CLS
----------
-`grants_curated` is the only RLS-protected table (db/migrations/002_rls.sql).
-Every query against it runs inside `compass_common.db.set_org(conn,
-claims.org_unit)`, which issues `SET LOCAL compass.org_unit = <claim>` so the
-`grants_rls_read` policy filters rows automatically — this module never adds
-its own `WHERE org_unit = ...` clause.
-
-Column-Level Security masks `amount_usd`: `compass_app` has that column
-REVOKEd on the base table for every persona, and only the unmasked
-`grants_curated_corp` view carries it (granted back via the schema's default
-privileges). This module reads dollar figures ONLY when
-`claims.is_corporate` (org_unit == ONR-Corporate) — the same branch under
-which the RLS policy already admits every row unconditionally, so which
-identity Postgres uses to evaluate the view's underlying SELECT is moot: the
-policy's `current_setting(...) = 'ONR-Corporate'` clause is true regardless.
-For every other org_unit this module queries the base table and never
-selects `amount_usd`, so a caller can't even accidentally request a column
-its role isn't granted — the same "poweruser reads the corp view, viewer
-reads the masked base table" split already documented in
-`frontend/lib/mock/grants.ts` (`maskAmount`).
-
-`grant_quality`, `anomalies`, `approvals`, `model_runs`, `topics` and
-`grant_topics` carry no RLS of their own (only `grants_curated` does per
-002_rls.sql). Anomalies are still scoped to the caller's visible portfolio by
-joining through `grants_curated` (which RLS filters); quality/approvals
-telemetry is intentionally global operational data, not per-grant.
-
-Every numeric value pulled out of Postgres (NUMERIC -> Decimal, bigint ->
-int) is cast to a native Python type before it reaches `http.ok()` — psycopg2
-Decimals would otherwise fall through `json.dumps(..., default=str)` as JSON
-*strings*, silently breaking every `number | null` field in the contract.
+Filter options are calculated before request filters are applied, but inside
+the caller's RLS transaction. A viewer therefore never receives an option for
+an organization they cannot read. Corporate callers use the GUC-gated
+grants_curated_corp view for funding values. Every other caller reads only the
+masked base table.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
+import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from compass_common import db, http
+
 
 CACHE: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL_SECONDS = 60
 
-# The only two tables this module ever selects grants from: the masked base
-# table (default, every non-corporate org_unit) and the unmasked corporate
-# view (only when the caller's RLS context is ONR-Corporate). Never built
-# from request input — always one of exactly these two literals.
 _BASE_TABLE = "grants_curated"
 _CORP_VIEW = "grants_curated_corp"
+_ALLOWED_QUERY_KEYS = frozenset({"program_area", "fiscal_year", "org_unit", "q"})
+_SAFE_YEAR = re.compile(r"^[0-9]{4}$")
+_MAX_FILTER_LENGTH = 120
+_MAX_SEARCH_LENGTH = 160
 
 
-def _table(is_corporate: bool) -> str:
+@dataclass(frozen=True)
+class DashboardFilters:
+    program_area: Optional[str] = None
+    fiscal_year: Optional[int] = None
+    org_unit: Optional[str] = None
+    q: Optional[str] = None
+
+    @property
+    def has_portfolio_filter(self) -> bool:
+        return any(
+            value is not None
+            for value in (self.program_area, self.fiscal_year, self.org_unit, self.q)
+        )
+
+    def as_response(self) -> Dict[str, Any]:
+        return {
+            "program_area": self.program_area,
+            "fiscal_year": self.fiscal_year,
+            "org_unit": self.org_unit,
+            "q": self.q,
+        }
+
+
+def _clean_text(value: Any, *, field: str, max_length: int) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > max_length:
+        raise ValueError(f"{field} exceeds {max_length} characters")
+    if any(ord(char) < 32 for char in cleaned):
+        raise ValueError(f"{field} contains unsupported control characters")
+    return cleaned
+
+
+def _parse_filters(params: Dict[str, Any]) -> DashboardFilters:
+    unknown = sorted(set(params) - _ALLOWED_QUERY_KEYS)
+    if unknown:
+        raise ValueError(f"unsupported dashboard filter: {unknown[0]}")
+
+    year_raw = _clean_text(
+        params.get("fiscal_year"),
+        field="fiscal_year",
+        max_length=4,
+    )
+    fiscal_year: Optional[int] = None
+    if year_raw is not None:
+        if not _SAFE_YEAR.fullmatch(year_raw):
+            raise ValueError("fiscal_year must be a four-digit year")
+        fiscal_year = int(year_raw)
+        if fiscal_year < 1900 or fiscal_year > 2200:
+            raise ValueError("fiscal_year is outside the supported range")
+
+    return DashboardFilters(
+        program_area=_clean_text(
+            params.get("program_area"),
+            field="program_area",
+            max_length=_MAX_FILTER_LENGTH,
+        ),
+        fiscal_year=fiscal_year,
+        org_unit=_clean_text(
+            params.get("org_unit"),
+            field="org_unit",
+            max_length=_MAX_FILTER_LENGTH,
+        ),
+        q=_clean_text(
+            params.get("q"),
+            field="q",
+            max_length=_MAX_SEARCH_LENGTH,
+        ),
+    )
+
+
+def _escape_like(value: str) -> str:
+    """Treat percent, underscore, and backslash as search text, not patterns."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _grant_predicates(
+    filters: DashboardFilters,
+    *,
+    alias: str = "g",
+) -> Tuple[List[str], List[Any]]:
+    """Build fixed SQL predicates and a separate ordered parameter list."""
+    if alias != "g":
+        raise ValueError("unsupported grant alias")
+
+    predicates: List[str] = []
+    params: List[Any] = []
+    if filters.program_area is not None:
+        predicates.append(f"{alias}.program_area = %s")
+        params.append(filters.program_area)
+    if filters.fiscal_year is not None:
+        predicates.append(f"{alias}.fiscal_year = %s")
+        params.append(filters.fiscal_year)
+    if filters.org_unit is not None:
+        predicates.append(f"{alias}.org_unit = %s")
+        params.append(filters.org_unit)
+    if filters.q is not None:
+        pattern = f"%{_escape_like(filters.q)}%"
+        predicates.append(
+            "(g.grant_no ILIKE %s ESCAPE '\\' "
+            "OR g.title ILIKE %s ESCAPE '\\' "
+            "OR COALESCE(g.abstract, '') ILIKE %s ESCAPE '\\' "
+            "OR COALESCE(g.awardee, '') ILIKE %s ESCAPE '\\')"
+        )
+        params.extend([pattern, pattern, pattern, pattern])
+    return predicates, params
+
+
+def _grant_where(filters: DashboardFilters) -> Tuple[str, Tuple[Any, ...]]:
+    predicates, params = _grant_predicates(filters)
+    clause = f" WHERE {' AND '.join(predicates)}" if predicates else ""
+    return clause, tuple(params)
+
+
+def _relation(is_corporate: bool) -> str:
     return _CORP_VIEW if is_corporate else _BASE_TABLE
 
 
-# --------------------------------------------------------------------------- #
-# Chart series — each a single GROUP BY, RLS-filtered via the caller's
-# SET LOCAL compass.org_unit context (see db.set_org in the handler below).
-# --------------------------------------------------------------------------- #
-def _funding_by_program_area(cur, is_corporate: bool) -> List[Dict[str, Any]]:
+def _filter_options(cur) -> Dict[str, List[Any]]:
+    """Return unfiltered choices inside the caller's RLS scope."""
+    cur.execute(
+        "SELECT DISTINCT program_area FROM grants_curated "
+        "ORDER BY program_area ASC"
+    )
+    program_areas = [row[0] for row in cur.fetchall()]
+
+    cur.execute(
+        "SELECT DISTINCT fiscal_year FROM grants_curated "
+        "ORDER BY fiscal_year DESC"
+    )
+    fiscal_years = [int(row[0]) for row in cur.fetchall()]
+
+    cur.execute(
+        "SELECT DISTINCT org_unit FROM grants_curated "
+        "ORDER BY org_unit ASC"
+    )
+    org_units = [row[0] for row in cur.fetchall()]
+    return {
+        "program_areas": program_areas,
+        "fiscal_years": fiscal_years,
+        "org_units": org_units,
+    }
+
+
+def _funding_by_program_area(
+    cur,
+    is_corporate: bool,
+    filters: DashboardFilters,
+) -> List[Dict[str, Any]]:
+    where, params = _grant_where(filters)
+    relation = _relation(is_corporate)
     if is_corporate:
         cur.execute(
             f"""
-            SELECT program_area, count(*), COALESCE(sum(amount_usd), 0)
-            FROM {_CORP_VIEW}
-            GROUP BY program_area
-            ORDER BY count(*) DESC, program_area ASC
-            """
+            SELECT g.program_area, count(*), COALESCE(sum(g.amount_usd), 0)
+            FROM {relation} AS g{where}
+            GROUP BY g.program_area
+            ORDER BY count(*) DESC, g.program_area ASC
+            """,
+            params,
         )
         return [
-            {"program_area": r[0], "grant_count": int(r[1]), "amount_usd": float(r[2])}
-            for r in cur.fetchall()
+            {"program_area": row[0], "grant_count": int(row[1]), "amount_usd": float(row[2])}
+            for row in cur.fetchall()
         ]
+
     cur.execute(
         f"""
-        SELECT program_area, count(*)
-        FROM {_BASE_TABLE}
-        GROUP BY program_area
-        ORDER BY count(*) DESC, program_area ASC
-        """
+        SELECT g.program_area, count(*)
+        FROM {relation} AS g{where}
+        GROUP BY g.program_area
+        ORDER BY count(*) DESC, g.program_area ASC
+        """,
+        params,
     )
-    return [{"program_area": r[0], "grant_count": int(r[1]), "amount_usd": None} for r in cur.fetchall()]
+    return [
+        {"program_area": row[0], "grant_count": int(row[1]), "amount_usd": None}
+        for row in cur.fetchall()
+    ]
 
 
-def _funding_by_fiscal_year(cur, is_corporate: bool) -> List[Dict[str, Any]]:
+def _funding_by_fiscal_year(
+    cur,
+    is_corporate: bool,
+    filters: DashboardFilters,
+) -> List[Dict[str, Any]]:
+    where, params = _grant_where(filters)
+    relation = _relation(is_corporate)
     if is_corporate:
         cur.execute(
             f"""
-            SELECT fiscal_year, COALESCE(sum(amount_usd), 0)
-            FROM {_CORP_VIEW}
-            GROUP BY fiscal_year
-            ORDER BY fiscal_year ASC
-            """
+            SELECT g.fiscal_year, COALESCE(sum(g.amount_usd), 0)
+            FROM {relation} AS g{where}
+            GROUP BY g.fiscal_year
+            ORDER BY g.fiscal_year ASC
+            """,
+            params,
         )
-        return [{"fiscal_year": int(r[0]), "amount_usd": float(r[1])} for r in cur.fetchall()]
-    cur.execute(f"SELECT DISTINCT fiscal_year FROM {_BASE_TABLE} ORDER BY fiscal_year ASC")
-    return [{"fiscal_year": int(r[0]), "amount_usd": None} for r in cur.fetchall()]
+        return [
+            {"fiscal_year": int(row[0]), "amount_usd": float(row[1])}
+            for row in cur.fetchall()
+        ]
 
-
-def _quality_trend(cur) -> List[Dict[str, Any]]:
-    """One point per ingest run: the mean of that run's per-rule quality
-    scores, ordered by when the run actually landed. Global — grant_quality
-    carries no org_unit and no RLS policy (batch/pipeline telemetry, not
-    portfolio data)."""
     cur.execute(
-        """
-        SELECT run_id, MIN(created_at) AS run_started, AVG(score) AS avg_score
-        FROM grant_quality
-        GROUP BY run_id
-        ORDER BY run_started ASC
-        """
+        f"""
+        SELECT DISTINCT g.fiscal_year
+        FROM {relation} AS g{where}
+        ORDER BY g.fiscal_year ASC
+        """,
+        params,
     )
-    out = []
-    for run_id, run_started, avg_score in cur.fetchall():
-        out.append(
-            {
-                "run_id": run_id,
-                "date": run_started.isoformat() if run_started else None,
-                "score": round(float(avg_score), 1) if avg_score is not None else 0.0,
-            }
+    return [
+        {"fiscal_year": int(row[0]), "amount_usd": None}
+        for row in cur.fetchall()
+    ]
+
+
+def _quality_trend(cur, filters: DashboardFilters) -> List[Dict[str, Any]]:
+    return _quality_trend_for_scope(cur, filters, is_corporate=False)
+
+
+def _raw_grant_predicates(filters: DashboardFilters) -> Tuple[List[str], List[Any]]:
+    """Build bound predicates against normalized grants_raw documents."""
+    normalized = "r.raw_jsonb -> 'normalized'"
+    predicates: List[str] = []
+    params: List[Any] = []
+    if filters.program_area is not None:
+        predicates.append(f"{normalized} ->> 'program_area' = %s")
+        params.append(filters.program_area)
+    if filters.fiscal_year is not None:
+        predicates.append(f"{normalized} ->> 'fiscal_year' = %s")
+        params.append(str(filters.fiscal_year))
+    if filters.org_unit is not None:
+        predicates.append(f"{normalized} ->> 'org_unit' = %s")
+        params.append(filters.org_unit)
+    if filters.q is not None:
+        pattern = f"%{_escape_like(filters.q)}%"
+        predicates.append(
+            f"({normalized} ->> 'grant_no' ILIKE %s ESCAPE '\\' "
+            f"OR {normalized} ->> 'title' ILIKE %s ESCAPE '\\' "
+            f"OR COALESCE({normalized} ->> 'abstract', '') ILIKE %s ESCAPE '\\' "
+            f"OR COALESCE({normalized} ->> 'awardee', '') ILIKE %s ESCAPE '\\')"
         )
-    return out
+        params.extend([pattern, pattern, pattern, pattern])
+    return predicates, params
 
 
-def _top_topics(cur, is_corporate: bool) -> List[Dict[str, Any]]:
-    """Top 5 topics from the most recent completed topic_model run, weighted
-    by how many of the CALLER'S VISIBLE grants carry that topic. Empty list
-    (not an error) when no analytics run has been executed yet — /analytics/run
-    is a separate element and may not have run before the demo dashboard
-    first loads."""
+def _quality_trend_for_scope(
+    cur,
+    filters: DashboardFilters,
+    *,
+    is_corporate: bool,
+) -> List[Dict[str, Any]]:
+    predicates, params = _grant_predicates(filters)
+    predicate_sql = f" AND {' AND '.join(predicates)}" if predicates else ""
+    curated_scope = (
+        "EXISTS (SELECT 1 FROM grants_curated AS g "
+        f"WHERE g.batch_id = q.batch_id{predicate_sql})"
+    )
+    scope_sql = f" WHERE {curated_scope}"
+    query_params: List[Any] = list(params)
+    if is_corporate:
+        raw_predicates, raw_params = _raw_grant_predicates(filters)
+        raw_filter_sql = (
+            f" AND {' AND '.join(raw_predicates)}" if raw_predicates else ""
+        )
+        quarantined_scope = (
+            "(EXISTS (SELECT 1 FROM lineage_nodes AS terminal "
+            "WHERE terminal.run_id = q.run_id AND terminal.node_id = 'quarantine') "
+            "AND EXISTS (SELECT 1 FROM grants_raw AS r "
+            f"WHERE r.batch_id = q.batch_id{raw_filter_sql}))"
+        )
+        scope_sql = f" WHERE ({curated_scope} OR {quarantined_scope})"
+        query_params.extend(raw_params)
     cur.execute(
-        "SELECT run_id FROM model_runs WHERE kind = 'topic_model' ORDER BY created_at DESC LIMIT 1"
+        f"""
+        SELECT q.run_id, MIN(q.created_at) AS run_started, AVG(q.score) AS avg_score
+        FROM grant_quality AS q{scope_sql}
+        GROUP BY q.run_id
+        ORDER BY run_started ASC
+        """,
+        tuple(query_params),
+    )
+    return [
+        {
+            "run_id": run_id,
+            "date": run_started.isoformat() if run_started else None,
+            "score": round(float(avg_score), 1) if avg_score is not None else 0.0,
+        }
+        for run_id, run_started, avg_score in cur.fetchall()
+    ]
+
+
+def _top_topics(cur, filters: DashboardFilters) -> List[Dict[str, Any]]:
+    predicates, params = _grant_predicates(filters)
+    filter_sql = f" AND {' AND '.join(predicates)}" if predicates else ""
+    cur.execute(
+        f"""
+        SELECT mr.run_id
+        FROM model_runs AS mr
+        WHERE mr.kind = %s
+          AND EXISTS (
+            SELECT 1
+            FROM grant_topics AS visible_gt
+            JOIN grants_curated AS g ON g.id = visible_gt.grant_id
+            WHERE visible_gt.run_id = mr.run_id{filter_sql}
+          )
+        ORDER BY mr.created_at DESC
+        LIMIT 1
+        """,
+        ("topic_model", *params),
     )
     latest = cur.fetchone()
     if not latest:
         return []
     run_id = latest[0]
 
-    # The grants_curated join is what makes this RLS-aware: gt.grant_id rows
-    # whose grant isn't visible under the caller's org context simply don't
-    # match and drop out of the count, regardless of is_corporate.
     cur.execute(
-        """
+        f"""
         SELECT t.topic_id, t.label, count(gt.grant_id) AS grant_count
-        FROM topics t
-        JOIN grant_topics gt ON gt.run_id = t.run_id AND gt.topic_id = t.topic_id
-        JOIN grants_curated g ON g.id = gt.grant_id
-        WHERE t.run_id = %s
+        FROM topics AS t
+        JOIN grant_topics AS gt
+          ON gt.run_id = t.run_id AND gt.topic_id = t.topic_id
+        JOIN grants_curated AS g ON g.id = gt.grant_id
+        WHERE t.run_id = %s{filter_sql}
         GROUP BY t.topic_id, t.label
         """,
-        (run_id,),
+        (run_id, *params),
     )
     rows = cur.fetchall()
     if not rows:
         return []
-    total = sum(int(r[2]) for r in rows) or 1
-    ranked = sorted(rows, key=lambda r: r[2], reverse=True)[:5]
+    total = sum(int(row[2]) for row in rows) or 1
+    ranked = sorted(rows, key=lambda row: row[2], reverse=True)[:5]
     return [
-        {"topic_id": int(r[0]), "label": r[1], "weight": round(int(r[2]) / total, 3)}
-        for r in ranked
+        {
+            "topic_id": int(row[0]),
+            "label": row[1],
+            "weight": round(int(row[2]) / total, 3),
+        }
+        for row in ranked
     ]
 
 
-def _org_unit_breakdown(cur, is_corporate: bool) -> List[Dict[str, Any]]:
+def _org_unit_breakdown(
+    cur,
+    is_corporate: bool,
+    filters: DashboardFilters,
+) -> List[Dict[str, Any]]:
+    where, params = _grant_where(filters)
+    relation = _relation(is_corporate)
     if is_corporate:
         cur.execute(
             f"""
-            SELECT org_unit, count(*), COALESCE(sum(amount_usd), 0)
-            FROM {_CORP_VIEW}
-            GROUP BY org_unit
-            ORDER BY count(*) DESC, org_unit ASC
-            """
+            SELECT g.org_unit, count(*), COALESCE(sum(g.amount_usd), 0)
+            FROM {relation} AS g{where}
+            GROUP BY g.org_unit
+            ORDER BY count(*) DESC, g.org_unit ASC
+            """,
+            params,
         )
         return [
-            {"org_unit": r[0], "grant_count": int(r[1]), "amount_usd": float(r[2])}
-            for r in cur.fetchall()
+            {"org_unit": row[0], "grant_count": int(row[1]), "amount_usd": float(row[2])}
+            for row in cur.fetchall()
         ]
+
     cur.execute(
         f"""
-        SELECT org_unit, count(*)
-        FROM {_BASE_TABLE}
-        GROUP BY org_unit
-        ORDER BY count(*) DESC, org_unit ASC
-        """
+        SELECT g.org_unit, count(*)
+        FROM {relation} AS g{where}
+        GROUP BY g.org_unit
+        ORDER BY count(*) DESC, g.org_unit ASC
+        """,
+        params,
     )
-    return [{"org_unit": r[0], "grant_count": int(r[1]), "amount_usd": None} for r in cur.fetchall()]
+    return [
+        {"org_unit": row[0], "grant_count": int(row[1]), "amount_usd": None}
+        for row in cur.fetchall()
+    ]
 
 
-def _open_anomalies_count(cur) -> int:
-    """Anomalies carry no org_unit column of their own; scope them to the
-    caller's visible portfolio by requiring their grant (when they have one)
-    to show up in a `grants_curated` select — RLS filters that select the
-    same way it filters every other query in this module. Batch-level
-    anomalies with no grant_id (grant_id IS NULL) are portfolio-wide
-    findings, not tied to one org, so they always count."""
+def _open_anomalies_count(
+    cur,
+    filters: DashboardFilters,
+    *,
+    is_corporate: bool,
+) -> int:
+    predicates, params = _grant_predicates(filters)
+    grant_conditions = " AND ".join(["g.id = a.grant_id", *predicates])
+    bound_scope = (
+        "EXISTS (SELECT 1 FROM grants_curated AS g WHERE "
+        f"{grant_conditions})"
+    )
+    include_unbound = is_corporate and not filters.has_portfolio_filter
+    scope_sql = f"(a.grant_id IS NULL OR {bound_scope})" if include_unbound else bound_scope
     cur.execute(
-        """
+        f"""
         SELECT count(*)
-        FROM anomalies a
-        WHERE a.status = 'open'
-          AND (a.grant_id IS NULL OR EXISTS (SELECT 1 FROM grants_curated g WHERE g.id = a.grant_id))
-        """
+        FROM anomalies AS a
+        WHERE a.status = %s AND {scope_sql}
+        """,
+        ("open", *params),
     )
     return int(cur.fetchone()[0])
 
 
-def _pending_approvals_count(cur) -> int:
-    cur.execute("SELECT count(*) FROM approvals WHERE state = 'pending'")
+def _pending_approvals_count(cur, *, is_corporate: bool, actor: str) -> int:
+    actor_scope = "" if is_corporate else " AND requested_by = %s"
+    params: Tuple[Any, ...] = ("pending",) if is_corporate else ("pending", actor)
+    cur.execute(
+        f"SELECT count(*) FROM approvals WHERE state = %s{actor_scope}",
+        params,
+    )
     return int(cur.fetchone()[0])
 
 
-# --------------------------------------------------------------------------- #
-# Assemble the full DashboardResponse
-# --------------------------------------------------------------------------- #
-def _compute_dashboard(cur, is_corporate: bool) -> Dict[str, Any]:
-    program_area_rows = _funding_by_program_area(cur, is_corporate)
-    fiscal_year_rows = _funding_by_fiscal_year(cur, is_corporate)
-    quality_rows = _quality_trend(cur)
-    topic_rows = _top_topics(cur, is_corporate)
-    org_unit_rows = _org_unit_breakdown(cur, is_corporate)
+def _compute_dashboard(
+    cur,
+    is_corporate: bool,
+    filters: DashboardFilters,
+    *,
+    actor: str,
+) -> Dict[str, Any]:
+    filter_options = _filter_options(cur)
+    program_area_rows = _funding_by_program_area(cur, is_corporate, filters)
+    fiscal_year_rows = _funding_by_fiscal_year(cur, is_corporate, filters)
+    quality_rows = _quality_trend_for_scope(
+        cur,
+        filters,
+        is_corporate=is_corporate,
+    )
+    topic_rows = _top_topics(cur, filters)
+    org_unit_rows = _org_unit_breakdown(cur, is_corporate, filters)
 
-    # KPI tiles are DERIVED from the chart series wherever possible (rather
-    # than a second independent count) so the tile and the chart underneath
-    # it can never disagree — the same discipline the frontend fixture's
-    # docstring calls out (lib/mock/dashboard.ts).
-    total_grants = sum(r["grant_count"] for r in program_area_rows)
+    total_grants = sum(row["grant_count"] for row in program_area_rows)
     total_funding_usd: Optional[float] = (
-        round(sum(r["amount_usd"] for r in program_area_rows), 2) if is_corporate else None
+        round(sum(row["amount_usd"] for row in program_area_rows), 2)
+        if is_corporate
+        else None
     )
     avg_quality_score = (
-        round(sum(r["score"] for r in quality_rows) / len(quality_rows), 1) if quality_rows else 100.0
+        round(sum(row["score"] for row in quality_rows) / len(quality_rows), 1)
+        if quality_rows
+        else None
     )
 
     return {
+        "filters_applied": filters.as_response(),
+        "filter_options": filter_options,
         "kpis": {
             "total_grants": total_grants,
             "total_funding_usd": total_funding_usd,
             "active_program_areas": len(program_area_rows),
             "avg_quality_score": avg_quality_score,
-            "open_anomalies": _open_anomalies_count(cur),
-            "pending_approvals": _pending_approvals_count(cur),
+            "open_anomalies": _open_anomalies_count(
+                cur,
+                filters,
+                is_corporate=is_corporate,
+            ),
+            "pending_approvals": _pending_approvals_count(
+                cur,
+                is_corporate=is_corporate,
+                actor=actor,
+            ),
         },
         "funding_by_program_area": program_area_rows,
         "funding_by_fiscal_year": fiscal_year_rows,
@@ -260,20 +511,39 @@ def _compute_dashboard(cur, is_corporate: bool) -> Dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------------- #
-# In-process cache — keyed on the RLS context that actually changes the
-# result set (org_unit + whether it resolves to the unmasked corporate
-# view). 60s TTL: the underlying data moves at ingest/analytics-run cadence,
-# so a demo audience never notices a minute-old dashboard, and this keeps
-# the DB off the hot path for repeated dashboard loads within a session.
-# --------------------------------------------------------------------------- #
-def _cache_key(org_unit: str, is_corporate: bool) -> str:
-    raw = json.dumps({"org_unit": org_unit, "is_corporate": is_corporate}, sort_keys=True)
+def _cache_key(
+    org_unit: str,
+    is_corporate: bool,
+    filters: DashboardFilters,
+    actor: str,
+) -> str:
+    raw = json.dumps(
+        {
+            "org_unit": org_unit,
+            "is_corporate": is_corporate,
+            "actor": actor,
+            "filters": filters.as_response(),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _log(**fields: Any) -> None:
     print(json.dumps(fields, default=str))
+
+
+def _viewer_scope_violation(claims: http.Claims, filters: DashboardFilters) -> bool:
+    return bool(
+        not claims.is_corporate
+        and filters.org_unit is not None
+        and filters.org_unit != claims.org_unit
+    )
+
+
+def _actor_of(claims: http.Claims) -> str:
+    return claims.username or claims.email or claims.sub or "unknown"
 
 
 def handler(event, context):
@@ -285,7 +555,21 @@ def handler(event, context):
     if not claims.is_authenticated:
         return http.unauthorized()
 
-    key = _cache_key(claims.org_unit, claims.is_corporate)
+    try:
+        filters = _parse_filters(http.query_params(event))
+    except ValueError as exc:
+        return http.bad_request(str(exc))
+
+    if _viewer_scope_violation(claims, filters):
+        return http.forbidden("organization filter exceeds the caller's portfolio scope")
+
+    actor = _actor_of(claims)
+    key = _cache_key(
+        claims.org_unit or "",
+        claims.is_corporate,
+        filters,
+        actor,
+    )
     now = time.time()
     cached = CACHE.get(key)
     if cached is not None and cached["expires"] > now:
@@ -295,15 +579,21 @@ def handler(event, context):
             route="GET /dashboard",
             org_unit=claims.org_unit,
             cache="hit",
+            filtered=filters.has_portfolio_filter,
         )
         return http.ok(cached["value"])
 
     try:
         conn = db.get_conn()
-        with db.set_org(conn, claims.org_unit) as c:
-            with c.cursor() as cur:
-                body = _compute_dashboard(cur, claims.is_corporate)
-    except Exception as exc:  # noqa: BLE001 — never leak internals to the caller
+        with db.set_org(conn, claims.org_unit) as scoped_conn:
+            with scoped_conn.cursor() as cur:
+                body = _compute_dashboard(
+                    cur,
+                    claims.is_corporate,
+                    filters,
+                    actor=actor,
+                )
+    except Exception as exc:  # noqa: BLE001
         _log(
             fn=getattr(context, "function_name", "dashboard"),
             request_id=getattr(context, "aws_request_id", None),
@@ -314,7 +604,6 @@ def handler(event, context):
         return http.server_error("failed to compute dashboard")
 
     CACHE[key] = {"value": body, "expires": now + CACHE_TTL_SECONDS}
-
     _log(
         fn=getattr(context, "function_name", "dashboard"),
         request_id=getattr(context, "aws_request_id", None),
@@ -322,6 +611,7 @@ def handler(event, context):
         org_unit=claims.org_unit,
         is_corporate=claims.is_corporate,
         cache="miss",
+        filtered=filters.has_portfolio_filter,
         total_grants=body["kpis"]["total_grants"],
     )
     return http.ok(body)

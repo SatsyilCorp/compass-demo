@@ -12,7 +12,7 @@ import type { DashboardResponse, ExportRequest } from "@/lib/types";
  * only program areas, fiscal years, and org units a user can pick are the ones
  * their row-level security scope actually contains. A viewer scoped to a single
  * org unit therefore sees a locked control rather than a dropdown of units they
- * cannot query — the restriction is visible instead of failing at submit time.
+ * cannot query. The restriction is visible instead of failing at submit time.
  */
 export type ExportFilterState = {
   format: ExportRequest["format"];
@@ -46,9 +46,9 @@ export function selectedColumns(f: ExportFilterState, amountMasked: boolean): st
   return cols;
 }
 
-/** The `filters` object sent on the wire — mirrors grants_curated columns. */
-export function toRequestFilters(f: ExportFilterState, amountMasked: boolean): Record<string, unknown> {
-  const filters: Record<string, unknown> = { columns: selectedColumns(f, amountMasked) };
+/** Predicate-only `filters` object sent on the wire. Columns are top-level. */
+export function toRequestFilters(f: ExportFilterState): Record<string, unknown> {
+  const filters: Record<string, unknown> = {};
   if (f.program_area) filters.program_area = f.program_area;
   if (f.fiscal_year) filters.fiscal_year = Number(f.fiscal_year);
   if (f.org_unit) filters.org_unit = f.org_unit;
@@ -142,7 +142,7 @@ export function ExportFilters({
             <p className="mt-2 flex items-center gap-1.5 rounded border border-border bg-surface-2 px-2.5 py-2 text-[12px] text-text-muted">
               <Lock className="size-3.5 shrink-0" aria-hidden />
               <span className="truncate" title="Fixed by the row-level security policy">
-                {orgUnits[0] ?? "—"} · RLS-fixed
+                {orgUnits[0] ?? "Not resolved"} | RLS-fixed
               </span>
             </p>
           </div>
@@ -178,7 +178,7 @@ export function ExportFilters({
             disabled={amountMasked}
             hint={
               amountMasked
-                ? "Unavailable — column-level security revokes SELECT (amount_usd) for your role, so the API will not emit it."
+                ? "Unavailable. Column-level security revokes SELECT (amount_usd) for your role, so the API will not emit it."
                 : undefined
             }
           />

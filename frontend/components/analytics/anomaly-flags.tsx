@@ -19,7 +19,7 @@ const STATUS_TONE: Record<Anomaly["status"], string> = {
 /**
  * Anomaly flags surfaced alongside the topic-model run. `GET /anomalies`
  * (element 6) is portfolio-wide rather than scoped to a single analytics
- * run_id — shown here as "currently open across the visible portfolio",
+ * run_id - shown here as "currently open across the visible portfolio",
  * which is what the API actually returns, not implied per-run scoping.
  */
 export function AnomalyFlags({ anomalies }: { anomalies: Anomaly[] }) {

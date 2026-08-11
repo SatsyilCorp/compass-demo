@@ -1,4 +1,7 @@
 {
+  "fixture_contract": "compass.synthetic.v1",
+  "synthetic_only": true,
+  "generator_seed": 20260810,
   "generated_at": "2026-08-10T19:56:47.414136+00:00",
   "record_count": 8,
   "licenses": [
@@ -10,7 +13,7 @@
         "Publication & Citation Index",
         "Grant Abstracts Corpus"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (5000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (5000 calls/day), bibliometric export",
       "seats_used": 20,
       "seats_total": 27,
       "renews_on": "2026-12-29",
@@ -25,7 +28,7 @@
         "Publication & Citation Index",
         "Grant Abstracts Corpus"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (2000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (2000 calls/day), bibliometric export",
       "seats_used": 37,
       "seats_total": 37,
       "renews_on": "2026-09-06",
@@ -39,7 +42,7 @@
       "datasets": [
         "Startup & Company Intelligence Feed"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (5000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (5000 calls/day), bibliometric export",
       "seats_used": 41,
       "seats_total": 41,
       "renews_on": "2026-12-30",
@@ -53,7 +56,7 @@
       "datasets": [
         "Patent Landscape Feed"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (2000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (2000 calls/day), bibliometric export",
       "seats_used": 33,
       "seats_total": 39,
       "renews_on": "2026-11-11",
@@ -67,7 +70,7 @@
       "datasets": [
         "Publication & Citation Index"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (10000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (10000 calls/day), bibliometric export",
       "seats_used": 23,
       "seats_total": 42,
       "renews_on": "2026-09-15",
@@ -81,7 +84,7 @@
       "datasets": [
         "Startup & Company Intelligence Feed"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (2000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (2000 calls/day), bibliometric export",
       "seats_used": 14,
       "seats_total": 19,
       "renews_on": "2026-10-28",
@@ -95,7 +98,7 @@
       "datasets": [
         "Startup & Company Intelligence Feed"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (10000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (10000 calls/day), bibliometric export",
       "seats_used": 33,
       "seats_total": 45,
       "renews_on": "2026-09-16",
@@ -109,7 +112,7 @@
       "datasets": [
         "Federal Contract Intelligence Feed"
       ],
-      "entitlements": "Enterprise site license — full-text/API access (10000 calls/day), bibliometric export",
+      "entitlements": "Enterprise site license - full-text/API access (10000 calls/day), bibliometric export",
       "seats_used": 33,
       "seats_total": 35,
       "renews_on": "2027-01-21",

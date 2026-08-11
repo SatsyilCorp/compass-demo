@@ -3,6 +3,7 @@
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { AuthProvider } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
+import { MissionDataProvider } from "@/lib/mission-data-context";
 import { TokenSync } from "./token-sync";
 import { AUTH_DISABLED } from "./use-app-auth";
 
@@ -16,7 +17,7 @@ const POST_LOGOUT_URI =
   "http://localhost:3000/login/";
 
 // Explicit OIDC metadata so we point authorize/token/jwks at Cognito's
-// Hosted UI domain rather than resolving the issuer's discovery document —
+// Hosted UI domain rather than resolving the issuer's discovery document:
 // avoids a network round-trip on every load and keeps /logout (Cognito's
 // logout endpoint is a non-RFC redirect needing client_id + logout_uri)
 // wired correctly.
@@ -31,7 +32,7 @@ const oidcConfig =
         response_type: "code",
         scope: "openid email profile",
         // Force the Hosted UI to prompt every sign-in, even with a cached
-        // session cookie — otherwise a second tab's sign-in silently
+        // session cookie - otherwise a second tab's sign-in silently
         // completes as the first tab's user.
         extraQueryParams: { prompt: "login" },
         metadata: {
@@ -61,10 +62,14 @@ const oidcConfig =
       };
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const inner = <NuqsAdapter>{children}</NuqsAdapter>;
+  const inner = (
+    <NuqsAdapter>
+      <MissionDataProvider>{children}</MissionDataProvider>
+    </NuqsAdapter>
+  );
 
   if (AUTH_DISABLED || !oidcConfig) {
-    // No AuthProvider context in demo mode — useAppAuth() falls back to the
+    // No AuthProvider context in demo mode - useAppAuth() falls back to the
     // sessionStorage-backed demo persona. TokenSync still runs so lib/api.ts
     // picks up the role/org_unit for the mock-mode RLS simulation.
     return (

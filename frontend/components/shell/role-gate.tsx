@@ -10,7 +10,7 @@ type Props = {
 };
 
 /**
- * Inline UI gate driven by the current persona's role — for hiding/showing
+ * Inline UI gate driven by the current persona's role for hiding or showing
  * a control or panel within a page. For full-route gating use
  * `<AuthGuard requireRole={[...]}>` instead.
  */

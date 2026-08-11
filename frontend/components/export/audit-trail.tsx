@@ -11,8 +11,9 @@ import { dateTimeShort } from "@/components/dashboard/format";
  * Honest framing, stated on the panel: this is a client-side echo of the calls
  * this page made in this session. The authoritative record is the append-only
  * `compass.audit_log` table, written server-side by `POST /export` and
- * `POST /approvals`; the prototype exposes no read endpoint for it, so nothing
- * here is presented as having been read back from the database.
+ * `POST /approvals`. The protected System Inspector provides a separate,
+ * sanitized server readback; nothing in this local interaction trace is
+ * presented as having been read from the database.
  */
 export type AuditEvent = {
   id: number;
@@ -32,11 +33,11 @@ export function AuditTrail({ events }: { events: AuditEvent[] }) {
           <ScrollText className="size-4" aria-hidden />
         </span>
         <div>
-          <h2 className="text-[14.5px] font-semibold text-text-strong">Audit trail</h2>
+          <h2 className="text-[14.5px] font-semibold text-text-strong">Client interaction trace</h2>
           <p className="mt-0.5 text-[11.5px] leading-snug text-text-muted">
             Every call this page made, in order. The API writes the same actions to the append-only{" "}
             <code className="font-mono text-[11px]">compass.audit_log</code> table server-side; this
-            list is the client&apos;s echo of them, not a read-back of that table.
+            list is the client&apos;s echo. Open Mission control for the sanitized server readback.
           </p>
         </div>
       </header>

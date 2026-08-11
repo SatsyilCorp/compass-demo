@@ -19,7 +19,7 @@ export function VelocityLegend() {
         Three ingestion velocities
       </h2>
       <p className="mt-1 text-[12px] text-text-muted">
-        The same intake state machine — Fetch &rarr; Validate &rarr; Persist / Quarantine — processes
+        The same intake state machine - Fetch &rarr; Validate &rarr; Persist / Quarantine - processes
         drops arriving at three different cadences.
       </p>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -41,7 +41,7 @@ export function VelocityLegend() {
       </div>
       <p className="mt-3 text-[10.5px] text-text-subtle">
         Velocity tags on the batches below are an illustrative client-side classification for this
-        demo — the <code className="font-mono">IngestBatch</code> API shape carries no velocity
+        demo - the <code className="font-mono">IngestBatch</code> API shape carries no velocity
         field. A batch you trigger with &ldquo;Drop a file&rdquo; is genuinely on-demand.
       </p>
     </section>

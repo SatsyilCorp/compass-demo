@@ -2,7 +2,7 @@ import { CheckCircle2, ShieldAlert, Loader2, Clock, type LucideIcon } from "luci
 import type { IngestBatch, QualityRuleResult } from "@/lib/types";
 
 /** Batch row pass-rate at/above this curates; below it the whole batch is
- * quarantined and nothing is persisted — src/functions/quality_gate/rules.py
+ * quarantined and nothing is persisted - src/functions/quality_gate/rules.py
  * `DEFAULT_PASS_THRESHOLD`, mirrored by lib/mock/ingest.ts. */
 const GATE_THRESHOLD = 90;
 
@@ -15,7 +15,7 @@ const STATUS_META: Record<IngestBatch["status"], { label: string; tone: string; 
 
 /**
  * Quality-gate pass/quarantine result for one batch, with the score formula
- * always shown alongside the number it produced — never a bare score.
+ * always shown alongside the number it produced - never a bare score.
  * Element 3.
  */
 export function QualityGatePanel({
@@ -48,7 +48,7 @@ export function QualityGatePanel({
         )}
       </div>
 
-      {/* Formula — always visible, never a bare number. */}
+      {/* Formula - always visible, never a bare number. */}
       <div className="mt-3 rounded-md border border-dashed border-border-strong bg-surface-2 px-3 py-2">
         <p className="font-mono text-[11px] text-text-strong">
           score = 100 &times; passed_rows &divide; (passed_rows + failed_rows)
@@ -56,7 +56,7 @@ export function QualityGatePanel({
         <p className="mt-1 text-[11px] leading-relaxed text-text-muted">
           Batches scoring <strong className="text-text-strong">&ge; {GATE_THRESHOLD}</strong> curate
           into <code className="font-mono">grants_curated</code>; below {GATE_THRESHOLD} the whole
-          batch is quarantined in <code className="font-mono">grants_raw</code> — nothing persists.
+          batch is quarantined in <code className="font-mono">grants_raw</code> - nothing persists.
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export function QualityGatePanel({
         <p className="mt-3 text-[11.5px] text-text-muted">
           {status === "queued"
             ? "Waiting to enter the Fetch stage…"
-            : "Fetch and Validate are running — the quality-gate result lands once Validate completes."}
+            : "Fetch and Validate are running - the quality-gate result lands once Validate completes."}
         </p>
       )}
     </div>

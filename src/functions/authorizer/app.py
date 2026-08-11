@@ -4,8 +4,8 @@ One Lambda, two jobs (both driven by the same claims → role → org_unit map):
 
 1. **Lambda REQUEST authorizer** (registered in template.yaml as
    ``CompassContextAuthorizer``, payload format 2.0, simple responses). It
-   validates the Cognito JWT *itself* — signature against the user pool's
-   JWKS, issuer, expiry, and audience — then derives the caller's ``role``
+   validates the Cognito JWT *itself* - signature against the user pool's
+   JWKS, issuer, expiry, and audience - then derives the caller's ``role``
    from ``cognito:groups`` and the ``org_unit`` that Postgres row-level
    security keys on, and injects both into the request context. Anything it
    cannot fully verify is denied: ``{"isAuthorized": false}``. Deny-by-default,
@@ -28,7 +28,7 @@ resources in template.yaml)::
 ``org_unit`` is what the request-scoped ``SET LOCAL compass.org_unit`` in
 ``compass_common.db.set_org`` binds, which is what the ``grants_curated``
 policies read. So this file is where "which JWT group you are in" becomes
-"which rows the database will hand you" — it is the front door of the whole
+"which rows the database will hand you" - it is the front door of the whole
 access-control story.
 
 Environment
@@ -40,38 +40,30 @@ AWS_REGION     Supplied by the Lambda runtime; used to build the issuer URL.
 JWKS_CACHE_SECONDS  Signing-key cache lifetime.            default 3600
 
 Dependencies: PyJWT + cryptography, from this function's own
-``requirements.txt`` (deliberately not in the shared CommonLayer — only this
+``requirements.txt`` (deliberately not in the shared CommonLayer - only this
 function verifies tokens). This function has **no VpcConfig** in the template,
 so it can reach the public Cognito JWKS endpoint.
 """
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from compass_common import http
 
 # --------------------------------------------------------------------------- #
-# The contract's identity map. Single source of truth; the API handlers that
-# need the same derivation (intake) mirror these two dicts and say so.
+# Compatibility aliases point to the shared identity contract. The shared
+# module is the only source of truth used by authorizers and route handlers.
 # --------------------------------------------------------------------------- #
-GROUP_ROLE: Dict[str, str] = {
-    "compass-poweruser": "poweruser",
-    "compass-viewer": "viewer",
-}
-ROLE_ORG_UNIT: Dict[str, str] = {
-    "poweruser": "ONR-Corporate",
-    "viewer": "Code-30",
-}
-# Most-privileged first: a user in both groups resolves to poweruser (this
-# mirrors the Cognito group Precedence 10 / 20 set in template.yaml).
-ROLE_PRECEDENCE: Tuple[str, ...] = ("poweruser", "viewer")
+GROUP_ROLE = http.GROUP_TO_ROLE
+ROLE_ORG_UNIT = http.ROLE_TO_ORG_UNIT
+ROLE_PRECEDENCE = http.ROLE_PRECEDENCE
 
 _JWK_CLIENT = None
 
 
 class AuthError(Exception):
-    """Token could not be verified — always answered with a deny."""
+    """Token could not be verified - always answered with a deny."""
 
 
 # --------------------------------------------------------------------------- #
@@ -79,15 +71,11 @@ class AuthError(Exception):
 # --------------------------------------------------------------------------- #
 def role_from_groups(groups: List[str]) -> Optional[str]:
     """Highest-precedence Compass role in ``groups``; ``None`` if none apply."""
-    roles = {GROUP_ROLE[g] for g in groups if g in GROUP_ROLE}
-    for role in ROLE_PRECEDENCE:
-        if role in roles:
-            return role
-    return None
+    return http.role_from_groups(groups)
 
 
 def org_unit_for_role(role: Optional[str]) -> Optional[str]:
-    return ROLE_ORG_UNIT.get(role or "")
+    return http.org_unit_for_role(role)
 
 
 # --------------------------------------------------------------------------- #
@@ -149,7 +137,7 @@ def verify_token(token: str, *, jwk_client=None) -> Dict[str, Any]:
     """Verify a Cognito JWT and return its claims, or raise :class:`AuthError`.
 
     Checks signature (RS256, against the pool's JWKS), issuer, ``exp``/``nbf``
-    (60s leeway for clock skew), and the audience — Cognito puts the app client
+    (60s leeway for clock skew), and the audience - Cognito puts the app client
     id in ``aud`` on ID tokens and in ``client_id`` on access tokens, so the
     check follows ``token_use``. Both token types are accepted: the SPA sends
     ID tokens, and machine callers/curl typically send access tokens.
@@ -157,7 +145,7 @@ def verify_token(token: str, *, jwk_client=None) -> Dict[str, Any]:
     ``jwk_client`` is injectable so this can be exercised offline against a
     fake key provider.
     """
-    import jwt  # PyJWT — from this function's requirements.txt
+    import jwt  # PyJWT - from this function's requirements.txt
 
     if not token:
         raise AuthError("missing bearer token")
@@ -197,10 +185,7 @@ def verify_token(token: str, *, jwk_client=None) -> Dict[str, Any]:
 
 
 def _groups(claims: Dict[str, Any]) -> List[str]:
-    raw = claims.get("cognito:groups")
-    if isinstance(raw, list):
-        return [str(g) for g in raw if str(g).strip()]
-    return http._split_groups(raw)  # tolerant of "[a b]" / "a,b" string forms
+    return http._split_groups(claims.get("cognito:groups"))
 
 
 # --------------------------------------------------------------------------- #
@@ -251,12 +236,14 @@ def authorize(event: Dict[str, Any]) -> Dict[str, Any]:
 # 2) GET /me
 # --------------------------------------------------------------------------- #
 def _display_name(raw: Dict[str, Any], email: Optional[str], role: str) -> str:
-    for key in ("name", "given_name", "preferred_username", "cognito:username"):
+    for key in ("name", "given_name", "preferred_username"):
         val = raw.get(key)
         if val:
             return str(val)
     if email:
         return str(email).split("@")[0]
+    if raw.get("cognito:username"):
+        return str(raw["cognito:username"])
     return "Power User" if role == "poweruser" else "Viewer"
 
 
@@ -269,12 +256,11 @@ def get_me(event: Dict[str, Any]) -> Dict[str, Any]:
     derived here from ``cognito:groups``).
     """
     claims = http.get_claims(event)
-    role = claims.role or role_from_groups(claims.groups)
+    role, org_unit = http.resolve_identity(claims)
     if role not in ROLE_ORG_UNIT:
         return http.forbidden(
             "caller is not in a Compass group (compass-poweruser or compass-viewer)"
         )
-    org_unit = claims.org_unit or org_unit_for_role(role)
     return http.ok(
         {
             "sub": claims.sub or "",

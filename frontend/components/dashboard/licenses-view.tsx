@@ -22,13 +22,13 @@ import { dateShort, daysUntil, num, relativeDays } from "./format";
 import { useCompassQuery } from "./use-compass-query";
 
 /**
- * License lifecycle (element 6) — `GET /licenses`.
+ * License lifecycle (element 6): `GET /licenses`.
  *
  * Two things a portfolio office actually needs from this table, and both are
  * here:
  *
  *   RENEWAL ALERTS  the row's urgency is *computed from `renews_on`* against
- *                   today, not taken from the stored `status` string — a stored
+ *                   today, not taken from the stored `status` string. A stored
  *                   status goes stale the moment nobody updates it. Both are
  *                   shown, and the computed one is labelled as computed, so a
  *                   disagreement between them is visible rather than hidden.
@@ -74,11 +74,19 @@ export function LicensesView() {
 
   const licenses = data?.licenses ?? [];
   const rows = licenses
-    .map((l) => ({ license: l, days: daysUntil(l.renews_on) }))
-    .map((r) => ({ ...r, band: bandFor(r.days) }))
+    .map((l) => ({
+      license: l,
+      days: l.days_to_renewal ?? daysUntil(l.renews_on),
+      band: (l.renewal_alert?.level ?? bandFor(daysUntil(l.renews_on))) as Band,
+    }))
     .sort((a, b) => a.days - b.days);
 
-  const needsAction = rows.filter((r) => r.band === "expired" || r.band === "critical" || r.band === "warning");
+  const warningDays = data?.thresholds?.warning_days ?? 90;
+  const needsAction = rows.filter(
+    (r) =>
+      r.license.needs_action ??
+      (r.band === "expired" || r.band === "critical" || r.band === "warning"),
+  );
   const seatRows = licenses.filter((l) => l.seats_total > 0);
   const seatsUsed = seatRows.reduce((a, l) => a + l.seats_used, 0);
   const seatsTotal = seatRows.reduce((a, l) => a + l.seats_total, 0);
@@ -87,10 +95,10 @@ export function LicensesView() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        kicker="Element 6 · License lifecycle"
+        kicker="Governance | Lifecycle"
         title="Data licenses & entitlements"
         icon={<KeyRound className="size-4" aria-hidden />}
-        lead="Every commercial and public feed Compass draws on, what it entitles, which datasets it covers, and when it lapses — so a renewal never surprises the pipeline that depends on it."
+        lead="Every commercial and public feed Compass draws on, what it entitles, which datasets it covers, and when it lapses, so a renewal never surprises the pipeline that depends on it."
         actions={
           <button
             type="button"
@@ -106,7 +114,7 @@ export function LicensesView() {
 
       {error ? (
         <div className="rounded-md border border-danger bg-danger-soft px-4 py-3 text-[12.5px] text-danger">
-          Could not load licenses — {error}
+          Could not load licenses: {error}
         </div>
       ) : null}
 
@@ -124,7 +132,7 @@ export function LicensesView() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard label="Licenses tracked" value={licenses.length} sublabel="vendors and public feeds" Icon={KeyRound} />
             <KpiCard
-              label="Need action ≤ 90 days"
+              label={`Need action within ${warningDays} days`}
               value={needsAction.length}
               sublabel="expired or renewing soon"
               tone={needsAction.length > 0 ? "warn" : "default"}
@@ -156,7 +164,7 @@ export function LicensesView() {
                 {needsAction.map(({ license, days, band }) => (
                   <li key={license.id} className="text-[12px] leading-snug text-text">
                     <span className="font-semibold text-text-strong">
-                      {license.vendor} — {license.product}
+                      {license.vendor}: {license.product}
                     </span>{" "}
                     renews {dateShort(license.renews_on)} ({relativeDays(days)}).{" "}
                     <span className="text-text-muted">
@@ -167,8 +175,7 @@ export function LicensesView() {
                 ))}
               </ul>
               <p className="mt-2 text-[10.5px] text-text-muted">
-                Computed in the browser from <code className="font-mono text-[10px]">renews_on</code>{" "}
-                against today&apos;s date — no scheduled notification job is wired in this prototype.
+                {data?.thresholds?.note ?? "Renewal urgency is calculated by the service from the recorded renewal date."}
               </p>
             </section>
           ) : null}
@@ -179,7 +186,7 @@ export function LicensesView() {
               <div>
                 <h2 className="text-[14.5px] font-semibold text-text-strong">License register</h2>
                 <p className="mt-0.5 max-w-2xl text-[11.5px] leading-snug text-text-muted">
-                  Sorted by soonest renewal. Datasets name the upstream feeds each license entitles —
+                  Sorted by soonest renewal. Datasets name the upstream feeds each license entitles,
                   the link between a lapsing agreement and the curated tables that stop refreshing
                   without it.
                 </p>
@@ -193,7 +200,12 @@ export function LicensesView() {
               </Link>
             </header>
 
-            <div className="overflow-x-auto">
+            <div
+              className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gov-primary"
+              role="region"
+              aria-label="License register table"
+              tabIndex={0}
+            >
               <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border text-[10px] uppercase tracking-[0.1em] text-text-subtle">
@@ -228,7 +240,7 @@ export function LicensesView() {
                             ))}
                           </ul>
                         ) : (
-                          <span className="text-[11.5px] text-text-subtle">—</span>
+                          <span className="text-[11.5px] text-text-subtle">Not available</span>
                         )}
                       </td>
                       <td className="max-w-[240px] px-4 py-3 text-[11.5px] leading-snug text-text-muted">
@@ -259,10 +271,15 @@ export function LicensesView() {
                             "rounded px-1.5 py-0.5 text-[10.5px] font-semibold capitalize",
                             STATUS_STYLE[license.status],
                           )}
-                          title="status column as stored by the API"
+                          title="Effective lifecycle calculated by the service"
                         >
                           {license.status}
                         </span>
+                        {license.status_stored && license.status_stored !== license.status ? (
+                          <p className="mt-1 text-[10px] text-warn">
+                            Register says {license.status_stored}
+                          </p>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -275,9 +292,8 @@ export function LicensesView() {
               <code className="font-mono text-[10px]">compass.licenses</code> table. It is a
               corporate asset register with no <code className="font-mono text-[10px]">org_unit</code>{" "}
               column, so unlike the portfolio it carries no row-level security policy and reads the
-              same for every persona. The &ldquo;Renews&rdquo; urgency chip is computed here from{" "}
-              <code className="font-mono text-[10px]">renews_on</code>; the &ldquo;Status&rdquo;
-              chip is the stored column.
+              same for every persona. Renewal urgency and effective status come from the service
+              using its published thresholds. A differing stored register value is shown beside it.
             </footer>
           </section>
         </>

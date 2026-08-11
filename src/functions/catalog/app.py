@@ -1,4 +1,4 @@
-"""Data catalog + lineage API — element 4 of the Compass demo.
+"""Data catalog + lineage API - element 4 of the Compass demo.
 
 Routes (docs/CONTRACTS.md):
 
@@ -17,7 +17,7 @@ lineage for.
 inside :func:`compass_common.db.set_org`, which opens a transaction and issues
 ``SET LOCAL compass.org_unit = '<claim>'``. The ``grants_curated`` policies in
 db/migrations/002_rls.sql read that GUC, so a ``viewer`` (org_unit ``Code-30``)
-literally cannot see another org's rows — the batches they can't see never
+literally cannot see another org's rows - the batches they can't see never
 appear in the catalog because the ``GROUP BY batch_id`` runs over the rows RLS
 left behind. There is no ``WHERE org_unit = ...`` anywhere in this file, on
 purpose: that is the point of the control.
@@ -25,7 +25,7 @@ purpose: that is the point of the control.
 **Column-Level Security is a database grant, not an ``if`` statement.**
 002_rls.sql does ``REVOKE SELECT (amount_usd) ON grants_curated FROM
 compass_app``, so the runtime role physically cannot read the dollar column off
-the base table. Powerusers read through ``grants_curated_corp`` — a view owned
+the base table. Powerusers read through ``grants_curated_corp`` - a view owned
 by the migrator, which re-exposes the column while ``FORCE ROW LEVEL SECURITY``
 keeps the *same* org policy in force on the underlying table. If that view is
 missing or not granted, the query fails closed (see :func:`_load_batches`): we
@@ -33,7 +33,7 @@ fall back to the base table and mask the amount rather than erroring or, worse,
 leaking. The response always says which fields were masked and why.
 
 **The quality score never travels as a bare number.** Every catalog entry ships
-``quality_score`` *and* ``quality_formula`` — the expression, the per-rule
+``quality_score`` *and* ``quality_formula`` - the expression, the per-rule
 inputs it was computed from, and the arithmetic. An executive should be able to
 click one number and see exactly the passed/failed row counts behind it.
 
@@ -51,51 +51,21 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from compass_common import config, db, http
+from compass_common import config, db, disclosure, http
 
 log = logging.getLogger()
 log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 # --------------------------------------------------------------------------- #
-# Identity — deny-by-default
+# Identity - deny-by-default
 # --------------------------------------------------------------------------- #
-# The stack ships two authorizers (template.yaml): a native Cognito JWT
-# authorizer (the default) and a Lambda REQUEST authorizer that maps groups to
-# role/org_unit. Under the native JWT authorizer the request context carries
-# `cognito:groups` but no `role`/`org_unit`, so we apply the CONTRACTS.md
-# mapping here as a fallback. Anything that resolves to neither persona is
-# denied — there is no "default role".
-GROUP_TO_ROLE = {
-    "compass-poweruser": "poweruser",
-    "compass-viewer": "viewer",
-}
-ROLE_TO_ORG = {
-    "poweruser": config.CORPORATE_ORG_UNIT,   # ONR-Corporate — sees every row
-    "viewer": "Code-30",                      # RLS-scoped to Code-30
-}
-
-
 def resolve_identity(claims: http.Claims) -> Tuple[Optional[str], Optional[str]]:
-    """Return ``(role, org_unit)`` for the caller, or ``(None, None)`` to deny."""
-    role = (claims.role or "").strip().lower() or None
-    org = (claims.org_unit or "").strip() or None
-
-    if role is None:
-        for g in claims.groups:
-            mapped = GROUP_TO_ROLE.get(str(g).strip().lower())
-            if mapped:
-                role = mapped
-                break
-    if role and org is None:
-        org = ROLE_TO_ORG.get(role)
-
-    if role not in ROLE_TO_ORG or not org:
-        return None, None
-    return role, org
+    """Delegate to the shared deny-by-default identity contract."""
+    return http.resolve_identity(claims)
 
 
 # --------------------------------------------------------------------------- #
-# JSON coercion — psycopg2 hands back Decimal/date/datetime
+# JSON coercion - psycopg2 hands back Decimal/date/datetime
 # --------------------------------------------------------------------------- #
 def _num(value: Any) -> Optional[float]:
     """Decimal/int/float -> JSON number (int when integral). None passes through."""
@@ -118,7 +88,7 @@ def _iso(value: Any) -> Optional[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Quality score — the formula is part of the contract, not a comment
+# Quality score - the formula is part of the contract, not a comment
 # --------------------------------------------------------------------------- #
 PER_RULE_FORMULA = "rule_score = 100 * passed_rows / (passed_rows + failed_rows)"
 OVERALL_FORMULA = "quality_score = round(mean(rule_score for every rule in the run), 1)"
@@ -126,7 +96,7 @@ FORMULA_NOTE = (
     "Unweighted mean: every gate rule counts equally. The per-rule score stored "
     "by the quality gate in compass.grant_quality is used as-is; it is "
     "recomputed from passed_rows/failed_rows only when the stored value is "
-    "null. A batch with no recorded gate run scores null, never 100 — an "
+    "null. A batch with no recorded gate run scores null, never 100 - an "
     "un-run gate is not a pass."
 )
 
@@ -348,8 +318,11 @@ def list_catalog(conn, role: str) -> Dict[str, Any]:
                 "batch_id": batch_id,
                 "run_id": run_id,
                 "dataset_name": f"grants_curated · {batch_id}",
-                "source_file": sources.get(batch_id)
-                or f"s3://compass-landing/{batch_id}/onr_grants_export.jsonl",
+                "source_file": (
+                    disclosure.logical_source_locator(sources[batch_id])
+                    if sources.get(batch_id)
+                    else disclosure.logical_curated_locator(batch_id)
+                ),
                 "program_area": b["program_area"],
                 "program_area_count": _num(b["program_area_count"]),
                 "org_unit": b["org_unit"],
@@ -397,7 +370,7 @@ def _visible_batch(conn, ident: str) -> Optional[str]:
 
     ``{id}`` is normally a ``batch_id`` (what GET /catalog returns). A ``run_id``
     is accepted too and mapped back to its batch. Either way the batch must have
-    at least one ``grants_curated`` row surviving RLS — that check is what stops
+    at least one ``grants_curated`` row surviving RLS - that check is what stops
     the lineage graph from becoming a way to read around the row policy.
     """
     with conn.cursor() as cur:
@@ -405,7 +378,7 @@ def _visible_batch(conn, ident: str) -> Optional[str]:
         if cur.fetchone():
             return ident
 
-        # Maybe it's a run_id — map it to its batch, then re-check visibility.
+        # Maybe it's a run_id - map it to its batch, then re-check visibility.
         cur.execute(
             "SELECT batch_id FROM grant_quality WHERE run_id = %s LIMIT 1", (ident,)
         )
@@ -467,7 +440,7 @@ def get_lineage(conn, ident: str) -> Optional[Dict[str, Any]]:
             "batch_id": batch_id,
             "nodes": [],
             "edges": [],
-            "note": "No lineage was recorded for this batch yet — run the ingest "
+            "note": "No lineage was recorded for this batch yet - run the ingest "
                     "pipeline (POST /ingest/simulate) to emit a graph.",
         }
 
@@ -482,14 +455,14 @@ def get_lineage(conn, ident: str) -> Optional[Dict[str, Any]]:
             (run_id,),
         )
         nodes = [
-            {
-                "run_id": r[0],
-                "node_id": r[1],
-                "kind": r[2],
-                "label": r[3],
-                "meta": r[4] or {},
-            }
-            for r in cur.fetchall()
+            disclosure.safe_lineage_node(
+                run_id=row[0],
+                node_id=row[1],
+                kind=row[2],
+                label=row[3],
+                meta=row[4],
+            )
+            for row in cur.fetchall()
         ]
 
         cur.execute(
@@ -514,7 +487,7 @@ def handler(event: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
     role, org_unit = resolve_identity(claims)
     if not role:
         return http.forbidden(
-            "no Compass role on this identity — expected one of the "
+            "no Compass role on this identity - expected one of the "
             "compass-poweruser / compass-viewer Cognito groups"
         )
 

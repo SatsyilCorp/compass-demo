@@ -19,7 +19,7 @@ const KIND_TONE: Record<StateKind, string> = {
 };
 
 /**
- * Visual of the deployed intake state machine — a div-based spine + stage
+ * Visual of the deployed intake state machine - a div-based spine + stage
  * detail panel, adapted from a prior admin pipeline-view pattern (no
  * canvas/diagramming library). Element 7 (admin/pipeline).
  */

@@ -4,7 +4,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { ExportView } from "@/components/export/export-view";
 
 /**
- * /export — element 7. Server component for metadata only; the request itself
+ * /export - element 7. Server component for metadata only; the request itself
  * runs client-side against POST /export with the persona's token (static
  * export, no server session).
  */
