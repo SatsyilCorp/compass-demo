@@ -2,16 +2,18 @@
   "project": "Compass",
   "purpose": "Synthetic-data S&T Portfolio Intelligence demonstration for N0001426R4002 Volume IV, Factor 3.",
   "updated_at": "2026-08-11",
-  "candidate_state": "Satsyil HA live acceptance candidate deployed and technically verified on 2026-08-11. Recording release remains blocked on exact-commit workflow evidence and a timed human rehearsal.",
+  "candidate_state": "The current Satsyil HA stack is deployed with 33 protected operations and accepted document intelligence and bounded MLOps demo evidence. Recording release remains blocked on exact-commit workflow evidence and a timed human rehearsal.",
   "deployment_modes": {
-    "live": "Cognito, protected API, 17 Lambda functions, Step Functions, SQS, DynamoDB, Glue, Athena, Kinesis, Aurora PostgreSQL, Bedrock adapters, S3, CloudFront, WAF, KMS, and CloudWatch.",
+    "live": "Cognito, 33-operation protected API, 18 Lambda functions, three Step Functions workflows, SQS, DynamoDB, Glue, Athena, Kinesis, Aurora PostgreSQL, Bedrock adapters, S3, CloudFront, WAF, KMS, and CloudWatch.",
+    "document_mlops": "The Lambda demo Adapter and document workflow are deployed and accepted with success, quarantine, training, Champion promotion, and drift receipts. No SageMaker training job or endpoint was started.",
     "replay": "Deterministic persistent browser scenario for rehearsal and evaluator quickstart. Clearly labeled and never represented as cloud runtime evidence."
   },
   "implementation": {
-    "protected_api_operations": 25,
-    "protected_api_url_paths": 23,
+    "protected_api_operations": 33,
+    "protected_api_url_paths": 31,
     "scale_api_operations": 8,
-    "lambda_functions": 17,
+    "lambda_functions": 18,
+    "document_mlops_api_operations": 8,
     "system_evidence_route": "GET /system/evidence",
     "database_migrations": [
       "001_schema",
@@ -19,13 +21,13 @@
       "003_security_hardening",
       "004_opaque_approval_capability"
     ],
-    "identity": "Centralized Cognito group normalization with deny-by-default role and organization resolution. Fixed poweruser, reviewer, and viewer personas are ready with distinct TOTP factors.",
-    "cors": "Explicit origin allowlist shared by API Gateway and Lambda responses. Live verification passed all 25 protected operations.",
+    "identity": "Centralized Cognito group normalization with deny-by-default role and organization resolution. The current team-preview posture supports one formal presenter with TOTP and password-only team reviewers while every application route remains JWT protected.",
+    "cors": "Explicit origin allowlist shared by API Gateway and Lambda responses. Protected routes reject unauthenticated requests, and the authenticated document and MLOps browser path passed. A clean-checkout full exact-origin contract sweep remains a release gate.",
     "export_approval": "Exact query fingerprint, separate-persona decision, opaque token with stored SHA-256 verifier, expiry, atomic one-time consumption, and append-only audit.",
     "system_inspector": "Poweruser-only sanitized application projection with live or replay source label.",
-    "observability": "Eleven alarms, two CloudWatch dashboards, API access logs, X-Ray, workflow logs, and one stack-owned 14-day application log group with function-specific streams.",
+    "observability": "Thirteen alarms, two CloudWatch dashboards, API access logs, X-Ray, workflow logs, and one stack-owned 14-day application log group with function-specific streams.",
     "delivery": "Automated quality workflow, protected GitHub OIDC deployment path, and bounded named-profile Satsyil deployment path with account guard, container build, migrations, exact web identity binding, and edge invalidation.",
-    "demo_preparation": "Explicitly confirmed synthetic-only bounded reset, five fixed non-triggering staged fixtures, exact MFA identity preflight, baseline quality and lineage receipts, deployed analytics baseline, redacted readiness receipt, and one-shot live drop release.",
+    "demo_preparation": "Explicitly confirmed synthetic-only bounded reset, five fixed non-triggering staged fixtures, four fixed identity paths, baseline quality and lineage receipts, deployed analytics baseline, redacted readiness receipt, and one-shot live drop release.",
     "scale_data_plane": "Four fixed workload profiles, deterministic six-domain generation, maximum 25,000 records per partition, one-active-run gate, Standard workflow, SQS backpressure, immutable lake parts, durable receipt ledger, Glue catalog, scan-limited Athena, full-corpus deterministic intelligence, and asynchronous governed Parquet export.",
     "frontend": "Responsive nine-screen mission UI, interactive Scale Lab, tab-scoped Mission Evidence selection, aggregate Scale receipt Decision Brief, mobile navigation, presenter rehearsal guide, live backend evidence, and accessibility smoke coverage."
   },
@@ -35,11 +37,12 @@
     "production_target": "Government landing-zone deployment with tested restore and failover procedures, required recovery objectives, cross-region copy or replication as approved, per-AZ egress, longer retention, monitoring integration, and recurring exercises."
   },
   "cost_model": {
-    "fixed_monthly_ha_forecast_usd": 163.70,
-    "fixed_monthly_ha_forecast_status": "Forecast for a 730-hour month, not observed billing.",
+    "fixed_monthly_ha_source_target_forecast_usd": 170.00,
+    "low_use_ha_source_target_forecast_usd": 170.22,
+    "fixed_monthly_ha_forecast_status": "Planning forecast for a 730-hour month using the deployed 13-alarm stack, not observed billing.",
     "planned_incremental_total_usd": 0.21131732,
     "accrued_model_estimate_total_usd": 0.09554118,
-    "runtime_cost_status": "Price-model estimates only. Billing reconciliation remains pending."
+    "runtime_cost_status": "Price-model estimates only. Document MLOps demo execution is accepted, but no SageMaker training job or endpoint was started and billing reconciliation remains pending."
   },
   "release_gates": [
     {
@@ -50,7 +53,7 @@
     {
       "name": "Backend lint and tests",
       "command": "ruff check src scripts && PYTHONPATH=src/common/python python3 -m pytest -q",
-      "status": "passed_local_209_tests"
+      "status": "passed_local_229_tests"
     },
     {
       "name": "Production dependency audits",
@@ -70,7 +73,7 @@
     {
       "name": "Frontend type, scenario, build, and browser checks",
       "command": "cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e2e",
-      "status": "passed_local_and_published_28_scenario_30_browser_6_intentional_mobile_skips"
+      "status": "passed_local_42_scenarios_typecheck_31_page_build_and_authenticated_browser_acceptance"
     },
     {
       "name": "Demo preparation",
@@ -101,10 +104,12 @@
   "live_verification": {
     "stack": "HA deployment completed in Satsyil AWS on 2026-08-11.",
     "database": "Writer and reader available, private and encrypted, with 14-day backups and deletion protection. All four migrations and runtime-role bootstrap passed.",
-    "identity": "Poweruser, reviewer, and viewer personas enabled, confirmed, correctly grouped, and ready with password plus TOTP.",
+    "identity": "Poweruser, reviewer, and viewer personas are enabled, confirmed, correctly grouped, and password-only for team access. The dedicated presenter identity is enrolled with TOTP.",
     "preparation": "artifacts/demo-preflight.json reports ready with 19 of 19 checks passing.",
-    "api": "25 protected operations across 23 URL paths; live CORS verification passed all 25.",
-    "browser": "Real Cognito password and TOTP login loaded all nine screens. No Failed to fetch result or browser command error was observed. Scale controls worked, the 1M profile was unlocked, its exact cost gate was enabled, and the selected 1M receipt replaced the 400-grant Decision Brief with 1,000,000 total records and 200,000 grants.",
+    "api": "33 protected operations across 31 URL paths; protected routes return 401 without a valid token.",
+    "browser": "A real Cognito password-only poweruser login loaded the current dashboard with 480 grants across eight program areas and no Failed to fetch or console errors. The MLOps screen trained model doc-nb-f828a29acd1e, promoted that exact version to Champion, and produced shifted-data drift evidence.",
+    "document_intelligence": "Success run doc-4af2b9ad1c4f4c38b87b16fa6bb55f3b reached gold-published and classified technical_report at 0.999991 confidence. Run doc-84ed09ceb46644de801a12e1abcb7b4e failed the extractable-content gate and produced a quarantine receipt.",
+    "mlops": "Model doc-nb-f828a29acd1e trained on 36 records with 1.0 accuracy, 1.0 macro F1, and all six classes represented. Promotion set that exact version to Champion. Shifted evaluation produced PSI 11.51, 91 percent out-of-vocabulary rate, eight documents, and retrain-and-review.",
     "security_boundary": "CSP, Permissions Policy, HSTS, and WAF verified live.",
     "acceptance_transport": "Scale receipts use direct IAM Lambda invocation with a staged /prod API Gateway event. This exercises the deployed route handler and live data plane but bypasses Cognito, API Gateway transport, WAF, and the browser. Those boundaries were verified separately.",
     "scale_runs": [
@@ -169,7 +174,8 @@
     "Not an unlimited-load, sustained-concurrency, or multi-terabyte capacity test.",
     "Not Government-data processing evidence or Exhibit B certification.",
     "No cross-region disaster recovery, tested restore, or validated production RTO or RPO.",
-    "Cost values are forecasts and model estimates, not observed billing."
+    "Cost values are forecasts and model estimates, not observed billing.",
+    "The accepted MLOps path uses the bounded Lambda demo Adapter. No paid SageMaker training job or endpoint was started, and this is not production model-performance evidence."
   ],
   "external_inputs": [
     "Final repository host, read-only evaluator access method, tag, and full commit SHA.",

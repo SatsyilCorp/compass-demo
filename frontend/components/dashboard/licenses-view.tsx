@@ -95,8 +95,8 @@ export function LicensesView() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        kicker="Governance | Lifecycle"
-        title="Data licenses & entitlements"
+        kicker="Strategic Prompt (e) | Data Vendor Lifecycle"
+        title="Data subscriptions, licenses, and renewal controls"
         icon={<KeyRound className="size-4" aria-hidden />}
         lead="Every commercial and public feed Compass draws on, what it entitles, which datasets it covers, and when it lapses, so a renewal never surprises the pipeline that depends on it."
         actions={

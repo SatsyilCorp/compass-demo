@@ -14,6 +14,21 @@ The deterministic replay path uses one persistent browser scenario so that an
 ingest decision is reflected consistently across catalog, lineage, analytics,
 dashboard, approval, export, and system evidence views.
 
+## Current live boundary
+
+The current Satsyil stack at `https://compass.aws.satsyil.com/` is deployed at
+`local-fe56c61`. It has 33 protected operations across 31 URL paths, 18 Lambda
+functions, 13 alarms, 2 dashboards, and 3 state machines. The stack is in HA
+mode, Scale is enabled through 1,000,000 records, and document MLOps uses the
+bounded Lambda `demo` Adapter.
+
+The earlier 25-operation revision retains dated acceptance evidence for HA,
+ingestion, governance, analytics, dashboard, export, and all four Scale Run
+profiles. The document routes and workflow are now deployed resources, but a
+new authenticated document end-to-end acceptance receipt is still required
+before calling a displayed document run live execution evidence. No SageMaker
+training job has been submitted.
+
 All demonstrated data is synthetic. There is no CUI, PII, or real award data in
 the seed set. See `seed/SYNTHETIC-DATA-MANIFEST.md` for the per-file statement.
 
@@ -23,7 +38,7 @@ The seven required scenario elements are presented in sequence.
 
 | # | Required element | Product proof |
 |---|---|---|
-| 1 | Secure access, MFA, and Zero Trust | Cognito TOTP MFA, JWT protection on all 25 method-and-path operations across 23 URL paths, centralized group-to-role normalization, transaction-scoped RLS, and role-gated funding data |
+| 1 | Secure access, MFA, and Zero Trust | Cognito optional TOTP for the formal presenter, JWT protection on all 33 current method-and-path operations across 31 URL paths, centralized group-to-role normalization, transaction-scoped RLS, and role-gated funding data |
 | 2 | Infrastructure as Code and automation | `template.yaml`, forward SQL migrations, automated quality gates, controlled OIDC deployment, deploy revision evidence, and deterministic RMF artifact generation |
 | 3 | Automated ingestion, DataOps, and streaming | S3 and EventBridge trigger an Express Step Functions workflow with normalization, quality scoring, curate or quarantine decisions, an ordered database activity projection, and deduplicated Kinesis transport receipts |
 | 4 | Governance, quality, and cataloging | Explainable quality scores, a governed catalog, and run-emitted lineage at `/catalog/lineage/?batch=<id>` |
@@ -161,7 +176,7 @@ retention to 14 days, and enables deletion protection. Neither setting by
 itself is a production disaster recovery implementation. See
 `docs/ARCHITECTURE.md` and `docs/RUNBOOK.md` for the explicit production target.
 
-After deployment, migrations, user creation, and TOTP enrollment, prepare the
+After deployment, migrations, user creation, and identity verification, prepare the
 fixed synthetic recording state with the bounded operator workflow:
 
 ```bash
@@ -175,7 +190,7 @@ python3 scripts/prepare_demo.py prepare \
 The command refuses to delete anything when unexpected UI-driving state is
 present. It stages five validated fixtures outside the live ingest prefix,
 loads the baseline portfolio and license register, runs baseline analytics as
-service actor `compass-demo-preparer`, verifies the three fixed MFA identities,
+service actor `compass-demo-preparer`, verifies the four fixed identity paths,
 confirms the live drop keys are absent, and writes a redacted readiness
 receipt. The live Ingest page then exposes three protected, one-shot fixture
 release controls. The complete safety boundary and read-only check command are
@@ -206,7 +221,7 @@ cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e
 
 | Path | Purpose |
 |---|---|
-| `template.yaml` | Reproducible AWS environment, 25 protected API operations, optional Scale Run resources, observability, and resilience modes |
+| `template.yaml` | Reproducible AWS environment, 33 protected API operations, document MLOps, optional Scale Run resources, observability, and resilience modes |
 | `db/migrations/` | Versioned schema, RLS and CLS, explicit runtime grants, append-only audit, and opaque approval verifier storage |
 | `src/common/` | Shared database, identity, HTTP, CORS, Bedrock, audit, deterministic workload, and price-backed cost contracts |
 | `src/functions/` | Application handlers, System Inspector, Scale Control, Scale Worker, Scale Export, migrator, and RMF generator |

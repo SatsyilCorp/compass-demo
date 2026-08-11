@@ -43,9 +43,9 @@ export default function ArchitecturePage() {
         <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
           <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-6">
             <PageHeader
-              kicker="System view | AWS-native deployed topology"
+              kicker="System view | AWS-native proposed and implemented topology"
               title="Architecture Explorer"
-              lead="Follow every request, control message, record, receipt, and security boundary across the deployed prototype mission workflow and bounded synthetic scale path. Conditional services, logical boundaries, and production accreditation gaps are labeled explicitly."
+              lead="Follow the direct document-drop path, event processing, Bronze, Silver, Gold evidence, SageMaker Adapter, model lifecycle, governed decision products, secure export, CI/CD, IaC, security, scale, and recovery seams. Conditional services and unexecuted production controls are labeled explicitly."
               icon={<Network className="size-5" aria-hidden />}
               actions={(
                 <div className="flex flex-wrap gap-2">

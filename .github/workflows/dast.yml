@@ -1,0 +1,61 @@
+name: Controlled DAST evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: HTTPS Compass origin approved for non-destructive baseline scanning
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    environment: demo
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate bounded target
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+        run: |
+          python - <<'PY'
+          import ipaddress
+          import os
+          import socket
+          from urllib.parse import urlparse
+
+          target = urlparse(os.environ["TARGET_URL"])
+          if target.scheme != "https" or not target.hostname or target.path not in ("", "/"):
+              raise SystemExit("target_url must be an HTTPS origin without a path")
+          if target.username or target.password or target.port not in (None, 443):
+              raise SystemExit("target_url cannot contain credentials or a nonstandard port")
+          for address in socket.getaddrinfo(target.hostname, 443):
+              ip = ipaddress.ip_address(address[4][0])
+              if not ip.is_global:
+                  raise SystemExit("target_url must resolve only to globally routed addresses")
+          PY
+
+      - name: OWASP ZAP baseline
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+        run: |
+          mkdir -p artifacts/dast
+          chmod 777 artifacts/dast
+          docker run --rm \
+            -v "$PWD/artifacts/dast:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t "$TARGET_URL" -I -J zap-report.json -r zap-report.html
+
+      - name: Publish DAST evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-evidence
+          path: artifacts/dast
+          retention-days: 30

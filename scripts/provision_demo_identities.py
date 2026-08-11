@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision the three protected Compass demo identities in Cognito.
+"""Low-level Cognito identity helpers and compatibility entrypoint.
 
 AWS request bodies are sent through short-lived mode 0600 files so credentials
 and transient challenge material never enter command arguments. The only
@@ -841,31 +841,13 @@ def _parse_args(arguments: Sequence[str] | None) -> argparse.Namespace:
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
-    args = _parse_args(arguments)
-    expected_account = os.environ.pop("SATSYIL_EXPECTED_ACCOUNT_ID", "")
-    repository_root = Path(__file__).resolve().parent.parent
-    try:
-        with termination_guard():
-            provision_identities(
-                AwsCli(),
-                CredentialStore(repository_root),
-                stack_name=args.stack,
-                expected_account=expected_account,
-            )
-    except (KeyboardInterrupt, InterruptedProvisioning):
-        print("ERROR: secure identity provisioning was interrupted", file=sys.stderr)
-        return 130
-    except AwsCallError as error:
-        print(f"ERROR: {error}", file=sys.stderr)
-        return 1
-    except ProvisioningError as error:
-        print(f"ERROR: {error}", file=sys.stderr)
-        return 1
-    except Exception:
-        print("ERROR: secure identity provisioning failed safely", file=sys.stderr)
-        return 1
-    print("Secure identity provisioning is complete")
-    return 0
+    """Route legacy direct execution to the current optional-MFA posture."""
+    repository_root = Path(__file__).resolve().parents[1]
+    if str(repository_root) not in sys.path:
+        sys.path.insert(0, str(repository_root))
+    from scripts.configure_demo_identity_posture import main as posture_main
+
+    return posture_main(arguments)
 
 
 if __name__ == "__main__":

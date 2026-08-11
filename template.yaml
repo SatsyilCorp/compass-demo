@@ -3,8 +3,9 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   Compass - US Navy/ONR S&T Portfolio Intelligence demo (single stack,
   us-east-1). Everything is created in-template for reproducibility: a minimal
-  VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito (MFA OFF for
-  team-demo password-only access) with a JWT-guarded HttpApi, one Lambda per src/functions dir on a
+  VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito (per-user MFA
+  optional so team accounts stay password-only and a presenter proves TOTP)
+  with a JWT-guarded HttpApi, one Lambda per src/functions dir on a
   shared CommonLayer, an Express intake state machine fired by S3 -> EventBridge,
   an on-demand Kinesis ticker stream, a private S3 + CloudFront web tier behind
   a CLOUDFRONT-scope WAF, and a customer-managed KMS key over data at rest.
@@ -160,6 +161,26 @@ Parameters:
     MinValue: 104857600
     MaxValue: 107374182400
     Description: Hard bytes-scanned cutoff applied to every query in the Scale Run workgroup.
+
+  DocumentDataRetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 365
+    Description: Retention for uploaded, bronze, silver, gold, and quarantine document objects.
+
+  MlOpsMode:
+    Type: String
+    Default: demo
+    AllowedValues: [demo, sagemaker]
+    Description: >
+      Demo executes the deterministic classical model in Lambda. SageMaker
+      submits a bounded training job only when an approved image is supplied.
+
+  SageMakerTrainingImage:
+    Type: String
+    Default: ""
+    Description: Optional approved ECR training image URI used only in sagemaker mode.
 
 # -----------------------------------------------------------------------------
 # Conditions
@@ -477,7 +498,8 @@ Resources:
       PubliclyAccessible: false
 
   # ===========================================================================
-  # (4) Cognito - MFA OFF for team-demo access, 16-char password policy, two demo groups
+  # (4) Cognito - OPTIONAL TOTP. Team accounts remain password-only; the
+  #     dedicated formal presenter account enables TOTP per user.
   #     that map 1:1 to the RLS personas in docs/CONTRACTS.md:
   #       compass-poweruser -> org_unit ONR-Corporate (sees all rows)
   #       compass-viewer    -> org_unit Code-30       (sees Code-30 only)
@@ -489,7 +511,8 @@ Resources:
       UserPoolName: !Sub "${AWS::StackName}-users"
       AutoVerifiedAttributes: [email]
       UsernameAttributes: [email]
-      MfaConfiguration: "OFF"
+      MfaConfiguration: OPTIONAL
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true   # demo personas are seeded, no self-signup
       Policies:
@@ -675,12 +698,56 @@ Resources:
       NotificationConfiguration:
         EventBridgeConfiguration:
           EventBridgeEnabled: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: [Content-Type]
+            AllowedMethods: [PUT]
+            AllowedOrigins:
+              - http://localhost:3000
+              - http://127.0.0.1:3000
+              - !If [HasWebOrigin, !Ref WebOrigin, !Ref "AWS::NoValue"]
+              - !If
+                - HasWebCustomDomain
+                - !Sub "https://${WebCustomDomainName}"
+                - !Ref "AWS::NoValue"
+            ExposedHeaders: [ETag]
+            MaxAge: 900
       LifecycleConfiguration:
         Rules:
           - Id: expire-incomplete-uploads
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+          - Id: expire-document-inputs
+            Status: Enabled
+            Prefix: documents/incoming/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-bronze
+            Status: Enabled
+            Prefix: documents/bronze/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-silver
+            Status: Enabled
+            Prefix: documents/silver/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-gold
+            Status: Enabled
+            Prefix: documents/gold/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: expire-document-quarantine
+            Status: Enabled
+            Prefix: documents/quarantine/
+            ExpirationInDays: !Ref DocumentDataRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
 
   TickerStream:
     Type: AWS::Kinesis::Stream
@@ -692,6 +759,83 @@ Resources:
       StreamEncryption:
         EncryptionType: KMS
         KeyId: !Ref AppKey
+
+  DocumentMlTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${AWS::StackName}-document-ml"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: by-type
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt AppKey.Arn
+      Tags:
+        - { Key: compass:data-classification, Value: synthetic-demo }
+        - { Key: compass:component, Value: document-ml }
+
+  DocumentModelPackageGroup:
+    Type: AWS::SageMaker::ModelPackageGroup
+    Properties:
+      ModelPackageGroupName: !Sub "${AWS::StackName}-document-classifier"
+      ModelPackageGroupDescription: Governed model versions for Compass document classification.
+      Tags:
+        - { Key: compass:component, Value: document-ml }
+        - { Key: compass:synthetic-only, Value: "true" }
+
+  DocumentSageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-document-sagemaker"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: sagemaker.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: document-training-artifacts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TrainingArtifactList
+                Effect: Allow
+                Action: [s3:ListBucket, s3:GetBucketLocation]
+                Resource: !GetAtt RawBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: [mlops/*]
+              - Sid: TrainingArtifactObjects
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload]
+                Resource: !Sub "${RawBucket.Arn}/mlops/*"
+              - Sid: TrainingArtifactKms
+                Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+                Resource: !GetAtt AppKey.Arn
+              - Sid: TrainingLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*"
+      Tags:
+        - { Key: compass:component, Value: document-ml }
 
   # -------------------------------------------------------------------------
   # Optional Scale Run data plane. Every resource in this section is guarded
@@ -1300,6 +1444,130 @@ Resources:
             Schedule: rate(1 minute)
             State: !Ref StreamTickerState
             Input: '{"action": "stream_tick"}'
+
+  # --- document_ml: browser upload, document lake stages, classical model
+  #     training/evaluation, registry promotion, and drift evidence.
+  DocumentMlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-document-ml"
+      CodeUri: src/functions/document_ml/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 120
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          DOCUMENT_LAKE_BUCKET: !Ref RawBucket
+          DOCUMENT_ML_TABLE: !Ref DocumentMlTable
+          MLOPS_MODE: !Ref MlOpsMode
+          SAGEMAKER_EXECUTION_ROLE_ARN: !GetAtt DocumentSageMakerExecutionRole.Arn
+          SAGEMAKER_TRAINING_IMAGE: !Ref SageMakerTrainingImage
+          SAGEMAKER_MODEL_PACKAGE_GROUP: !Ref DocumentModelPackageGroup
+      Policies:
+        - Statement:
+            - Sid: DocumentLakeList
+              Effect: Allow
+              Action: [s3:ListBucket, s3:GetBucketLocation]
+              Resource: !GetAtt RawBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - documents/*
+                    - mlops/*
+            - Sid: DocumentLakeObjects
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+                - s3:AbortMultipartUpload
+              Resource:
+                - !Sub "${RawBucket.Arn}/documents/*"
+                - !Sub "${RawBucket.Arn}/mlops/*"
+            - Sid: DocumentLakeKms
+              Effect: Allow
+              Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+              Resource: !GetAtt AppKey.Arn
+            - Sid: DocumentMlLedger
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt DocumentMlTable.Arn
+                - !Sub "${DocumentMlTable.Arn}/index/by-type"
+            - Sid: SubmitBoundedDocumentTraining
+              Effect: Allow
+              Action:
+                - sagemaker:CreateTrainingJob
+                - sagemaker:DescribeTrainingJob
+                - sagemaker:StopTrainingJob
+              Resource: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:training-job/compass-doc-*"
+            - Sid: ReadDocumentModelPackageGroup
+              Effect: Allow
+              Action:
+                - sagemaker:DescribeModelPackageGroup
+                - sagemaker:ListModelPackages
+              Resource: !GetAtt DocumentModelPackageGroup.ModelPackageGroupArn
+            - Sid: PassDocumentTrainingRole
+              Effect: Allow
+              Action: iam:PassRole
+              Resource: !GetAtt DocumentSageMakerExecutionRole.Arn
+              Condition:
+                StringEquals:
+                  iam:PassedToService: sagemaker.amazonaws.com
+      Events:
+        RequestDocumentUpload:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /documents/uploads
+        ListDocumentRuns:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /documents/runs
+        GetDocumentRun:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /documents/runs/{run_id}
+        TrainDocumentModel:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /ml/train
+        ListDocumentModels:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /ml/models
+        DeployDocumentModel:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /ml/models/{version}/deploy
+        EvaluateDocumentDrift:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /ml/drift/evaluate
+        GetDocumentMlOpsEvidence:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /ml/ops/evidence
 
   # --- quality_gate: rule engine invoked by the intake state machine; writes
   #     grant_quality + lineage. Not routed on the API.
@@ -2162,6 +2430,90 @@ Resources:
                 - logs:DescribeLogGroups
               Resource: "*"
 
+  DocumentMlStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}-document-ml"
+      RetentionInDays: 14
+
+  DocumentMlStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-document-ml"
+      Type: EXPRESS
+      DefinitionUri: statemachines/document_ml.asl.yaml
+      DefinitionSubstitutions:
+        DocumentMlFunctionArn: !GetAtt DocumentMlFunction.Arn
+      Logging:
+        Level: ALL
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt DocumentMlStateMachineLogGroup.Arn
+      Tracing:
+        Enabled: true
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref DocumentMlFunction }
+        - Statement:
+            - Sid: DocumentWorkflowLogDelivery
+              Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: "*"
+            - Sid: DocumentWorkflowTracing
+              Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+                - xray:GetSamplingRules
+                - xray:GetSamplingTargets
+              Resource: "*"
+
+  DocumentEventsToStatesRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: events.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: start-document-state-machine
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref DocumentMlStateMachine
+
+  DocumentObjectCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-document-object-created"
+      Description: Browser document drop starts inspect, quality, and curation.
+      State: ENABLED
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Ref RawBucket]
+          object:
+            key:
+              - prefix: documents/incoming/
+      Targets:
+        - Id: document-ml-state-machine
+          Arn: !Ref DocumentMlStateMachine
+          RoleArn: !GetAtt DocumentEventsToStatesRole.Arn
+
   EventsToStatesRole:
     Type: AWS::IAM::Role
     Properties:
@@ -2205,6 +2557,42 @@ Resources:
   # (10) Operational evidence: bounded log retention, service alarms, and a
   #      source-controlled CloudWatch dashboard for live rehearsal checks.
   # ===========================================================================
+
+  DocumentMlFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-document-ml-function-errors"
+      AlarmDescription: Document intake or MLOps control returned one or more Lambda errors in five minutes.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DocumentMlFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  DocumentMlWorkflowFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-document-ml-workflow-failures"
+      AlarmDescription: Document inspect, quality, curate, or quarantine workflow failed.
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref DocumentMlStateMachine
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
 
   ApiServerErrorAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -2540,7 +2928,8 @@ Resources:
                   ["AWS/Lambda", "Errors", "FunctionName", "${IntakeFunction}"],
                   [".", ".", ".", "${QualityGateFunction}"],
                   [".", ".", ".", "${ExportFunction}"],
-                  [".", ".", ".", "${EvidenceFunction}"]
+                  [".", ".", ".", "${EvidenceFunction}"],
+                  [".", ".", ".", "${DocumentMlFunction}"]
                 ]
               }
             },
@@ -2548,7 +2937,7 @@ Resources:
               "type": "metric",
               "x": 0,
               "y": 6,
-              "width": 24,
+              "width": 12,
               "height": 6,
               "properties": {
                 "title": "Function duration",
@@ -2560,7 +2949,27 @@ Resources:
                   [".", ".", ".", "${AnalyticsFunction}"],
                   [".", ".", ".", "${DashboardFunction}"],
                   [".", ".", ".", "${ExportFunction}"],
-                  [".", ".", ".", "${EvidenceFunction}"]
+                  [".", ".", ".", "${EvidenceFunction}"],
+                  [".", ".", ".", "${DocumentMlFunction}"]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Document workflow executions",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "stat": "Sum",
+                "metrics": [
+                  ["AWS/States", "ExecutionsStarted", "StateMachineArn", "${DocumentMlStateMachine}"],
+                  [".", "ExecutionsSucceeded", ".", "."],
+                  [".", "ExecutionsFailed", ".", "."],
+                  [".", "ExecutionsAborted", ".", "."]
                 ]
               }
             }
@@ -2852,6 +3261,18 @@ Outputs:
   IntakeStateMachineArn:
     Description: Express intake pipeline (intake -> quality gate).
     Value: !Ref IntakeStateMachine
+  DocumentMlStateMachineArn:
+    Description: Express document pipeline (inspect -> quality -> silver/gold or quarantine).
+    Value: !Ref DocumentMlStateMachine
+  DocumentMlTableName:
+    Description: Durable document run, model registry, deployment, and drift receipt ledger.
+    Value: !Ref DocumentMlTable
+  DocumentModelPackageGroupName:
+    Description: SageMaker Model Registry group reserved for approved document model packages.
+    Value: !Ref DocumentModelPackageGroup
+  DocumentMlFunctionName:
+    Description: Protected document and MLOps control function.
+    Value: !Ref DocumentMlFunction
   MigratorFunctionName:
     Description: Invoke in-VPC to apply db/migrations against the private cluster.
     Value: !Ref MigratorFunction

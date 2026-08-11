@@ -352,7 +352,7 @@ export function ExportView() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        kicker="Mission flow | Release"
+        kicker="Element 7 of 7 | Interoperability, Portability, and Secure Export"
         title="Export with the guardrails on"
         icon={<FileDown className="size-4" aria-hidden />}
         lead="Filter the curated portfolio, choose a format, and export it. Row- and column-level security scope what you can ask for; an aggregation guard stops bulk pulls until an approval is attached; every attempt is audited."

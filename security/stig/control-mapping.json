@@ -1,0 +1,200 @@
+{
+  "profile": "Compass DISA-STIG-aligned demonstrator evidence",
+  "assessment_boundary": "Synthetic demonstration workload in a commercial AWS account",
+  "disclaimer": "This index is implementation evidence for review. It is not a DISA checklist result, ATO, IL4 or IL5 accreditation, or assessor attestation.",
+  "controls": [
+    {
+      "id": "IDENTITY-01",
+      "control_family": "Identification and authentication",
+      "implementation": "Cognito denies self-registration, enforces a strong password policy, permits per-user TOTP, and protects every API route with JWT authorization.",
+      "evidence": [
+        {
+          "path": "template.yaml",
+          "contains": [
+            "MfaConfiguration: OPTIONAL",
+            "EnabledMfas: [SOFTWARE_TOKEN_MFA]",
+            "DefaultAuthorizer: CognitoJwtAuthorizer"
+          ]
+        },
+        {
+          "path": "scripts/tests/test_team_demo_identity.py",
+          "contains": [
+            "test_optional_mfa_keeps_team_accounts_password_only_and_supports_presenter_totp"
+          ]
+        }
+      ],
+      "verification": "python -m pytest -q scripts/tests/test_team_demo_identity.py"
+    },
+    {
+      "id": "ACCESS-01",
+      "control_family": "Access enforcement and least privilege",
+      "implementation": "Cognito group claims map to fixed personas, PostgreSQL applies row-level controls, and document writes require the corporate poweruser persona.",
+      "evidence": [
+        {
+          "path": "src/functions/document_ml/app.py",
+          "contains": [
+            "document upload requires the corporate poweruser role",
+            "model deployment requires the corporate poweruser role"
+          ]
+        },
+        {
+          "path": "db/tests/security_contract.sql",
+          "contains": [
+            "viewer expected one RLS row"
+          ]
+        }
+      ],
+      "verification": "psql --set ON_ERROR_STOP=1 --file db/tests/security_contract.sql"
+    },
+    {
+      "id": "DATA-01",
+      "control_family": "Data at rest and in transit",
+      "implementation": "A customer-managed rotating KMS key protects S3, DynamoDB, Kinesis, Aurora, and managed secrets. Browser upload uses a short-lived signed HTTPS request.",
+      "evidence": [
+        {
+          "path": "template.yaml",
+          "contains": [
+            "EnableKeyRotation: true",
+            "SSEType: KMS",
+            "SSEAlgorithm: aws:kms"
+          ]
+        },
+        {
+          "path": "security/policies/compass.guard",
+          "contains": [
+            "rule s3_is_versioned_and_encrypted"
+          ]
+        }
+      ],
+      "verification": "cfn-guard validate --data template.yaml --rules security/policies/compass.guard"
+    },
+    {
+      "id": "DATA-02",
+      "control_family": "Retention and minimization",
+      "implementation": "Uploaded, bronze, silver, gold, and quarantine document objects use explicit bounded lifecycle rules. MLOps evidence remains separate from source content.",
+      "evidence": [
+        {
+          "path": "template.yaml",
+          "contains": [
+            "expire-document-inputs",
+            "expire-document-bronze",
+            "expire-document-silver",
+            "expire-document-gold",
+            "expire-document-quarantine"
+          ]
+        }
+      ],
+      "verification": "sam validate --lint"
+    },
+    {
+      "id": "PIPELINE-01",
+      "control_family": "Automated data operations",
+      "implementation": "S3 Object Created events start Step Functions. Inspect, quality, curate, and quarantine stages emit durable receipts and logical lineage.",
+      "evidence": [
+        {
+          "path": "statemachines/document_ml.asl.yaml",
+          "contains": [
+            "StartAt: Inspect",
+            "QualityGate:",
+            "Curate:",
+            "Quarantine:"
+          ]
+        },
+        {
+          "path": "src/functions/document_ml/tests/test_app.py",
+          "contains": [
+            "test_drop_runs_bronze_quality_silver_gold_and_exposes_lineage"
+          ]
+        }
+      ],
+      "verification": "python -m pytest -q src/functions/document_ml/tests"
+    },
+    {
+      "id": "MLOPS-01",
+      "control_family": "Model lifecycle governance",
+      "implementation": "The classical six-class model records a dataset digest, deterministic evaluation, portable artifact, registry status, explicit champion promotion, and adapter disclosure.",
+      "evidence": [
+        {
+          "path": "src/functions/document_ml/engine.py",
+          "contains": [
+            "DOCUMENT_TAXONOMY",
+            "TRAINING_SPLIT_SEED = 20260811",
+            "multinomial-naive-bayes"
+          ]
+        },
+        {
+          "path": "src/functions/document_ml/sagemaker_adapter.py",
+          "contains": [
+            "EnableNetworkIsolation",
+            "EnableInterContainerTrafficEncryption",
+            "not-submitted"
+          ]
+        }
+      ],
+      "verification": "python -m pytest -q src/functions/document_ml/tests"
+    },
+    {
+      "id": "MLOPS-02",
+      "control_family": "Model monitoring",
+      "implementation": "Population stability and out-of-vocabulary measurements produce a thresholded drift receipt and retraining recommendation.",
+      "evidence": [
+        {
+          "path": "src/functions/document_ml/engine.py",
+          "contains": [
+            "population_stability_index",
+            "out_of_vocabulary_rate",
+            "retrain-and-review"
+          ]
+        }
+      ],
+      "verification": "python -m pytest -q src/functions/document_ml/tests/test_engine.py"
+    },
+    {
+      "id": "DEVSECOPS-01",
+      "control_family": "Secure software delivery",
+      "implementation": "GitHub Actions runs content, SAST, dependency, secret, IaC, policy, test, SBOM, build, protected deployment, and optional DAST gates.",
+      "evidence": [
+        {
+          "path": ".github/workflows/devsecops.yml",
+          "contains": [
+            "Bandit SAST",
+            "Dependency audit",
+            "Secret scan",
+            "Terraform and policy validation",
+            "Generate CycloneDX SBOM"
+          ]
+        },
+        {
+          "path": ".github/workflows/dast.yml",
+          "contains": [
+            "OWASP ZAP baseline"
+          ]
+        }
+      ],
+      "verification": "python scripts/validate_stig_controls.py"
+    },
+    {
+      "id": "IAC-01",
+      "control_family": "Repeatable infrastructure and policy as code",
+      "implementation": "SAM defines the complete demonstration stack and Terraform defines the independently deployable document and MLOps slice. Both are validated before deployment.",
+      "evidence": [
+        {
+          "path": "template.yaml",
+          "contains": [
+            "DocumentMlStateMachine:",
+            "DocumentModelPackageGroup:"
+          ]
+        },
+        {
+          "path": "infra/terraform/main.tf",
+          "contains": [
+            "aws_sfn_state_machine",
+            "aws_sagemaker_model_package_group",
+            "aws_dynamodb_table"
+          ]
+        }
+      ],
+      "verification": "terraform -chdir=infra/terraform validate"
+    }
+  ]
+}

@@ -3,19 +3,22 @@
 **Report date:** 2026-08-11
 **Purpose:** evaluator orientation and recording release gate
 
-This report describes the current integrated source candidate and the manual
-live verification completed in Satsyil AWS on 2026-08-11. The HA stack,
-identity preparation, fixed baseline, four Scale Runs, governed exports, CORS,
-and interactive browser path passed their stated checks. The working tree is
-not yet an exact committed revision with GitHub workflow evidence. The
-candidate is not the recording release until that evidence and one timed human
-rehearsal pass exist.
+This report distinguishes deployed resources from accepted execution evidence.
+The current Satsyil stack is deployed with 33 protected
+operations, 18 Lambda functions, 13 alarms, 2 dashboards, and 3 state machines.
+The HA stack, identity preparation, fixed baseline, four Scale Runs, governed
+exports, interactive browser path, document success and quarantine paths,
+model training, Champion promotion, and drift evaluation have accepted live
+receipts. No SageMaker training job or endpoint was started. The working tree is
+not yet an exact committed revision
+with GitHub workflow evidence. The candidate is not the recording release until
+the applicable evidence and one timed human rehearsal pass exist.
 
 ## 1. Current implementation by source inspection
 
 | Area | Current evidence |
 |---|---|
-| API | 25 JWT-protected method-and-path operations across 23 URL paths, including eight Scale operations, the reviewer inbox, and `GET /system/evidence` |
+| API | 33 JWT-protected method-and-path operations across 31 URL paths, including eight Scale operations, eight document MLOps operations, the reviewer inbox, and `GET /system/evidence` |
 | Identity | Shared Cognito group normalization for native JWT and request-authorizer events; verified groups override forwarded roles and conflicting organizations fail closed |
 | CORS | Exact-origin allowlist in API Gateway and shared Lambda response helpers |
 | Database security | FORCE RLS, non-owner runtime role, corporate GUC gate, explicit runtime grants, and append-only audit trigger |
@@ -24,13 +27,14 @@ rehearsal pass exist.
 | Delivery | Pull-request quality workflow and manually dispatched protected-environment deployment through AWS OIDC |
 | Demo preparation | Explicitly confirmed, synthetic-only bounded reset and seed; fixed non-triggering staged fixtures; real baseline analytics; redacted readiness receipt; one-shot live drop release |
 | Scale data plane | Deterministic six-domain generator, maximum 25,000 records per partition, one-active-run gate, Standard workflow, SQS and DLQ, DynamoDB ledger, governed lake zones, Glue, Athena, and asynchronous Parquet export |
-| Observability | 14-day API, workflow, and centralized application log groups, function-specific streams, X-Ray, 11 alarms, and 2 CloudWatch dashboards |
-| Database resilience | Satsyil HA deployment with one private encrypted writer and one reader, 14-day backups, and deletion protection |
+| Observability | 14-day API, workflow, and centralized application log groups, function-specific streams, X-Ray, 13 deployed alarms, and 2 CloudWatch dashboards |
+| Database resilience | Source supports demo and HA modes; the accepted Satsyil live revision uses one private encrypted writer and one reader, 14-day backups, and deletion protection |
 | Frontend | Responsive mission shell, mobile drawer, server-backed scoped dashboard filters, tab-scoped evidence selection, Scale receipt Decision Brief, presenter rehearsal guide, accessible interactions, interactive Scale Lab, and static deployment |
 | Replay | One persistent deterministic scenario shared by ingest, catalog, lineage, analytics, dashboard, approvals, export, stream, and evidence |
 | Lineage | Query-based `/catalog/lineage/?batch=<id>` route supports batches created after static frontend build |
 | Activity ticker | Ordered database projection is authoritative; recent Kinesis receipts merge by stable ID; missing transport organization scope is corporate-only |
-| Deployed compute | 17 Lambda functions behind the narrow API, workflow, queue, and data adapters |
+| Application compute | 18 deployed Lambda functions behind the narrow API, workflow, queue, and data adapters |
+| Document intelligence and MLOps | Deployed eight-operation document and model contract with a bounded Step Functions workflow, Lambda classifier, optional SageMaker submission seam, accepted success and quarantine runs, 1.0 accuracy and macro F1 training evidence, exact-version Champion promotion, and shifted-data drift evidence |
 
 ## 2. Required automated gate
 
@@ -102,20 +106,22 @@ The following previously risky seams are now represented in the candidate:
 
 ## 5. Live acceptance evidence
 
-The following checks passed against the Satsyil HA deployment on 2026-08-11:
+The following checks passed against the current Satsyil HA deployment on
+2026-08-11:
 
 | Observed check | Result |
 |---|---|
-| Stack | Deployment completed with 17 functions, 11 alarms, and 2 dashboards |
+| Stack | Deployment completed with 18 functions, 13 alarms, 2 dashboards, and 3 workflows |
 | Database | Private encrypted Aurora writer and reader available, 14-day backups configured, deletion protection enabled, all four migrations applied, and runtime-role bootstrap granted |
-| Identity | Poweruser, reviewer, and viewer accounts enabled with their expected groups and distinct TOTP factors |
+| Identity | Poweruser, reviewer, and viewer accounts enabled for password-only team access; a separate presenter identity is enrolled with TOTP |
 | Preparation | Redacted receipt reported ready with all 19 of 19 checks passing |
-| API contract | OpenAPI described 25 protected operations across 23 URL paths |
-| CORS | Exact-origin verification passed all 25 protected operations |
-| Browser | Real Cognito password and TOTP login loaded all nine screens without `Failed to fetch` or browser command errors; Scale controls worked, the 1M cost gate was enabled, and the selected 1M receipt replaced the 400-grant Decision Brief with 1,000,000 total records and 200,000 grants |
+| API contract | OpenAPI described 33 protected operations across 31 URL paths; unauthenticated protected requests returned 401 |
+| Browser | Real password-only poweruser login loaded the current dashboard with 480 grants across eight program areas and no `Failed to fetch` or console errors; the MLOps screen trained, promoted, and evaluated the exact live model version |
+| Document intelligence | One document reached `gold-published` with a `technical_report` classification at 0.999991 confidence; one failed extractable-content and produced a quarantine receipt |
+| MLOps | Model `doc-nb-f828a29acd1e` reached 1.0 accuracy, 1.0 macro F1, and 6 of 6 classes; Champion promotion and shifted drift with PSI 11.51, 91 percent OOV, and `retrain-and-review` passed |
 | Public protection | CSP, Permissions Policy, HSTS, and WAF were present on the live boundary |
 | Scale data plane | 1K, 10K, 100K, and 1M runs completed, reconciled, and produced ready governed Parquet exports |
-| Local automation | 209 backend tests, 28 scenario tests, 30 browser tests with 6 intentional mobile skips, dependency audits, lint, typecheck, SAM validation, container build, and database security checks passed |
+| Local automation | 229 backend tests, 42 frontend scenarios, lint, typecheck, a 31-page production build, SAM validation, git whitespace checks, and the repository no-em-dash policy passed |
 
 The direct acceptance path invoked the deployed Scale Control Lambda through
 AWS IAM with a staged `/prod` event. It exercised the production route handler

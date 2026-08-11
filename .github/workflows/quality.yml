@@ -70,6 +70,7 @@ jobs:
           cache-dependency-path: |
             src/common/requirements.txt
             src/functions/analytics/requirements.txt
+            src/functions/document_ml/requirements.txt
 
       - name: Set up AWS SAM
         uses: aws-actions/setup-sam@v2
@@ -93,7 +94,11 @@ jobs:
             -r src/common/requirements.txt \
             -r src/functions/authorizer/requirements.txt \
             -r src/functions/rmf_artifact/requirements.txt \
-            -r src/functions/analytics/requirements.txt
+            -r src/functions/analytics/requirements.txt \
+            -r src/functions/document_ml/requirements.txt
+
+      - name: Validate STIG-aligned evidence pointers
+        run: python scripts/validate_stig_controls.py
 
       - name: Run offline contract tests
         env:

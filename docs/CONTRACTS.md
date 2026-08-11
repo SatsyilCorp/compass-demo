@@ -55,7 +55,7 @@ Core relations:
 
 ## 3. Identity and HTTP contract
 
-All 25 method-and-path operations across 23 URL paths use the Cognito JWT
+All 33 method-and-path operations across 31 URL paths use the Cognito JWT
 authorizer by default when the Scale Run feature is enabled. No application
 operation is intentionally public. The eight Scale Run operations also require
 the corporate poweruser persona.
@@ -110,6 +110,14 @@ viewer.
 | 23 | POST | `/scale/runs/{run_id}/cancel` | Request cooperative, durable cancellation | Cross-cutting |
 | 24 | POST | `/scale/runs/{run_id}/exports` | Request an asynchronous governed Parquet Export Job | 7 and cross-cutting |
 | 25 | GET | `/scale/runs/{run_id}/exports/{export_id}` | Read an Export Job receipt and readiness state | 7 and cross-cutting |
+| 26 | POST | `/documents/uploads` | Request a bounded browser upload for an unstructured or semi-structured document | 3 and 5 |
+| 27 | GET | `/documents/runs` | List document inspect, quality, curate, or quarantine receipts | 3 and 5 |
+| 28 | GET | `/documents/runs/{run_id}` | Read one document run and logical lineage | 3 and 5 |
+| 29 | POST | `/ml/train` | Train and evaluate the shared six-class document classifier | 5 |
+| 30 | GET | `/ml/models` | List model versions and champion state | 5 |
+| 31 | POST | `/ml/models/{version}/deploy` | Promote an approved model version to champion | 5 |
+| 32 | POST | `/ml/drift/evaluate` | Produce label-distribution and vocabulary-drift evidence | 5 |
+| 33 | GET | `/ml/ops/evidence` | Read sanitized training, registry, deployment, and drift evidence | 5 and cross-cutting |
 
 ### Scale Run contract
 
@@ -341,9 +349,10 @@ refuses the entire transaction if one exists. The caller cannot select table
 names, batch IDs, run IDs, license identities, approval actors, users, or
 object keys. Append-only audit rows are not reset.
 
-Preparation requires three enabled, confirmed, TOTP-enrolled Cognito users in
-their expected Compass groups. It does not create identities, alter passwords,
-change groups, or enroll MFA. It runs the real Analytics Lambda for the fixed
+Preparation requires three enabled, confirmed, password-only team users plus
+one enabled, confirmed, TOTP-enrolled formal presenter in their expected
+Compass groups. It does not create identities, alter passwords, change groups,
+or enroll MFA. It runs the real Analytics Lambda for the fixed
 baseline through an IAM-protected direct action and finalizes only a topic-model
 run attributed to service actor `compass-demo-preparer` over exactly 400
 documents and eight topics.

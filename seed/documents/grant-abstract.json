@@ -1,0 +1,13 @@
+{
+  "synthetic_only": true,
+  "award_number": "SYN-ONR-2026-00017",
+  "title": "Resilient Undersea Acoustic Networking",
+  "principal_investigator": "Synthetic Researcher",
+  "performer": "Synthetic Maritime University",
+  "abstract": "This grant abstract proposes basic research on adaptive acoustic networking, resilient routing, and low-power sensing for contested undersea environments. The investigator will test the hypothesis through simulation, laboratory experiments, and reproducible benchmark data.",
+  "milestones": [
+    "Publish baseline channel model",
+    "Validate adaptive routing experiment",
+    "Release synthetic benchmark results"
+  ]
+}

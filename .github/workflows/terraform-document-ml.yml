@@ -1,0 +1,98 @@
+name: Controlled Terraform document ML deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Create a reviewed plan or apply it after environment approval
+        required: true
+        type: choice
+        options: [plan, apply]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-document-ml-demo
+  cancel-in-progress: false
+
+jobs:
+  plan-or-apply:
+    name: Terraform ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    environment: demo
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_project_name: ${{ vars.TF_PROJECT_NAME }}
+      TF_VAR_environment: demo
+      TF_VAR_document_lake_bucket_name: ${{ vars.DOCUMENT_LAKE_BUCKET_NAME }}
+      TF_VAR_document_lake_bucket_arn: ${{ vars.DOCUMENT_LAKE_BUCKET_ARN }}
+      TF_VAR_kms_key_arn: ${{ vars.KMS_KEY_ARN }}
+      TF_VAR_http_api_id: ${{ vars.HTTP_API_ID }}
+      TF_VAR_http_api_execution_arn: ${{ vars.HTTP_API_EXECUTION_ARN }}
+      TF_VAR_http_api_authorizer_id: ${{ vars.HTTP_API_AUTHORIZER_ID }}
+      TF_VAR_common_layer_arn: ${{ vars.COMMON_LAYER_ARN }}
+      TF_VAR_lambda_artifact_bucket: ${{ vars.LAMBDA_ARTIFACT_BUCKET }}
+      TF_VAR_lambda_artifact_key: ${{ vars.LAMBDA_ARTIFACT_KEY }}
+      TF_VAR_mlops_mode: ${{ vars.MLOPS_MODE }}
+      TF_VAR_sagemaker_training_image: ${{ vars.SAGEMAKER_TRAINING_IMAGE }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Validate protected inputs
+        run: |
+          test -n "$TF_VAR_document_lake_bucket_name"
+          test -n "$TF_VAR_document_lake_bucket_arn"
+          test -n "$TF_VAR_kms_key_arn"
+          test -n "$TF_VAR_http_api_id"
+          test -n "$TF_VAR_http_api_execution_arn"
+          test -n "$TF_VAR_http_api_authorizer_id"
+          test -n "$TF_VAR_common_layer_arn"
+          test -n "$TF_VAR_lambda_artifact_bucket"
+          test -n "$TF_VAR_lambda_artifact_key"
+          test -n "$TF_STATE_BUCKET"
+          test -n "$TF_STATE_LOCK_TABLE"
+
+      - name: Initialize and validate
+        run: |
+          terraform -chdir=infra/terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=compass/document-ml/demo.tfstate" \
+            -backend-config="region=$TF_VAR_aws_region" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="encrypt=true"
+          terraform -chdir=infra/terraform fmt -check
+          terraform -chdir=infra/terraform validate
+
+      - name: Create reviewed plan
+        run: terraform -chdir=infra/terraform plan -out=tfplan
+
+      - name: Publish plan evidence
+        run: terraform -chdir=infra/terraform show -json tfplan > infra/terraform/terraform-plan.json
+
+      - name: Apply reviewed plan
+        if: inputs.action == 'apply'
+        run: terraform -chdir=infra/terraform apply -auto-approve tfplan
+
+      - name: Retain plan evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-document-ml-plan
+          path: infra/terraform/terraform-plan.json
+          retention-days: 30

@@ -1,82 +1,187 @@
 # Compass AWS cost model
 
-Status: price-backed forecast with Satsyil runtime reconciliation
+Status: bounded planning estimate, not an invoice
+
 Region: `us-east-1`
-Price snapshot captured: `2026-08-11T05:30:00Z`
-Price source: AWS Price List Query API
 
-This model separates fixed monthly platform cost from incremental Scale Run cost. It applies no free tier or private discount. It is intended as a conservative launch gate, not a billing statement.
+Pricing accessed: 2026-08-11
 
-## Fixed monthly platform estimate
+Currency: USD
 
-| Deployment mode | Aurora topology | Estimated fixed cost per 730-hour month |
-|---|---|---:|
-| Demo | One Aurora Serverless v2 writer at 0.5 minimum ACU | $119.90 |
-| HA | One writer and one reader, each at 0.5 minimum ACU | $163.70 |
+This model separates deterministic browser replay, live workload cost, and the
+monthly cost of keeping the AWS platform deployed. It applies no free tier,
+credits, Savings Plans, private discounts, tax treatment, or support plan.
 
-The fixed estimate includes one NAT gateway, one public IPv4 address, Aurora
-minimum capacity, one on-demand Kinesis stream, one KMS key, one Secrets
-Manager secret, one WAF web ACL with three modeled rules, and eleven CloudWatch
-alarms. The deployed observability surface also includes two dashboards.
+The inventory and document-workload estimates below price the current
+`local-fe56c61` deployment, which has 13 alarms and 2 dashboards when Scale is
+enabled. The document MLOps resources are deployed, but no end-to-end document
+workload or SageMaker job has been accepted and billing-reconciled. The values
+remain planning estimates rather than observed usage or billing.
 
-The Satsyil stack was deployed in HA mode on 2026-08-11 with one Aurora writer
-and one reader. The $163.70 figure remains a forecast for a 730-hour month. It
-is not observed billing.
+## Executive estimate
 
-It excludes usage-sensitive storage, data transfer, API traffic, Lambda work, Bedrock model use, tax, support plans, optional account-level security services, discounts, and free tier. CloudFront has no modeled fixed monthly charge, but requests and transfer are billed when used.
+| Scenario | Modeled cost |
+|---|---:|
+| Browser replay after the site is deployed | $0.00 incremental AWS workload cost |
+| One live document intake, default Lambda classifier | Up to $0.005 |
+| One live 10K Scale Run | $0.01915314 |
+| One live demo with one document intake and one 10K Scale Run | Up to $0.025 |
+| One optional SageMaker training job, `ml.m5.large`, 30-minute hard limit | $0.0575 compute, plus storage and requests |
+| Low-use month, one writer, Scale enabled, four live demos | About $126.42 |
+| Low-use month, writer plus reader, Scale enabled, four live demos | About $170.22 |
 
-## Incremental Scale Run estimate
+The live demo estimates are workload additions. They do not stop the fixed
+monthly platform charges. Browser replay does not call live compute, so its
+incremental workload cost is zero while the deployed platform still accrues
+its hourly and monthly charges.
 
-| Profile | Total records | Exact partitions | Estimated run cost | Enforced envelope |
-|---|---:|---:|---:|---:|
-| 1K | 1,000 | 6 | $0.01898818 | $0.10 |
-| 10K | 10,000 | 6 | $0.01915314 | $0.25 |
-| 100K | 100,000 | 11 | $0.03380464 | $1.00 |
-| 1M | 1,000,000 | 41 | $0.13937136 | $10.00 |
+## Assumptions
 
-Running all four profiles once is estimated at $0.21131732 in incremental AWS usage. The server still denies a run when its fresh estimate exceeds either its profile envelope or the deployment hard cap.
+- A month is 730 hours.
+- The default database mode has one Aurora Serverless v2 writer at a minimum
+  of 0.5 ACU. HA adds one reader with the same minimum.
+- The Kinesis ticker stream remains deployed in on-demand mode.
+- Scale enabled means thirteen standard CloudWatch alarms and two dashboards.
+  Scale disabled means six alarms and one dashboard.
+- WAF planning includes one web ACL and three billed rule-equivalents for the
+  rate rule and managed rule group configuration.
+- One low-use month contains four live demos and 5 GB-month of S3 Standard
+  data. Every live demo contains one document intake and one 10K Scale Run.
+- The document allowance assumes one file no larger than 10 MB, no more than
+  50 API and Lambda requests, 20 Lambda GB-seconds, 10 S3 writes, 20 S3 reads,
+  20 Step Functions transitions, 50 DynamoDB writes, 50 DynamoDB reads,
+  50 KMS requests, and 0.005 GB of log ingestion. A 25 percent contingency is
+  included in the $0.005 allowance.
+- The 10K Scale Run estimate already includes a 25 percent contingency and
+  comes from the versioned AWS Price List-backed runtime estimator.
 
-## Satsyil runtime reconciliation
+## Monthly AWS operating floor
 
-| Profile | Duration | Planned estimate | Accrued model estimate | Envelope |
-|---|---:|---:|---:|---:|
-| 1K | 21.351 s | $0.01898818 | $0.01227206 | $0.10 |
-| 10K | 20.329 s | $0.01915314 | $0.01232190 | $0.25 |
-| 100K | 25.853 s | $0.03380464 | $0.01785423 | $1.00 |
-| 1M | 72.615 s | $0.13937136 | $0.05309299 | $10.00 |
-| **Total** | 140.148 s | **$0.21131732** | **$0.09554118** | n/a |
+The following rates came from the AWS Price List Query API and official AWS
+service pricing pages on 2026-08-11.
 
-All four runs completed below their enforced envelopes. The planned estimate
-is computed before launch and includes a 25 percent contingency. The accrued
-model estimate uses observed service quantities recorded by the terminal run.
-Neither value is a bill or a Cost Explorer reconciliation.
+| Fixed item | Quantity | Rate | Monthly cost |
+|---|---:|---:|---:|
+| NAT gateway | 730 hours | $0.045/hour | $32.85 |
+| Public IPv4 address | 730 hours | $0.005/hour | $3.65 |
+| Aurora writer minimum | 365 ACU-hours | $0.12/ACU-hour | $43.80 |
+| On-demand Kinesis stream | 730 hours | $0.04/stream-hour | $29.20 |
+| Customer-managed KMS key | 1 key-month | $1.00/key-month | $1.00 |
+| Secrets Manager | 1 secret-month | $0.40/secret-month | $0.40 |
+| WAF | 1 ACL and 3 modeled rule-equivalents | $5.00/ACL-month and $1.00/rule-month | $8.00 |
+| CloudWatch, Scale disabled | 6 alarms and 1 dashboard | $0.10/alarm-month and $3.00/dashboard-month | $3.60 |
+| CloudWatch, Scale enabled | 13 alarms and 2 dashboards | $0.10/alarm-month and $3.00/dashboard-month | $7.30 |
 
-Every estimate includes a 25 percent contingency and line-item evidence for Lambda ARM compute and requests, S3 storage and requests, SQS requests, Step Functions transitions, DynamoDB reads, writes, and storage, Athena bytes scanned, CloudWatch log ingestion, KMS requests, and HTTP API requests.
+| Deployment posture | Fixed monthly estimate |
+|---|---:|
+| One writer, Scale disabled | $122.50 |
+| One writer, Scale enabled | $126.20 |
+| Writer plus reader, Scale disabled | $166.30 |
+| Writer plus reader, Scale enabled | $170.00 |
 
-## Runtime reconciliation
+The HA calculation adds `365 ACU-hours * $0.12 = $43.80` for the reader.
 
-Each terminal Scale Run records observed service quantities and an accrued
-model estimate. Billing reconciliation remains labeled pending until delayed
-account billing data is available. The product never labels an estimate as
-billed cost.
+The low-use total for the normal live demonstration posture is:
 
-## Reproduce the estimates
-
-```bash
-PYTHONPATH=src/common/python python3 scripts/estimate_scale_cost.py --profile 10k
-PYTHONPATH=src/common/python python3 scripts/estimate_scale_cost.py --idle-month --database-mode ha
+```text
+one writer, Scale enabled       $126.200
+four live demos, $0.025 each       0.100
+5 GB-month S3 Standard              0.115
+                                      -----
+low-use month                    $126.415, rounded to $126.42
 ```
 
-The versioned price evidence is stored in `src/common/python/compass_common/aws_prices_us_east_1.json`.
+For HA, replace the first line with $170.00, giving $170.22 after rounding.
+These are planning floors, not maximum invoices.
 
-## Official service pricing pages
+## Live demonstration calculations
 
-- [AWS Lambda pricing](https://aws.amazon.com/lambda/pricing/)
-- [Amazon S3 pricing](https://aws.amazon.com/s3/pricing/)
-- [Amazon SQS pricing](https://aws.amazon.com/sqs/pricing/)
-- [AWS Step Functions pricing](https://aws.amazon.com/step-functions/pricing/)
-- [Amazon DynamoDB pricing](https://aws.amazon.com/dynamodb/pricing/)
-- [Amazon Athena pricing](https://aws.amazon.com/athena/pricing/)
-- [Amazon CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)
+### Deterministic replay
+
+The frontend replay uses versioned synthetic evidence and browser execution.
+It causes no API, Lambda, Step Functions, SageMaker, or Databricks workload.
+Its incremental cloud workload cost is $0.00. Existing CloudFront, WAF,
+database, NAT, Kinesis, logging, and other deployed resources still accrue.
+
+### Default live AWS path
+
+The default `MlOpsMode=demo` runs the bounded classical document classifier in
+Lambda. One conservative document intake is capped at $0.005 by the assumptions
+above. The current 10K Scale Run planning estimate is $0.01915314. Therefore:
+
+```text
+$0.005 + $0.01915314 = $0.02415314
+planning presentation value = $0.025 per live demo
+```
+
+The runtime also has the following profile estimates. Each already includes a
+25 percent contingency.
+
+| Scale profile | Records | Planned incremental cost | Server-enforced envelope |
+|---|---:|---:|---:|
+| 1K | 1,000 | $0.01898818 | $0.10 |
+| 10K | 10,000 | $0.01915314 | $0.25 |
+| 100K | 100,000 | $0.03380464 | $1.00 |
+| 1M | 1,000,000 | $0.13937136 | $10.00 |
+
+### Optional SageMaker path
+
+The optional adapter requests one `ml.m5.large`, sets one instance, and enforces
+a 1,800 second maximum. The official AWS Price List Query API returned
+`$0.115/hour` for SKU `JMCWJEAPVJNFJ5P4`, usage type
+`USE1-Train:ml.m5.large`, on 2026-08-11.
+
+```text
+0.5 hours * $0.115/hour = $0.0575 maximum instance compute per submitted job
+```
+
+Adding that compute to the $0.025 default live demo gives a modeled subtotal
+of $0.0825. Training volume storage, S3, ECR, logs, network transfer, and any
+other service usage remain separate. No always-on SageMaker endpoint exists in
+the current design, so no endpoint-month is included.
+
+## What is not included
+
+- Aurora storage, backup storage above the included amount, and database I/O.
+- NAT data processing and internet or cross-region transfer.
+- CloudFront requests and data transfer.
+- WAF request charges.
+- Bedrock token use if an optional generative path is invoked.
+- GuardDuty, Security Hub, and Macie when the optional account security
+  baseline is enabled.
+- SageMaker storage, ECR, logs, data transfer, and optional endpoint cost.
+- CloudWatch custom metrics, log retention, Logs Insights scans, and alarms
+  beyond the template inventory.
+- S3 requests and storage above the low-use assumptions.
+- Tax, AWS Support, discounts, enterprise agreements, and free usage.
+
+## Reconciliation rule
+
+Use this document for a pre-demo planning gate. After a live run, reconcile the
+run receipt with AWS Cost and Usage Report or Cost Explorer when delayed billing
+records are available. Label the first value `estimated` and the later value
+`billed` only when account billing evidence supports it.
+
+## Official sources
+
+All links were accessed on 2026-08-11.
+
+- [AWS Price List Query API](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/using-price-list-query-api.html)
 - [Amazon Aurora pricing](https://aws.amazon.com/rds/aurora/pricing/)
 - [Amazon VPC pricing](https://aws.amazon.com/vpc/pricing/)
+- [Amazon Kinesis Data Streams pricing](https://aws.amazon.com/kinesis/data-streams/pricing/)
+- [AWS KMS pricing](https://aws.amazon.com/kms/pricing/)
+- [AWS Secrets Manager pricing](https://aws.amazon.com/secrets-manager/pricing/)
+- [AWS WAF pricing](https://aws.amazon.com/waf/pricing/)
+- [Amazon CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)
+- [Amazon S3 pricing](https://aws.amazon.com/s3/pricing/)
+- [AWS Lambda pricing](https://aws.amazon.com/lambda/pricing/)
+- [AWS Step Functions pricing](https://aws.amazon.com/step-functions/pricing/)
+- [Amazon DynamoDB pricing](https://aws.amazon.com/dynamodb/pricing/)
+- [Amazon API Gateway pricing](https://aws.amazon.com/api-gateway/pricing/)
+- [Amazon SageMaker AI pricing](https://aws.amazon.com/sagemaker/ai/pricing/)
+
+The versioned service rates used by the Scale Run estimator are in
+`src/common/python/compass_common/aws_prices_us_east_1.json`. AWS states that
+the Price List APIs are informational and the service pricing page controls if
+the two differ.

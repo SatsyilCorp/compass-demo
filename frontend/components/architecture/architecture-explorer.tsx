@@ -251,11 +251,11 @@ export function ArchitectureExplorer() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Deployed architecture facts">
-        <Fact icon={Activity} value="25" label="protected operations" detail="23 URL paths" />
-        <Fact icon={Boxes} value="17" label="Lambda functions" detail="14 mission and 3 scale" />
-        <Fact icon={Network} value="2" label="durable workflows" detail="Express intake and Standard scale" />
+        <Fact icon={Activity} value="33" label="protected operations" detail="31 URL paths" />
+        <Fact icon={Boxes} value="18" label="Lambda functions" detail="mission, document, and scale" />
+        <Fact icon={Network} value="3" label="durable workflows" detail="intake, document ML, and scale" />
         <Fact icon={Database} value="6" label="lake datasets" detail="JSON Lines and Parquet" />
-        <Fact icon={ShieldCheck} value="11" label="health alarms" detail="all critical seams" />
+        <Fact icon={ShieldCheck} value="13" label="health alarms" detail="all critical seams" />
         <Fact icon={Layers3} value="2 AZ" label="HA database" detail="private writer and reader" />
       </section>
 

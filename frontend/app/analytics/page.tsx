@@ -109,7 +109,7 @@ export default function AnalyticsPage() {
   return (
     <AppShell requireRole={["poweruser"]}>
       <PageHeader
-        kicker="Governed topic analytics"
+        kicker="Element 5 supporting view | Decision Analytics"
         icon={<Network className="size-[18px]" aria-hidden />}
         title="Turn the curated portfolio into a decision brief"
         lead="Run the governed corporate model, compare investment concentration, surface emerging topics and anomalies, and turn the evidence into a recommended next action."

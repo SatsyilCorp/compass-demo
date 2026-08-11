@@ -29,7 +29,7 @@ import type { MeResponse } from "@/lib/types";
  *   1. Cognito Hosted UI redirect (or, in the offline demo, a persona
  *      switcher standing in for it - see lib/auth/demo-persona.ts).
  *   2. An access-assurance explainer, grounded in the team-demo UserPool
- *      config in template.yaml (MfaConfiguration: OFF).
+ *      config in template.yaml (MfaConfiguration: OPTIONAL).
  *   3. A zero-trust / least-privilege panel, grounded in the real
  *      deny-by-default JWT authorizer + RLS/CLS story in docs/CONTRACTS.md
  *      and db/migrations/002_rls.sql.
@@ -79,11 +79,10 @@ export default function LoginPage() {
         </header>
 
         <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1200px] px-4 py-10 sm:px-6 sm:py-14">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-gov-primary">Secure mission access</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-gov-primary">Element 1 of 7 | Secure Access and Zero Trust</p>
           <h1 className="mt-1.5 text-2xl font-bold text-text-strong sm:text-3xl">Sign in to Compass</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
-            This team demo uses password-only Cognito access. Roles and every downstream row a user can see still
-            derive from one short-lived Cognito JWT.
+            Team reviewers can use password-only Cognito access. The formal presenter identity uses TOTP so the recorded demonstration can prove MFA while every role and downstream row scope still derives from one short-lived Cognito JWT.
           </p>
 
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
@@ -185,7 +184,7 @@ function IdentityCard({
           <Field label="org_unit" value={me.org_unit} mono />
           <Field label="email" value={me.email} />
           <Field label="groups" value={me.groups.join(", ") || " - "} mono />
-          <Field label="assurance" value="Password only" />
+          <Field label="assurance" value="Identity policy evaluated" />
         </dl>
       )}
 
@@ -229,8 +228,7 @@ function AccessAssuranceExplainer() {
       <ul className="mt-3 space-y-2 text-[12px] leading-relaxed text-text-muted">
         <li className="flex gap-2">
           <KeyRound className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          Team-demo MFA is disabled (<code className="font-mono text-[11px]">MfaConfiguration: OFF</code>) so invited
-          teammates can sign in with their password without enrolling an authenticator.
+          The pool supports optional TOTP (<code className="font-mono text-[11px]">MfaConfiguration: OPTIONAL</code>). Team reviewers remain password-only, while the dedicated formal presenter identity enrolls an authenticator.
         </li>
         <li className="flex gap-2">
           <Lock className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
@@ -243,12 +241,11 @@ function AccessAssuranceExplainer() {
         </li>
         <li className="flex gap-2">
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          ID and access tokens live 1 hour and refresh tokens live 8 hours. Password-only access does not change
-          route authorization, role checks, or row-level policy.
+          ID and access tokens live 1 hour and refresh tokens live 8 hours. MFA enrollment does not widen route authorization, role checks, or row-level policy.
         </li>
         <li className="flex gap-2">
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          Production target: require MFA under the approved security baseline before processing operational data.
+          Production target: require MFA for every applicable workforce identity under the approved security baseline before processing operational data.
         </li>
       </ul>
       {AUTH_DISABLED && (

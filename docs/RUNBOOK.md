@@ -4,11 +4,12 @@ This runbook takes the current candidate from source to a live, rehearsed
 recording environment. Commands assume the repository root and
 `AWS_REGION=us-east-1`.
 
-## Current Satsyil evidence snapshot
+## Accepted Satsyil evidence snapshot
 
-The HA stack was deployed and live-verified on 2026-08-11. This snapshot is
-release evidence, not a substitute for the final exact-commit workflow record
-or human rehearsal:
+The earlier 25-operation HA revision was deployed and live-verified on
+2026-08-11. This snapshot is historical release evidence, not a substitute for
+acceptance of the current 33-operation `local-fe56c61` deployment, the final
+exact-commit workflow record, or human rehearsal:
 
 - 25 protected API operations across 23 URL paths
 - 17 functions, 11 alarms, and 2 dashboards
@@ -215,22 +216,22 @@ SATSYIL_EXPECTED_ACCOUNT_ID="$SATSYIL_EXPECTED_ACCOUNT_ID" \
 ./scripts/enroll_users.sh compass-demo
 ```
 
-The utility creates one strong shared password, creates or updates the three
-operator accounts, and completes Cognito software-token MFA setup with three
-unique RFC 6238 factors:
+The utility creates one strong shared password and configures two distinct
+access paths:
 
-- `poweruser@compass.demo` as the requester in `compass-poweruser`
-- `reviewer@compass.demo` as the reviewer in `compass-poweruser`
-- `viewer@compass.demo` as the scoped viewer in `compass-viewer`
+- `poweruser@compass.demo`, `reviewer@compass.demo`, and
+  `viewer@compass.demo` remain password-only for team review.
+- `presenter@compass.demo` is in `compass-poweruser` and enrolls one RFC 6238
+  TOTP factor for the formal Element 1 demonstration.
 
 Credentials are written only to the ignored
-`artifacts/private/demo-identities.json` artifact with mode `0600`. The utility
-does not print credentials or AWS identifiers. Transfer each factor to the
-protected presenter authenticator without displaying it in a terminal or on
-camera. The temporary password-auth client is deleted after enrollment,
-including after a failure. A rerun reuses completed factors and resumes an
-incomplete enrollment safely. Test all three logins at least one day before
-recording.
+`artifacts/private/demo-identities.json` and
+`artifacts/private/formal-demo-presenter.json` artifacts with mode `0600`. The
+utility does not print credentials or AWS identifiers. Transfer only the
+presenter factor to the protected presenter authenticator without displaying
+it in a terminal or on camera. The temporary password-auth client is deleted
+after enrollment, including after a failure. A rerun reuses the completed
+presenter factor safely. Test all four logins at least one day before recording.
 
 The four-eyes approval control requires different authenticated identities for
 request and decision. Enroll one poweruser requester, one poweruser reviewer,
@@ -252,7 +253,7 @@ git diff -- seed/
 Do not run `scripts/seed.sh` against the recording stack. That legacy helper
 publishes all three demonstration drops into the live ingest prefix.
 
-After migrations and all three TOTP enrollments are complete, run the bounded
+After migrations and the canonical identity setup are complete, run the bounded
 operator preparation workflow:
 
 ```bash
@@ -269,8 +270,10 @@ The exact confirmation value is intentional. Preparation then:
    generator seed, allowlisted identifiers, record counts, mock markings, and
    license identities.
 2. Requires `poweruser@compass.demo`, `reviewer@compass.demo`, and
-   `viewer@compass.demo` to be enabled, confirmed, enrolled in TOTP, and in
-   exactly their expected Compass group among the supported groups.
+   `viewer@compass.demo` to be enabled, confirmed, password-only, and in
+   exactly their expected Compass group among the supported groups. It also
+   requires `presenter@compass.demo` to be enabled, confirmed, TOTP-enabled,
+   and in the poweruser group.
 3. Stages the five fixtures with SHA-256 metadata under `demo-stage/` using a
    non-ingestible `.fixture` suffix. The EventBridge rule accepts only the
    separate `drops/` prefix.
@@ -341,7 +344,7 @@ Complete every row after deployment and before the timed rehearsal.
 | Poweruser login | Cognito presents TOTP and `/me` resolves corporate scope |
 | Viewer login | `/me` resolves Code-30; funding values are masked or refused |
 | System Inspector | Badge says Live service; revision matches recording commit; refresh changes correlation ID |
-| Identity contract | All 25 protected operations accept the intended Cognito session when Scale Run is enabled |
+| Identity contract | All 33 protected operations accept the intended Cognito session in the current document MLOps deployment |
 | CORS | Approved origin succeeds; a random origin is not reflected |
 | Clean intake | Batch passes and curated row count is positive |
 | Legacy intake | Compatible renamed schema normalizes and reaches an allowed disposition |
@@ -463,7 +466,7 @@ After recording:
 | New lineage route returns 404 | Use `/catalog/lineage/?batch=<id>` and confirm the latest frontend is published |
 | Bedrock call fails | Confirm account model access and function IAM for the declared model IDs |
 | Prepare stops at confirmation | Supply the exact value `RESET_FIXED_SYNTHETIC_DEMO_DATA` only after confirming this is the synthetic recording stack |
-| Prepare stops at identity verification | Confirm all three exact users are enabled, confirmed, uniquely grouped, and enrolled in software-token MFA |
+| Prepare stops at identity verification | Confirm the three team users are password-only and uniquely grouped, and the separate presenter is confirmed, uniquely grouped, and TOTP-enabled |
 | Prepare refuses synthetic reset | A non-demo curated grant exists; stop and use a clean demonstration stack rather than widening the reset scope |
 | Release-drop says the key exists | The scenario is not at baseline; rerun bounded preparation or diagnose before using the explicit retry flag |
 

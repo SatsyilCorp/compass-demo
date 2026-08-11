@@ -356,3 +356,98 @@ export function getScaleExportApi(runId: string, exportId: string): Promise<Scal
     { cache: "no-store" },
   );
 }
+
+// Document Intake and model operations live adapter. Replay behavior stays in
+// lib/documents and lib/mlops so the browser never presents replay as a cloud run.
+export type DocumentUploadRequest = {
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  synthetic_only: true;
+};
+
+export type DocumentUploadResponse = {
+  run_id: string;
+  document_id: string;
+  status: string;
+  stage: string;
+  source: string;
+  upload: {
+    method: "PUT";
+    url: string;
+    headers: Record<string, string>;
+    expires_in_seconds: number;
+    maximum_bytes: number;
+  };
+};
+
+export type DocumentRunRecord = Record<string, unknown> & {
+  run_id: string;
+  status: string;
+  stage: string;
+  filename?: string;
+};
+
+export type ModelRecord = Record<string, unknown> & {
+  model_version: string;
+  status: string;
+  metrics?: { accuracy?: number; macro_f1?: number };
+};
+
+export function postDocumentUploadApi(request: DocumentUploadRequest): Promise<DocumentUploadResponse> {
+  return fetchJson<DocumentUploadResponse>("/documents/uploads", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function putDocumentBytesApi(
+  upload: DocumentUploadResponse["upload"],
+  bytes: ArrayBuffer,
+): Promise<void> {
+  return fetch(upload.url, {
+    method: upload.method,
+    headers: upload.headers,
+    body: bytes,
+  }).then((response) => {
+    if (!response.ok) throw new ApiError(response.status, null, "document_upload_failed");
+  });
+}
+
+export function getDocumentRunsApi(): Promise<{ runs: DocumentRunRecord[] }> {
+  return fetchJson<{ runs: DocumentRunRecord[] }>("/documents/runs", { cache: "no-store" });
+}
+
+export function getDocumentRunApi(runId: string): Promise<DocumentRunRecord> {
+  return fetchJson<DocumentRunRecord>(`/documents/runs/${encodeURIComponent(runId)}`, {
+    cache: "no-store",
+  });
+}
+
+export function postModelTrainApi(): Promise<ModelRecord> {
+  return fetchJson<ModelRecord>("/ml/train", { method: "POST", body: "{}" });
+}
+
+export function getModelsApi(): Promise<{ models: ModelRecord[]; champion: unknown }> {
+  return fetchJson<{ models: ModelRecord[]; champion: unknown }>("/ml/models", {
+    cache: "no-store",
+  });
+}
+
+export function postModelDeployApi(modelVersion: string): Promise<Record<string, unknown>> {
+  return fetchJson<Record<string, unknown>>(`/ml/models/${encodeURIComponent(modelVersion)}/deploy`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function postModelDriftApi(documents?: string[]): Promise<Record<string, unknown>> {
+  return fetchJson<Record<string, unknown>>("/ml/drift/evaluate", {
+    method: "POST",
+    body: JSON.stringify(documents ? { documents } : {}),
+  });
+}
+
+export function getModelOpsEvidenceApi(): Promise<Record<string, unknown>> {
+  return fetchJson<Record<string, unknown>>("/ml/ops/evidence", { cache: "no-store" });
+}

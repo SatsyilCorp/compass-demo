@@ -19,8 +19,12 @@ role and `ONR-Corporate`; `compass-viewer` maps to the viewer role and
 role cannot override a verified group. If a supplied organization conflicts
 with the resolved role, resolution fails closed.
 
-Cognito configuration requires TOTP MFA, 16-character passwords, and
-administrator-created users. Tokens expire after one hour.
+Cognito uses optional per-user TOTP, 16-character passwords, and
+administrator-created users. The three collaboration identities explicitly
+remain password-only. A separate `presenter@compass.demo` identity enables and
+prefers TOTP for the formal Element 1 demonstration. Tokens expire after one
+hour. Optional pool configuration is a demo usability posture, not the
+production target.
 
 The activity endpoint applies the same persona boundary to transport metadata.
 Its database projection is authoritative. Recent Kinesis receipts merge by
@@ -37,8 +41,10 @@ Lambda response helpers use the same allowlist through
 This is browser-origin protection, not authentication. JWT authorization still
 applies to every route.
 
-The 2026-08-11 live CORS verification passed all 25 protected operations. A
-separate authenticated browser pass used the exact deployed origin.
+The 2026-08-11 live CORS verification passed all 25 operations in the earlier
+revision. A separate authenticated browser pass used its exact deployed origin.
+The eight document and model operations now deployed in `local-fe56c61` require
+their own exact-origin acceptance check.
 
 ## 3. Network and encryption boundary
 
@@ -217,10 +223,11 @@ workflow. The receipt exposes logical locators and hashes, not a physical
 bucket name.
 
 The bounded identity utility creates or updates only the three fixed synthetic
-demo users, assigns only their expected Compass group, and completes distinct
-software-token MFA factors. It uses a temporary no-secret password-auth client
-and always deletes that client. It does not print credentials, sessions, AWS
-identifiers, or TOTP values. The ignored private credential artifact and its
+team users plus the formal presenter, assigns only their expected Compass
+group, disables MFA preference on the team users, and completes one presenter
+software-token factor. It uses a temporary no-secret password-auth client and
+always deletes that client. It does not print credentials, sessions, AWS
+identifiers, or TOTP values. Ignored private credential artifacts and their
 directory use restrictive local permissions. The separate demo preparation
 tool is verification-only for identity state and cannot change users, groups,
 passwords, or MFA.

@@ -11,9 +11,9 @@ export default function MissionControlPage() {
   return (
     <AppShell requireRole={["poweruser"]}>
       <PageHeader
-        kicker="System view"
-        title="Mission control"
-        lead="Trace each decision from authenticated request to data policy, workflow receipt, and append-only audit evidence. Sensitive infrastructure and record content stay outside this view."
+        kicker="Operations evidence | Live backend control plane"
+        title="Mission and model control"
+        lead="Trace each decision from authenticated request to data policy, document workflow, model receipt, delivery evidence, and append-only audit state. Sensitive infrastructure and record content stay outside this view."
         icon={<ServerCog className="size-5" aria-hidden />}
       />
       <SystemInspector />

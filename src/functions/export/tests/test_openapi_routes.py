@@ -1,4 +1,5 @@
 """Keep the served API contract synchronized with the deployed HTTP routes."""
+
 from __future__ import annotations
 
 import importlib
@@ -37,7 +38,7 @@ def openapi_routes() -> set[tuple[str, str]]:
 def test_openapi_matches_every_deployed_application_route():
     deployed = template_routes()
     served = openapi_routes()
-    assert len(deployed) == 25
+    assert len(deployed) == 33
     assert served == deployed
 
 
@@ -79,13 +80,67 @@ def test_scale_lab_operations_publish_exact_success_and_request_schemas():
         operation = document["paths"][path][method]
         success_codes = set(operation["responses"]) & {"200", "201"}
         assert success_codes == {status}, (method, path)
-        response_schema = operation["responses"][status]["content"]["application/json"]["schema"]
+        response_schema = operation["responses"][status]["content"]["application/json"][
+            "schema"
+        ]
         assert response_schema == {"$ref": f"#/components/schemas/{response_name}"}
         if request_name is None:
             assert "requestBody" not in operation
         else:
-            request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+            request_schema = operation["requestBody"]["content"]["application/json"][
+                "schema"
+            ]
             assert request_schema == {"$ref": f"#/components/schemas/{request_name}"}
+
+
+def test_document_ml_operations_publish_success_and_request_schemas():
+    document = build_openapi()
+    expected = {
+        ("post", "/documents/uploads"): (
+            "201",
+            "DocumentUploadResponse",
+            "DocumentUploadRequest",
+        ),
+        ("get", "/documents/runs"): ("200", "DocumentRunsResponse", None),
+        ("get", "/documents/runs/{run_id}"): ("200", "DocumentRun", None),
+        ("post", "/ml/train"): (
+            "201",
+            "DocumentModel",
+            "DocumentTrainingRequest",
+        ),
+        ("get", "/ml/models"): ("200", "DocumentModelsResponse", None),
+        ("post", "/ml/models/{version}/deploy"): (
+            "201",
+            "DocumentDeployment",
+            None,
+        ),
+        ("post", "/ml/drift/evaluate"): (
+            "201",
+            "DocumentDriftReceipt",
+            "DocumentDriftRequest",
+        ),
+        ("get", "/ml/ops/evidence"): (
+            "200",
+            "DocumentMlOpsEvidence",
+            None,
+        ),
+    }
+
+    for (method, path), (status, response_name, request_name) in expected.items():
+        operation = document["paths"][path][method]
+        response_schema = operation["responses"][status]["content"]["application/json"][
+            "schema"
+        ]
+        assert response_schema == {"$ref": f"#/components/schemas/{response_name}"}
+        if request_name is None:
+            assert "requestBody" not in operation
+        else:
+            request_schema = operation["requestBody"]["content"]["application/json"][
+                "schema"
+            ]
+            assert request_schema == {"$ref": f"#/components/schemas/{request_name}"}
+
+    assert "202" in document["paths"]["/ml/train"]["post"]["responses"]
 
 
 def test_scale_lab_component_shapes_match_the_frontend_contract():
@@ -171,9 +226,7 @@ def test_scale_lab_component_shapes_match_the_frontend_contract():
     assert schemas["ScaleExportRequest"]["properties"]["dataset"]["const"] == (
         "curated_portfolio"
     )
-    assert schemas["ScaleExportRequest"]["properties"]["format"]["const"] == (
-        "parquet"
-    )
+    assert schemas["ScaleExportRequest"]["properties"]["format"]["const"] == ("parquet")
 
 
 def test_scale_lab_openapi_exposes_no_physical_resource_identifiers():

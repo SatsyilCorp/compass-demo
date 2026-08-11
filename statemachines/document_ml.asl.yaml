@@ -1,0 +1,142 @@
+Comment: Compass document pipeline from browser drop through governed classification.
+StartAt: Inspect
+
+States:
+  Inspect:
+    Type: Task
+    Comment: Verify the object, extract text or rows, infer schema, and write bronze.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${DocumentMlFunctionArn}
+      Payload:
+        action: inspect
+        event.$: $
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    Next: InspectionGate
+
+  InspectionGate:
+    Type: Choice
+    Choices:
+      - Variable: $.gate
+        StringEquals: quarantine
+        Next: Quarantine
+      - Variable: $.gate
+        StringEquals: continue
+        Next: Quality
+    Default: Failed
+
+  Quality:
+    Type: Task
+    Comment: Apply bounded quality rules and write an immutable quality receipt.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${DocumentMlFunctionArn}
+      Payload:
+        action: quality
+        run_id.$: $.run_id
+        source_bucket.$: $.source_bucket
+        source_key.$: $.source_key
+        bronze_key.$: $.bronze_key
+        org_unit.$: $.org_unit
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    Next: QualityGate
+
+  QualityGate:
+    Type: Choice
+    Choices:
+      - Variable: $.gate
+        StringEquals: pass
+        Next: Curate
+      - Variable: $.gate
+        StringEquals: quarantine
+        Next: Quarantine
+    Default: Failed
+
+  Curate:
+    Type: Task
+    Comment: Publish normalized silver data and a classified gold decision record.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${DocumentMlFunctionArn}
+      Payload:
+        action: curate
+        run_id.$: $.run_id
+        source_bucket.$: $.source_bucket
+        source_key.$: $.source_key
+        bronze_key.$: $.bronze_key
+        quality_key.$: $.quality_key
+        org_unit.$: $.org_unit
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    End: true
+
+  Quarantine:
+    Type: Task
+    Comment: Retain the rejected source and its reason without publishing gold data.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${DocumentMlFunctionArn}
+      Payload:
+        action: quarantine
+        run_id.$: $.run_id
+        source_bucket.$: $.source_bucket
+        source_key.$: $.source_key
+        reason.$: $.reason
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    End: true
+
+  Failed:
+    Type: Fail
+    Error: CompassDocumentPipelineFailed
+    Cause: Inspect, quality, curate, or quarantine failed after bounded retries.

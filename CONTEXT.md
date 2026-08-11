@@ -20,8 +20,23 @@ Compass is a governed science and technology portfolio intelligence product. It 
 - **Cost Receipt**: The observed service quantities, immediate metered estimate, and later billing reconciliation status for one Scale Run.
 - **Export Job**: An asynchronous, governed release of a completed Scale Run with format, row count, bytes, checksum, expiration, and audit evidence.
 - **Serving Projection**: A bounded, policy-aware view of lake data and aggregates optimized for product queries.
+- **Document Intake Run**: One event-driven processing attempt for a browser-dropped unstructured or semi-structured document, from inspection through bronze, quality, silver, gold, or quarantine.
+- **Document Quality Receipt**: The immutable rules, score, gate decision, sensitive-pattern counts, and content hash for one Document Intake Run.
+- **Document Taxonomy**: The shared six-class contract: `grant_abstract`, `technical_report`, `publication_summary`, `patent_summary`, `investment_brief`, and `financial_execution`.
+- **Model Run**: One deterministic training and evaluation execution with a dataset digest, split seed, algorithm, metrics, and adapter disclosure.
+- **Model Version**: A portable, immutable classifier artifact registered from one Model Run.
+- **Deployment Receipt**: The actor, Model Version, target, alias, time, and truthful online-endpoint state for one promotion.
+- **Drift Receipt**: The observed class distribution, population stability, out-of-vocabulary rate, threshold, verdict, and recommended action for a deployed Model Version.
+- **MLOps Adapter**: The seam between the deterministic demo implementation and an explicitly configured SageMaker training implementation.
 - **Rehearsal Adapter**: The existing small deterministic fixture path used for predictable demonstrations. It does not claim heavy-scale processing.
 - **Scale Adapter**: The distributed path used for measured workload evidence.
+- **Demonstration Run**: The presenter-led, sequential execution of the seven scored scenario elements and five strategic prompts, with one evidence locator and one honest boundary per element.
+- **Document Intake**: A governed file submission that accepts sanitized structured, semi-structured, or unstructured content and produces inspection, quality, classification, lineage, and terminal receipts.
+- **Document Receipt**: The hash-bound evidence for one Document Intake, including media type, size, source digest, inferred schema, quality disposition, Bronze, Silver, and Gold locators, classification, and model version.
+- **Model Run**: One bounded training or evaluation execution over an approved synthetic corpus with dataset digest, algorithm, parameters, metrics, artifacts, and cost evidence.
+- **Model Version**: An immutable registered candidate produced by a Model Run and governed through validation, approval, deployment, and retirement states.
+- **Drift Receipt**: A deterministic comparison between a deployed Model Version baseline and an observed document window, including feature drift, prediction drift, threshold, disposition, and retraining recommendation.
+- **Delivery Receipt**: Commit-bound evidence that source, tests, security checks, infrastructure plans, deployment gates, and environment promotion completed or failed without hiding any stage.
 
 ## Users and decisions
 
@@ -46,6 +61,11 @@ Compass is a governed science and technology portfolio intelligence product. It 
 12. Data-plane test objects expire automatically, while compact evidence receipts remain long enough for evaluation.
 13. Cancellation is cooperative, durable, and safe to retry.
 14. A completed export reports exact rows, bytes, format, checksum, expiration, and audit receipt.
+15. Every document stage references the same source SHA-256 and Document Intake Run identifier.
+16. A document with a blocking extraction or quality failure cannot publish silver or gold data.
+17. Document classification uses only the six labels in the Document Taxonomy.
+18. Demo-adapter evidence never claims that a SageMaker job, registry package, or online endpoint exists.
+19. A Model Version cannot become the champion without an explicit Deployment Receipt.
 
 ## Architecture language
 

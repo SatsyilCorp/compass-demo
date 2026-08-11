@@ -1,0 +1,33 @@
+# Compass source-template guardrails. These checks are preventive controls for
+# the demonstrator and do not assert that a DISA assessor has certified it.
+
+let kms_keys = Resources.*[ Type == 'AWS::KMS::Key' ]
+let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+let dynamodb_tables = Resources.*[ Type == 'AWS::DynamoDB::Table' ]
+let database_instances = Resources.*[ Type == 'AWS::RDS::DBInstance' ]
+
+rule kms_key_rotation_enabled when %kms_keys !empty {
+  %kms_keys.Properties.EnableKeyRotation == true
+}
+
+rule s3_public_access_is_blocked when %buckets !empty {
+  %buckets.Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true
+  %buckets.Properties.PublicAccessBlockConfiguration.BlockPublicPolicy == true
+  %buckets.Properties.PublicAccessBlockConfiguration.IgnorePublicAcls == true
+  %buckets.Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+}
+
+rule s3_is_versioned_and_encrypted when %buckets !empty {
+  %buckets.Properties.VersioningConfiguration.Status == 'Enabled'
+  %buckets.Properties.BucketEncryption.ServerSideEncryptionConfiguration[*].ServerSideEncryptionByDefault.SSEAlgorithm == 'aws:kms'
+}
+
+rule dynamodb_has_recovery_and_kms when %dynamodb_tables !empty {
+  %dynamodb_tables.Properties.PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled == true
+  %dynamodb_tables.Properties.SSESpecification.SSEEnabled == true
+  %dynamodb_tables.Properties.SSESpecification.SSEType == 'KMS'
+}
+
+rule database_is_not_public when %database_instances !empty {
+  %database_instances.Properties.PubliclyAccessible == false
+}

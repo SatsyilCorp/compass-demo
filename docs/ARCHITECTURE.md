@@ -15,7 +15,7 @@ Aurora are in private subnets.
 flowchart LR
   U["User browser"]
   CF["CloudFront and WAF\nPrivate S3 origin through OAC"]
-  COG["Cognito hosted UI\nTOTP MFA and OIDC"]
+  COG["Cognito hosted UI\npassword-only team access, TOTP presenter, OIDC"]
   API["HTTP API\n25 JWT-protected operations when Scale Run is enabled"]
 
   subgraph VPC["Private application boundary across two AZs"]
@@ -51,7 +51,8 @@ The template provisions:
 - One NAT gateway for the cost-controlled demonstration mode
 - A customer-managed KMS key with rotation enabled
 - An Aurora Serverless v2 PostgreSQL 16.9 cluster and managed master secret
-- Cognito with TOTP MFA, admin-created users, and poweruser and viewer groups
+- Cognito with password-only team accounts, a dedicated TOTP presenter,
+  admin-created users, and poweruser and viewer groups
 - An HTTP API with the JWT authorizer as its default
 - Fourteen Lambda functions and one shared Lambda layer
 - A KMS-encrypted raw S3 bucket with EventBridge notifications
@@ -131,7 +132,7 @@ Forward migrations 003 and 004 provide five database safeguards:
 
 ## 5. API and CORS boundary
 
-The 25 method-and-path operations across 23 URL paths are listed in
+The 33 method-and-path operations across 31 URL paths are listed in
 `docs/CONTRACTS.md`. The default JWT authorizer protects every operation,
 including the eight conditional Scale Run operations, OpenAPI document, and
 System Inspector. Scale Run operations apply an additional corporate
@@ -254,8 +255,9 @@ an implicit template default. It does not store long-lived AWS access keys in
 the repository.
 
 The recording baseline has a separate operator-only preparation path.
-`scripts/prepare_demo.py` validates five fixed synthetic fixtures, verifies the
-three MFA identities, stages fixtures under non-triggering `.fixture` keys,
+`scripts/prepare_demo.py` validates five fixed synthetic fixtures, verifies
+three password-only team identities plus one TOTP formal presenter, stages
+fixtures under non-triggering `.fixture` keys,
 invokes the private migrator for a bounded transactional reseed, runs the
 deployed Analytics Lambda under service actor `compass-demo-preparer`, and
 emits a redacted readiness receipt. The reset refuses to run beside any

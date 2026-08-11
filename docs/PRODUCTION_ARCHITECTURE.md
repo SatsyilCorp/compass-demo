@@ -1,6 +1,9 @@
 # Compass production-scale architecture
 
-Status: deployed in Satsyil AWS in HA mode and live-verified on 2026-08-11.
+Status: the current 33-operation resources are deployed in Satsyil AWS in HA
+mode. Scale, browser, document intelligence, model training, exact-version
+promotion, and drift evidence have live acceptance receipts. No SageMaker
+training job or endpoint was started.
 
 This diagram is the architecture deployed by the production-scale
 demonstrator. Solid arrows are runtime data or control flow. Receipts are
@@ -84,18 +87,21 @@ flowchart TB
 
 | Boundary | Live Satsyil evidence |
 |---|---|
-| Interface | 25 Cognito-protected API operations across 23 URL paths |
-| Compute | 17 Lambda functions, bounded worker concurrency, one active Scale Run, and Standard Step Functions orchestration |
+| Interface | 33 Cognito-protected API operations across 31 URL paths are deployed; unauthenticated protected requests return 401 |
+| Compute | 18 Lambda functions and 3 state machines are deployed; bounded Scale, document, and model paths have accepted receipts |
 | Data | Private encrypted Aurora with one writer and one reader, 14-day backups, deletion protection, DynamoDB ledger, SQS with DLQ, and governed S3 lake zones |
 | Intelligence | Six Glue tables, scan-limited Athena, Parquet materialization, full-corpus deterministic topic and anomaly aggregation, and governed export |
-| Edge and identity | CloudFront, WAF, exact-origin CORS, Cognito password plus TOTP, and ready poweruser, reviewer, and viewer personas |
-| Operations | 11 alarms, 2 dashboards, API and workflow logs, application logs, and X-Ray tracing |
+| Edge and identity | CloudFront, WAF, exact-origin CORS, password-only Cognito team accounts, a dedicated TOTP presenter, and ready poweruser, reviewer, and viewer personas |
+| Operations | 13 alarms, 2 dashboards, API and workflow logs, application logs, and X-Ray tracing are deployed |
 
 The fixed demonstration baseline passed 19 of 19 preparation checks. A live
-browser session completed real Cognito password and TOTP authentication,
-loaded all nine product screens without `Failed to fetch`, and exercised the
-Scale controls. CORS verification passed all 25 protected operations. Live
-responses included CSP, Permissions Policy, HSTS, and WAF protection.
+password-only poweruser session loaded the dashboard with 480 grants across
+eight program areas without `Failed to fetch` or console errors. The document
+path proved both `gold-published` and quarantine outcomes. The model path
+trained all six classes, promoted the exact returned version to Champion, and
+produced shifted-data drift evidence. Live responses included CSP, Permissions
+Policy, HSTS, and WAF protection. The formal presenter remains the separate
+TOTP path for Element 1.
 
 ## Measured bounded Scale Runs
 

@@ -53,12 +53,13 @@ DROP_NAMES: Mapping[str, tuple[str, str]] = {
     "bad": (contract.STAGED_FIXTURES["drop_bad"], "drops/drop_incompatible_bad.json"),
 }
 
-EXPECTED_IDENTITIES: Mapping[str, str] = {
-    "poweruser@compass.demo": "compass-poweruser",
-    "reviewer@compass.demo": "compass-poweruser",
-    "viewer@compass.demo": "compass-viewer",
+EXPECTED_IDENTITIES: Mapping[str, tuple[str, bool]] = {
+    "poweruser@compass.demo": ("compass-poweruser", False),
+    "reviewer@compass.demo": ("compass-poweruser", False),
+    "viewer@compass.demo": ("compass-viewer", False),
+    "presenter@compass.demo": ("compass-poweruser", True),
 }
-SUPPORTED_GROUPS = frozenset(EXPECTED_IDENTITIES.values())
+SUPPORTED_GROUPS = frozenset(group for group, _requires_mfa in EXPECTED_IDENTITIES.values())
 CONFIRMATION = "RESET_FIXED_SYNTHETIC_DEMO_DATA"
 
 
@@ -165,7 +166,7 @@ def _load_local_fixtures() -> Dict[str, Dict[str, Any]]:
 
 def _verify_identities(user_pool_id: str, region: str) -> list[Dict[str, Any]]:
     receipts = []
-    for username, expected_group in EXPECTED_IDENTITIES.items():
+    for username, (expected_group, requires_mfa) in EXPECTED_IDENTITIES.items():
         user = _aws(
             [
                 "cognito-idp",
@@ -200,11 +201,12 @@ def _verify_identities(user_pool_id: str, region: str) -> list[Dict[str, Any]]:
             if group.get("GroupName") in SUPPORTED_GROUPS
         }
         mfa_settings = set(user.get("UserMFASettingList") or [])
+        has_totp = "SOFTWARE_TOKEN_MFA" in mfa_settings
         ready = (
             user.get("Enabled") is True
             and user.get("UserStatus") == "CONFIRMED"
             and supported_memberships == {expected_group}
-            and "SOFTWARE_TOKEN_MFA" in mfa_settings
+            and has_totp is requires_mfa
         )
         receipts.append(
             {
@@ -214,12 +216,13 @@ def _verify_identities(user_pool_id: str, region: str) -> list[Dict[str, Any]]:
                 "confirmed": user.get("UserStatus") == "CONFIRMED",
                 "expected_group": expected_group,
                 "supported_groups": sorted(supported_memberships),
-                "totp_enrolled": "SOFTWARE_TOKEN_MFA" in mfa_settings,
+                "mfa_posture": "totp-presenter" if requires_mfa else "password-only-team",
+                "totp_enrolled": has_totp,
             }
         )
     if not all(item["status"] == "ready" for item in receipts):
         raise OperatorError(
-            "one or more fixed demo identities are not confirmed, uniquely grouped, and TOTP-enabled",
+            "one or more fixed demo identities do not match the team and presenter MFA posture",
             stage="identity verification",
         )
     return receipts

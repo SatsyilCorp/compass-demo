@@ -27,6 +27,7 @@ import type { IngestBatch } from "@/lib/types";
 import { BatchRow } from "@/components/ingest/batch-row";
 import { VelocityLegend } from "@/components/ingest/velocity-legend";
 import { StreamTicker } from "@/components/ingest/stream-ticker";
+import { DocumentDropZone } from "@/components/documents/document-drop-zone";
 
 const STATUS_POLL_MS = 20_000;
 const LIVE_FIXTURE_BY_PROFILE = {
@@ -156,9 +157,9 @@ export default function IngestPage() {
   return (
     <AppShell>
       <PageHeader
-        kicker="Ingest and quality"
-        title="Prove the pipeline with real state changes"
-        lead="Run a clean, legacy, or defective synthetic drop through Fetch → Validate → Persist or Quarantine. Every screen reads the same durable replay state."
+        kicker="Element 3 of 7 | Ingestion, DataOps, and Streaming"
+        title="Turn a dropped document into governed intelligence"
+        lead="Drop an actual sanitized PDF, spreadsheet, or text dataset and follow its hash-bound path through event detection, extraction, schema inference, quality, classification, streaming evidence, and governed publication."
         icon={<UploadCloud className="size-4" aria-hidden />}
         actions={
           <button
@@ -172,6 +173,8 @@ export default function IngestPage() {
           </button>
         }
       />
+
+      <DocumentDropZone />
 
       {USE_MOCK ? (
         <section

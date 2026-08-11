@@ -99,6 +99,9 @@ if sys.argv[1] == "deploy":
             "DEPLOY_TEST_ACCOUNT": expected_account,
             "DEPLOY_TEST_LOG": str(deploy_log),
             "DATABASE_MODE": "ha",
+            "WEB_CUSTOM_DOMAIN_NAME": "compass.example",
+            "WEB_CERTIFICATE_ARN": "arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000",
+            "WEB_HOSTED_ZONE_ID": "ZDEMO123456789",
         }
     )
     result = subprocess.run(
@@ -120,6 +123,8 @@ if sys.argv[1] == "deploy":
     assert "CognitoDomainPrefix=satsyil-compass-demo" in deploy_calls[1]
     assert not any(value.startswith("WebOrigin=") for value in deploy_calls[0])
     assert "WebOrigin=https://demo.invalid" in deploy_calls[1]
+    assert "WebCallbackUrl=https://compass.example/login/" in deploy_calls[1]
+    assert "WebLogoutUrl=https://compass.example/login/" in deploy_calls[1]
 
     template_text = (REPOSITORY_ROOT / "template.yaml").read_text(encoding="utf-8")
     assert "EnableDatabaseHa: !Equals [!Ref DatabaseResilienceMode, ha]" in template_text

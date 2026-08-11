@@ -1,0 +1,104 @@
+name: DevSecOps evidence gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devsecops-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application-security:
+    name: SAST, dependency, secret, and SBOM evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install security scanners
+        run: python -m pip install --disable-pip-version-check bandit==1.8.6 pip-audit==2.9.0
+
+      - name: Bandit SAST
+        run: bandit -r src scripts -x "*/tests/*" -ll -ii
+
+      - name: Dependency audit
+        run: |
+          pip-audit --no-deps --disable-pip \
+            -r src/common/requirements.txt \
+            -r src/functions/analytics/requirements.txt \
+            -r src/functions/document_ml/requirements.txt
+
+      - name: Secret scan
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.2 detect --source=/repo --no-banner --redact
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: compass-sbom.cdx.json
+
+      - name: Publish SBOM evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: compass-cyclonedx-sbom
+          path: compass-sbom.cdx.json
+          retention-days: 30
+
+  infrastructure-security:
+    name: Terraform and policy validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform formatting
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: Terraform validation
+        run: |
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@v2
+
+      - name: SAM and CloudFormation validation
+        run: sam validate --lint
+
+      - name: Install CloudFormation Guard
+        run: cargo install cfn-guard --version 3.1.2 --locked
+
+      - name: Strict policy-as-code validation
+        run: cfn-guard validate --data template.yaml --rules security/policies/compass.guard --show-summary all
+
+      - name: Validate STIG-aligned evidence index
+        run: python scripts/validate_stig_controls.py --output artifacts/security/stig-evidence.json
+
+      - name: Publish policy evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-and-stig-evidence
+          path: artifacts/security/stig-evidence.json
+          retention-days: 30

@@ -15,34 +15,33 @@ export type NavSection = {
   roles?: Role[];
 };
 
-/**
- * Navigation follows the product's decision flow. Requirement element numbers
- * remain in metadata for presenter tooling, but do not appear in product copy.
- */
+/** Navigation follows the exact seven-element Factor 3 demonstration sequence. */
 export const SIDEBAR_SECTIONS: NavSection[] = [
   {
-    label: "Mission flow",
+    label: "Demonstration sequence",
     items: [
-      { href: "/ingest/", label: "Ingest and quality", shortLabel: "Ingest", icon: "upload-cloud", stage: "01", element: 3 },
-      { href: "/catalog/", label: "Governed catalog", shortLabel: "Govern", icon: "database", stage: "02", element: 4 },
-      { href: "/analytics/", label: "Topic intelligence", shortLabel: "Discover", icon: "network", stage: "03", element: 5 },
-      { href: "/dashboard/", label: "Decision brief", shortLabel: "Decide", icon: "layout-dashboard", stage: "04", element: 6 },
-      { href: "/export/", label: "Governed release", shortLabel: "Release", icon: "download", stage: "05", element: 7 },
+      { href: "/admin/delivery/", label: "IaC and DevSecOps", shortLabel: "Delivery", icon: "workflow", stage: "02", element: 2 },
+      { href: "/ingest/", label: "Ingestion and DataOps", shortLabel: "Ingest", icon: "upload-cloud", stage: "03", element: 3 },
+      { href: "/catalog/", label: "Governance and catalog", shortLabel: "Govern", icon: "database", stage: "04", element: 4 },
+      { href: "/admin/mlops/", label: "Decision analytics and MLOps", shortLabel: "Model", icon: "network", stage: "05", element: 5 },
+      { href: "/dashboard/", label: "Unified decision workspace", shortLabel: "Decide", icon: "layout-dashboard", stage: "06", element: 6 },
+      { href: "/export/", label: "Interoperability and export", shortLabel: "Release", icon: "download", stage: "07", element: 7 },
     ],
   },
   {
-    label: "Governance",
+    label: "Supporting evidence",
     items: [
-      { href: "/licenses/", label: "License posture", shortLabel: "Licenses", icon: "key-round", element: 6 },
+      { href: "/analytics/", label: "Topic intelligence", shortLabel: "Topics", icon: "network", element: 5 },
+      { href: "/licenses/", label: "Data vendor lifecycle", shortLabel: "Vendors", icon: "key-round", element: 4 },
     ],
   },
   {
     label: "System",
     roles: ["poweruser"],
     items: [
-      { href: "/admin/requirements/", label: "Requirements trace", shortLabel: "Requirements", icon: "clipboard-check", element: 7 },
+      { href: "/admin/requirements/", label: "Demo command center", shortLabel: "Demo", icon: "clipboard-check", element: 1 },
       { href: "/admin/architecture/", label: "Architecture", shortLabel: "Architecture", icon: "workflow", element: 7 },
-      { href: "/admin/scale/", label: "Scale Lab", shortLabel: "Scale", icon: "radio-tower", element: 7 },
+      { href: "/admin/scale/", label: "Workload evidence lab", shortLabel: "Scale", icon: "radio-tower", element: 3 },
       { href: "/admin/pipeline/", label: "Mission control", shortLabel: "System", icon: "settings-2", element: 7 },
     ],
   },

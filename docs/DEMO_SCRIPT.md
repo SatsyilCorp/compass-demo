@@ -107,13 +107,14 @@ Transition to the signed-out login surface.
 
 ### 01:30 to 02:35: Strong authentication
 
-Sign in as the poweruser through the Cognito hosted UI. Complete the already
-enrolled TOTP challenge. Do not show enrollment secrets or a QR code.
+Sign in as `presenter@compass.demo` through the Cognito hosted UI. Complete the
+already enrolled TOTP challenge. Do not show enrollment secrets or a QR code.
 
 ### Narration
 
-> Element 1 starts with identity. Self-registration is disabled, TOTP MFA is
-> required, and the API validates the Cognito token before an application
+> Element 1 starts with identity. Self-registration is disabled. This formal
+> presenter identity requires TOTP, while collaboration accounts stay
+> password-only. The API validates the Cognito token before an application
 > handler runs.
 
 After redirect, point to the signed-in identity and organization scope.
@@ -136,7 +137,7 @@ curl --silent --output /dev/null --write-out '%{http_code}\n' \
 Point to `401`.
 
 > This request has no bearer token, so the protected evidence route stops at
-> the API boundary with 401. All 25 method-and-path operations across 23 URL
+> the API boundary with 401. All 33 method-and-path operations across 31 URL
 > paths use the JWT authorizer by default, including Scale Run, OpenAPI, and System
 > Inspector.
 
@@ -639,7 +640,7 @@ detail, request correlation, and current live label.
 ### 37:20 to 38:05: OpenAPI and portability
 
 Return to Export and open the protected OpenAPI 3.1 panel. Point to the served
-contract and the 25 protected operations across 23 URL paths. Mention the
+contract and the 33 protected operations across 31 URL paths. Mention the
 selected CSV format.
 
 ### Narration
@@ -826,9 +827,10 @@ Do not record until every item is true.
 - Each strategic prompt is named exactly once at its indexed primary moment.
 - Mode badge says Live service whenever runtime evidence is shown.
 - Recording revision equals `git rev-parse --short=12 HEAD`.
-- All three TOTP sessions are enrolled and stable.
+- All three password-only team sessions are stable, and the formal presenter
+  TOTP path was verified before recording.
 - Viewer and poweruser scopes differ as expected.
-- All 25 protected operations work with the intended identity when Scale Run is enabled.
+- All 33 protected operations work with the intended identity when Scale Run is enabled.
 - Clean, legacy, and defective files are absent before the take.
 - The redacted preparation receipt says ready and all five fixture hashes
   match.
@@ -841,7 +843,7 @@ Do not record until every item is true.
 - Reviewer can issue the short-lived approval capability.
 - Exact request succeeds once and token reuse fails.
 - System Inspector shows server audit readback without sensitive fields.
-- OpenAPI reflects 25 operations across 23 URL paths.
+- OpenAPI reflects 33 operations across 31 URL paths.
 - Presenter Guide is closed.
 - No secret, token, account ID, ARN, bucket name, email notification, chat
   message, or password manager appears on screen.

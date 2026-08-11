@@ -23,6 +23,7 @@ import { AnomalyWorkflow } from "./anomaly-workflow";
 import { AskCompass } from "./ask-compass";
 import { DashboardFiltersBar } from "./dashboard-filters";
 import { DecisionBrief } from "./decision-brief";
+import { DocumentDecisionEvidence } from "./document-decision-evidence";
 import { ExecSummary } from "./exec-summary";
 import { KpiCard } from "./kpi-card";
 import { BudgetExecutionChart } from "./charts/budget-execution-chart";
@@ -84,7 +85,7 @@ function CuratedDashboardView() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        kicker="Portfolio command center"
+        kicker="Element 6 of 7 | Unified Dashboard and Process Automation"
         title="Decision workspace"
         icon={<Radar className="size-5" aria-hidden />}
         lead="Focus the research portfolio, surface exceptions, and move from evidence to the next decision without leaving the workspace."
@@ -144,6 +145,7 @@ function CuratedDashboardView() {
         <LoadingSkeleton />
       ) : data ? (
         <>
+          <DocumentDecisionEvidence />
           <DecisionBrief data={data} />
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">

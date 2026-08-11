@@ -18,12 +18,13 @@ Conventions:
 * Every operation carries ``security: [{cognitoJwt: []}]`` because the HttpApi
   applies a default JWT authorizer to every route (deny-by-default).
 """
+
 from __future__ import annotations
 
 from typing import Any
 
 API_TITLE = "Compass | S&T Portfolio Intelligence API"
-API_VERSION = "1.3.0"
+API_VERSION = "1.4.0"
 
 # Strings reused across operations.
 _ERR = {"$ref": "#/components/responses/Error"}
@@ -34,7 +35,10 @@ def _ref(name: str) -> dict[str, str]:
 
 
 def _json(schema: dict[str, Any], description: str = "OK") -> dict[str, Any]:
-    return {"description": description, "content": {"application/json": {"schema": schema}}}
+    return {
+        "description": description,
+        "content": {"application/json": {"schema": schema}},
+    }
 
 
 def _op(
@@ -76,7 +80,10 @@ def _op(
 
 
 def _schemas() -> dict[str, Any]:
-    money = {"type": ["number", "null"], "description": "null when masked by column-level security"}
+    money = {
+        "type": ["number", "null"],
+        "description": "null when masked by column-level security",
+    }
     scale_cost_required = [
         "currency",
         "estimated_run_usd",
@@ -126,7 +133,12 @@ def _schemas() -> dict[str, Any]:
             "type": "object",
             "description": "How quality_score was computed, with the inputs it used.",
             "properties": {
-                "per_rule": {"type": "string", "examples": ["rule_score = 100 * passed_rows / (passed_rows + failed_rows)"]},
+                "per_rule": {
+                    "type": "string",
+                    "examples": [
+                        "rule_score = 100 * passed_rows / (passed_rows + failed_rows)"
+                    ],
+                },
                 "overall": {"type": "string"},
                 "note": {"type": "string"},
                 "source_table": {"type": "string"},
@@ -143,7 +155,10 @@ def _schemas() -> dict[str, Any]:
                             "evaluated_rows": {"type": "integer"},
                             "rule_score": {"type": ["number", "null"]},
                             "weight": {"type": "number"},
-                            "score_source": {"type": "string", "enum": ["stored", "recomputed"]},
+                            "score_source": {
+                                "type": "string",
+                                "enum": ["stored", "recomputed"],
+                            },
                         },
                     },
                 },
@@ -158,7 +173,10 @@ def _schemas() -> dict[str, Any]:
                 "email": {"type": ["string", "null"]},
                 "display_name": {"type": ["string", "null"]},
                 "role": {"type": "string", "enum": ["poweruser", "viewer"]},
-                "org_unit": {"type": "string", "examples": ["ONR-Corporate", "Code-30"]},
+                "org_unit": {
+                    "type": "string",
+                    "examples": ["ONR-Corporate", "Code-30"],
+                },
                 "groups": {"type": "array", "items": {"type": "string"}},
             },
         },
@@ -166,7 +184,10 @@ def _schemas() -> dict[str, Any]:
             "type": "object",
             "required": ["id", "batch_id", "run_id", "row_count", "quality_score"],
             "properties": {
-                "id": {"type": "string", "description": "== batch_id; the {id} for /catalog/{id}/lineage"},
+                "id": {
+                    "type": "string",
+                    "description": "== batch_id; the {id} for /catalog/{id}/lineage",
+                },
                 "batch_id": {"type": "string"},
                 "run_id": {"type": "string"},
                 "dataset_name": {"type": "string"},
@@ -204,7 +225,10 @@ def _schemas() -> dict[str, Any]:
             "properties": {
                 "run_id": {"type": "string"},
                 "node_id": {"type": "string"},
-                "kind": {"type": "string", "enum": ["source", "stage", "table", "model", "dashboard"]},
+                "kind": {
+                    "type": "string",
+                    "enum": ["source", "stage", "table", "model", "dashboard"],
+                },
                 "label": {"type": "string"},
                 "meta": {"type": ["object", "null"], "additionalProperties": True},
             },
@@ -267,7 +291,10 @@ def _schemas() -> dict[str, Any]:
                 "run_id": {"type": "string"},
                 "source_file": {"type": "string"},
                 "ingested_at": {"type": "string", "format": "date-time"},
-                "status": {"type": "string", "enum": ["queued", "running", "passed", "failed"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["queued", "running", "passed", "failed"],
+                },
                 "rows_raw": {"type": "integer"},
                 "rows_curated": {"type": "integer"},
                 "quality": {"type": "array", "items": _ref("QualityRuleResult")},
@@ -286,7 +313,14 @@ def _schemas() -> dict[str, Any]:
                 "at": {"type": "string", "format": "date-time"},
                 "kind": {
                     "type": "string",
-                    "enum": ["ingest", "quality", "anomaly", "export", "approval", "analytics"],
+                    "enum": [
+                        "ingest",
+                        "quality",
+                        "anomaly",
+                        "export",
+                        "approval",
+                        "analytics",
+                    ],
                 },
                 "message": {"type": "string"},
                 "grant_no": {"type": "string"},
@@ -312,7 +346,10 @@ def _schemas() -> dict[str, Any]:
             "properties": {
                 "run_id": {"type": "string"},
                 "kind": {"type": "string", "enum": ["topic_model"]},
-                "status": {"type": "string", "enum": ["queued", "running", "completed"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["queued", "running", "completed"],
+                },
             },
         },
         "Topic": {
@@ -325,7 +362,10 @@ def _schemas() -> dict[str, Any]:
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": {"period": {"type": "string"}, "value": {"type": "number"}},
+                        "properties": {
+                            "period": {"type": "string"},
+                            "value": {"type": "number"},
+                        },
                     },
                 },
                 "grant_count": {"type": "integer"},
@@ -482,9 +522,15 @@ def _schemas() -> dict[str, Any]:
                 "grant_id": {"type": ["integer", "null"]},
                 "grant_no": {"type": ["string", "null"]},
                 "kind": {"type": "string"},
-                "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                "severity": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "critical"],
+                },
                 "reason": {"type": "string"},
-                "status": {"type": "string", "enum": ["open", "acknowledged", "resolved"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["open", "acknowledged", "resolved"],
+                },
                 "created_at": {"type": "string", "format": "date-time"},
             },
         },
@@ -513,7 +559,10 @@ def _schemas() -> dict[str, Any]:
                 "id": {"type": "integer"},
                 "subject_type": {"type": "string"},
                 "subject_id": {"type": "string"},
-                "state": {"type": "string", "enum": ["pending", "approved", "rejected"]},
+                "state": {
+                    "type": "string",
+                    "enum": ["pending", "approved", "rejected"],
+                },
                 "requested_by": {"type": ["string", "null"]},
                 "decided_by": {"type": ["string", "null"]},
                 "decided_at": {"type": ["string", "null"], "format": "date-time"},
@@ -584,7 +633,10 @@ def _schemas() -> dict[str, Any]:
                 "seats_total": {"type": "integer"},
                 "renews_on": {"type": ["string", "null"], "format": "date"},
                 "owner": {"type": "string"},
-                "status": {"type": "string", "enum": ["active", "expiring", "expired", "suspended"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "expiring", "expired", "suspended"],
+                },
                 "status_stored": {"type": "string"},
                 "days_to_renewal": {"type": ["integer", "null"]},
                 "renewal_alert": {"type": "object", "additionalProperties": True},
@@ -597,7 +649,10 @@ def _schemas() -> dict[str, Any]:
             "required": ["licenses"],
             "properties": {
                 "licenses": {"type": "array", "items": _ref("License")},
-                "alerts": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "alerts": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                },
                 "summary": {"type": "object", "additionalProperties": True},
                 "thresholds": {"type": "object", "additionalProperties": True},
             },
@@ -625,7 +680,10 @@ def _schemas() -> dict[str, Any]:
                             "description": "Rejected with 403 for callers whose amount_usd is masked.",
                         },
                         "max_amount_usd": {"type": "number"},
-                        "q": {"type": "string", "description": "substring match on title/abstract"},
+                        "q": {
+                            "type": "string",
+                            "description": "substring match on title/abstract",
+                        },
                         "limit": {"type": "integer"},
                     },
                     "additionalProperties": False,
@@ -649,12 +707,24 @@ def _schemas() -> dict[str, Any]:
             "required": ["export_id", "row_count", "format", "download_url", "audited"],
             "properties": {
                 "export_id": {"type": "string"},
-                "row_count": {"type": "integer", "description": "rows actually written"},
-                "matched_rows": {"type": "integer", "description": "rows the filter selected under RLS"},
+                "row_count": {
+                    "type": "integer",
+                    "description": "rows actually written",
+                },
+                "matched_rows": {
+                    "type": "integer",
+                    "description": "rows the filter selected under RLS",
+                },
                 "format": {"type": "string", "enum": ["csv", "json", "parquet"]},
-                "requested_format": {"type": "string", "enum": ["csv", "json", "parquet"]},
+                "requested_format": {
+                    "type": "string",
+                    "enum": ["csv", "json", "parquet"],
+                },
                 "download_url": {"type": "string"},
-                "delivery": {"type": "string", "enum": ["s3-presigned", "inline-data-uri"]},
+                "delivery": {
+                    "type": "string",
+                    "enum": ["s3-presigned", "inline-data-uri"],
+                },
                 "bytes": {"type": "integer"},
                 "columns": {"type": "array", "items": {"type": "string"}},
                 "masked_fields": {"type": "array", "items": {"type": "string"}},
@@ -672,7 +742,10 @@ def _schemas() -> dict[str, Any]:
                 "row_count": {"type": "integer"},
                 "max_rows": {"type": "integer"},
                 "subject_type": {"type": "string", "const": "export"},
-                "subject_id": {"type": "string", "description": "POST this to /approvals to request clearance"},
+                "subject_id": {
+                    "type": "string",
+                    "description": "POST this to /approvals to request clearance",
+                },
                 "how_to_clear": {"type": "string"},
             },
         },
@@ -1200,6 +1273,270 @@ def _schemas() -> dict[str, Any]:
             },
             "additionalProperties": False,
         },
+        "DocumentTaxonomy": {
+            "type": "string",
+            "enum": [
+                "grant_abstract",
+                "technical_report",
+                "publication_summary",
+                "patent_summary",
+                "investment_brief",
+                "financial_execution",
+            ],
+        },
+        "DocumentUploadRequest": {
+            "type": "object",
+            "required": ["filename", "content_type", "size_bytes"],
+            "properties": {
+                "filename": {"type": "string", "minLength": 1, "maxLength": 120},
+                "content_type": {"type": "string"},
+                "size_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 15728640,
+                },
+                "synthetic_only": {"type": "boolean", "default": True},
+            },
+            "additionalProperties": False,
+        },
+        "DocumentUploadResponse": {
+            "type": "object",
+            "required": [
+                "run_id",
+                "status",
+                "stage",
+                "filename",
+                "content_type",
+                "expected_bytes",
+                "source",
+                "upload",
+            ],
+            "properties": {
+                "run_id": {"type": "string"},
+                "document_id": {"type": "string"},
+                "status": {"type": "string", "const": "awaiting-upload"},
+                "stage": {"type": "string", "const": "browser-upload"},
+                "filename": {"type": "string"},
+                "content_type": {"type": "string"},
+                "expected_bytes": {"type": "integer"},
+                "org_unit": {"type": "string"},
+                "requested_by": {"type": "string"},
+                "created_at": {"type": "string", "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+                "source": {"type": "string", "pattern": "^document-lake://"},
+                "synthetic_only": {"type": "boolean"},
+                "upload": {
+                    "type": "object",
+                    "required": [
+                        "method",
+                        "url",
+                        "headers",
+                        "expires_in_seconds",
+                        "maximum_bytes",
+                    ],
+                    "properties": {
+                        "method": {"type": "string", "const": "PUT"},
+                        "url": {"type": "string", "format": "uri"},
+                        "headers": {
+                            "type": "object",
+                            "additionalProperties": {"type": "string"},
+                        },
+                        "expires_in_seconds": {"type": "integer", "const": 900},
+                        "maximum_bytes": {"type": "integer", "const": 15728640},
+                    },
+                    "additionalProperties": False,
+                },
+                "next": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "DocumentRun": {
+            "type": "object",
+            "required": ["run_id", "status", "stage"],
+            "properties": {
+                "run_id": {"type": "string"},
+                "document_id": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["awaiting-upload", "running", "completed", "quarantined"],
+                },
+                "stage": {"type": "string"},
+                "filename": {"type": "string"},
+                "content_type": {"type": "string"},
+                "bytes": {"type": "integer"},
+                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "document_class": _ref("DocumentTaxonomy"),
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "review_required": {"type": "boolean"},
+                "model_version": {"type": "string"},
+                "quality": {"type": "object", "additionalProperties": True},
+                "lineage": {"type": "array", "items": {"type": "string"}},
+                "reason": {"type": "string"},
+                "created_at": {"type": "string", "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+                "completed_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": True,
+        },
+        "DocumentRunsResponse": {
+            "type": "object",
+            "required": ["runs"],
+            "properties": {
+                "runs": {"type": "array", "items": _ref("DocumentRun")},
+            },
+            "additionalProperties": False,
+        },
+        "DocumentTrainingRecord": {
+            "type": "object",
+            "required": ["text", "label"],
+            "properties": {
+                "sample_id": {"type": "string"},
+                "text": {"type": "string", "minLength": 20},
+                "label": _ref("DocumentTaxonomy"),
+            },
+            "additionalProperties": False,
+        },
+        "DocumentTrainingRequest": {
+            "type": "object",
+            "properties": {
+                "training_records": {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 500,
+                    "items": _ref("DocumentTrainingRecord"),
+                }
+            },
+            "additionalProperties": False,
+        },
+        "DocumentModel": {
+            "type": "object",
+            "required": ["model_version", "status", "algorithm", "labels", "metrics"],
+            "properties": {
+                "model_version": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "registered",
+                        "training",
+                        "configuration-required",
+                        "approved",
+                        "deployed",
+                    ],
+                },
+                "algorithm": {"type": "string"},
+                "labels": {"type": "array", "items": _ref("DocumentTaxonomy")},
+                "metrics": {"type": "object", "additionalProperties": True},
+                "artifact_uri": {"type": "string", "pattern": "^document-lake://"},
+                "training_data_uri": {
+                    "type": "string",
+                    "pattern": "^document-lake://",
+                },
+                "training_digest": {"type": "string"},
+                "adapter": {"type": "object", "additionalProperties": True},
+                "synthetic_only": {"type": "boolean"},
+                "created_at": {"type": "string", "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": True,
+        },
+        "DocumentModelsResponse": {
+            "type": "object",
+            "required": ["models", "champion"],
+            "properties": {
+                "models": {"type": "array", "items": _ref("DocumentModel")},
+                "champion": {"type": ["object", "null"], "additionalProperties": True},
+            },
+            "additionalProperties": False,
+        },
+        "DocumentDeployment": {
+            "type": "object",
+            "required": [
+                "deployment_id",
+                "model_version",
+                "alias",
+                "status",
+                "target",
+            ],
+            "properties": {
+                "deployment_id": {"type": "string"},
+                "model_version": {"type": "string"},
+                "alias": {"type": "string", "const": "champion"},
+                "status": {"type": "string", "const": "active"},
+                "target": {"type": "object", "additionalProperties": True},
+                "deployed_by": {"type": "string"},
+                "created_at": {"type": "string", "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": False,
+        },
+        "DocumentDriftRequest": {
+            "type": "object",
+            "properties": {
+                "documents": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {"type": "string", "minLength": 20},
+                },
+                "threshold": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            "additionalProperties": False,
+        },
+        "DocumentDriftReceipt": {
+            "type": "object",
+            "required": [
+                "drift_id",
+                "model_version",
+                "drift_detected",
+                "drift_score",
+                "receipt_uri",
+            ],
+            "properties": {
+                "drift_id": {"type": "string"},
+                "model_version": {"type": "string"},
+                "threshold": {"type": "number"},
+                "population_stability_index": {"type": "number"},
+                "out_of_vocabulary_rate": {"type": "number"},
+                "drift_score": {"type": "number"},
+                "drift_detected": {"type": "boolean"},
+                "recommended_action": {"type": "string"},
+                "receipt_uri": {"type": "string", "pattern": "^document-lake://"},
+                "created_at": {"type": "string", "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": True,
+        },
+        "DocumentMlOpsEvidence": {
+            "type": "object",
+            "required": [
+                "mode",
+                "truthfulness",
+                "champion",
+                "models",
+                "deployments",
+                "drift_receipts",
+                "architecture",
+            ],
+            "properties": {
+                "mode": {"type": "string", "enum": ["demo", "sagemaker"]},
+                "truthfulness": {"type": "string"},
+                "champion": {"type": ["object", "null"], "additionalProperties": True},
+                "models": {"type": "array", "items": _ref("DocumentModel")},
+                "deployments": {
+                    "type": "array",
+                    "items": _ref("DocumentDeployment"),
+                },
+                "drift_receipts": {
+                    "type": "array",
+                    "items": _ref("DocumentDriftReceipt"),
+                },
+                "architecture": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                },
+            },
+            "additionalProperties": False,
+        },
         "SystemEvidence": {
             "type": "object",
             "required": [
@@ -1241,14 +1578,20 @@ def _schemas() -> dict[str, Any]:
                     "description": "Resolved policy result only. Raw claims are never returned.",
                     "additionalProperties": {"type": ["string", "boolean"]},
                 },
-                "health": {"type": "object", "additionalProperties": {"type": "string"}},
+                "health": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                },
                 "metrics": {
                     "type": "object",
                     "additionalProperties": {"type": "integer"},
                 },
                 "services": {
                     "type": "array",
-                    "items": {"type": "object", "additionalProperties": {"type": "string"}},
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string"},
+                    },
                 },
                 "recent_runs": {
                     "type": "array",
@@ -1268,7 +1611,10 @@ def _schemas() -> dict[str, Any]:
                 },
                 "controls": {
                     "type": "array",
-                    "items": {"type": "object", "additionalProperties": {"type": "string"}},
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string"},
+                    },
                 },
                 "disclosure": {"type": "string"},
             },
@@ -1278,7 +1624,9 @@ def _schemas() -> dict[str, Any]:
 
 def build_openapi(server_url: str = "") -> dict[str, Any]:
     """Return the OpenAPI 3.1 document, optionally bound to a concrete server."""
-    servers = [{"url": server_url, "description": "This deployment"}] if server_url else []
+    servers = (
+        [{"url": server_url, "description": "This deployment"}] if server_url else []
+    )
 
     paths: dict[str, Any] = {
         "/me": {
@@ -1288,8 +1636,8 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "1 · identity",
                 _ref("Me"),
                 description="Echoes the authorizer's mapping of cognito:groups -> role "
-                            "and the org_unit that will be bound to compass.org_unit for "
-                            "row-level security on every subsequent call.",
+                "and the org_unit that will be bound to compass.org_unit for "
+                "row-level security on every subsequent call.",
             )
         },
         "/catalog": {
@@ -1299,8 +1647,8 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "4 · catalog",
                 _ref("CatalogResponse"),
                 description="One entry per ingest batch, each carrying its quality score "
-                            "AND the formula plus per-rule inputs that produced it. "
-                            "Batches with no rows visible under RLS do not appear.",
+                "AND the formula plus per-rule inputs that produced it. "
+                "Batches with no rows visible under RLS do not appear.",
             )
         },
         "/catalog/{id}/lineage": {
@@ -1310,8 +1658,8 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "4 · catalog",
                 _ref("LineageResponse"),
                 description="Nodes and edges recorded by the pipeline for the most recent "
-                            "run of this batch. Serving is gated on the caller being able "
-                            "to see at least one curated row from the batch under RLS.",
+                "run of this batch. Serving is gated on the caller being able "
+                "to see at least one curated row from the batch under RLS.",
                 parameters=[
                     {
                         "name": "id",
@@ -1370,7 +1718,12 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "5 · analytics",
                 _ref("AnalyticsRunDetail"),
                 parameters=[
-                    {"name": "run_id", "in": "path", "required": True, "schema": {"type": "string"}}
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
                 ],
                 extra_responses={"404": _ERR},
             )
@@ -1382,8 +1735,16 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "6 · dashboard",
                 _ref("DashboardResponse"),
                 parameters=[
-                    {"name": "program_area", "in": "query", "schema": {"type": "string"}},
-                    {"name": "fiscal_year", "in": "query", "schema": {"type": "integer"}},
+                    {
+                        "name": "program_area",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                    },
+                    {
+                        "name": "fiscal_year",
+                        "in": "query",
+                        "schema": {"type": "integer"},
+                    },
                     {"name": "org_unit", "in": "query", "schema": {"type": "string"}},
                     {
                         "name": "q",
@@ -1402,8 +1763,8 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("ChatResponse"),
                 request_schema=_ref("ChatRequest"),
                 description="Retrieval runs against pgvector embeddings of curated "
-                            "abstracts under the caller's RLS context; generation uses "
-                            "Bedrock in-boundary (amazon.nova-lite-v1:0).",
+                "abstracts under the caller's RLS context; generation uses "
+                "Bedrock in-boundary (amazon.nova-lite-v1:0).",
             )
         },
         "/anomalies": {
@@ -1416,14 +1777,24 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                     {
                         "name": "status",
                         "in": "query",
-                        "schema": {"type": "string", "enum": ["open", "acknowledged", "resolved", "all"]},
+                        "schema": {
+                            "type": "string",
+                            "enum": ["open", "acknowledged", "resolved", "all"],
+                        },
                     },
                     {
                         "name": "severity",
                         "in": "query",
-                        "schema": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                        "schema": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high", "critical"],
+                        },
                     },
-                    {"name": "limit", "in": "query", "schema": {"type": "integer", "maximum": 500}},
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "maximum": 500},
+                    },
                 ],
             )
         },
@@ -1446,10 +1817,13 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("ApprovalResponse"),
                 request_schema=_ref("ApprovalRequest"),
                 description="request -> pending -> approve|reject. Only a separate poweruser may "
-                            "decide. An approved decision returns a short-lived, single-use "
-                            "approval_token for copy and paste into the exact POST /export retry.",
-                extra_responses={"201": _json(_ref("ApprovalResponse"), "Approval requested"), "404": _ERR},
-            )
+                "decide. An approved decision returns a short-lived, single-use "
+                "approval_token for copy and paste into the exact POST /export retry.",
+                extra_responses={
+                    "201": _json(_ref("ApprovalResponse"), "Approval requested"),
+                    "404": _ERR,
+                },
+            ),
         },
         "/licenses": {
             "get": _op(
@@ -1476,8 +1850,136 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 extra_responses={
                     "400": _ERR,
                     "413": _ERR,
-                    "428": _json(_ref("ApprovalRequired"), "Aggregation guard tripped: approval required"),
+                    "428": _json(
+                        _ref("ApprovalRequired"),
+                        "Aggregation guard tripped: approval required",
+                    ),
                 },
+            )
+        },
+        "/documents/uploads": {
+            "post": _op(
+                "requestDocumentUpload",
+                "Request a bounded browser upload for a document",
+                "3 · document intake",
+                _ref("DocumentUploadResponse"),
+                request_schema=_ref("DocumentUploadRequest"),
+                success_status="201",
+                success_description="Upload slot created",
+                description=(
+                    "Corporate poweruser-only request for a 15-minute presigned PUT. "
+                    "The accepted S3 object starts inspect, quality, quarantine or "
+                    "curation through EventBridge and Step Functions."
+                ),
+                extra_responses={"400": _ERR},
+            )
+        },
+        "/documents/runs": {
+            "get": _op(
+                "listDocumentRuns",
+                "List document intake runs visible to the caller",
+                "3 · document intake",
+                _ref("DocumentRunsResponse"),
+                description=(
+                    "Returns the sanitized bronze, quality, silver, gold, or "
+                    "quarantine status for recent browser document drops."
+                ),
+            )
+        },
+        "/documents/runs/{run_id}": {
+            "get": _op(
+                "getDocumentRun",
+                "Get one document run and its lineage receipt",
+                "3 · document intake",
+                _ref("DocumentRun"),
+                parameters=[
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                extra_responses={"404": _ERR},
+            )
+        },
+        "/ml/train": {
+            "post": _op(
+                "trainDocumentClassifier",
+                "Train and evaluate the shared document classifier",
+                "5 · MLOps",
+                _ref("DocumentModel"),
+                request_schema=_ref("DocumentTrainingRequest"),
+                success_status="201",
+                success_description="Model trained and registered",
+                description=(
+                    "Corporate poweruser-only deterministic train and holdout evaluation. "
+                    "SageMaker mode can return 202 after a bounded training job is "
+                    "actually submitted; demo mode never claims that cloud job."
+                ),
+                extra_responses={
+                    "202": _json(_ref("DocumentModel"), "SageMaker job submitted"),
+                    "400": _ERR,
+                },
+            )
+        },
+        "/ml/models": {
+            "get": _op(
+                "listDocumentModels",
+                "List classifier versions and the champion alias",
+                "5 · MLOps",
+                _ref("DocumentModelsResponse"),
+            )
+        },
+        "/ml/models/{version}/deploy": {
+            "post": _op(
+                "deployDocumentModel",
+                "Promote one model version to champion",
+                "5 · MLOps",
+                _ref("DocumentDeployment"),
+                success_status="201",
+                success_description="Champion promoted",
+                parameters=[
+                    {
+                        "name": "version",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                description=(
+                    "Corporate poweruser-only promotion with an immutable deployment "
+                    "receipt. SageMaker mode requires an approved registered package."
+                ),
+                extra_responses={"404": _ERR, "409": _ERR},
+            )
+        },
+        "/ml/drift/evaluate": {
+            "post": _op(
+                "evaluateDocumentModelDrift",
+                "Evaluate champion label and vocabulary drift",
+                "5 · MLOps",
+                _ref("DocumentDriftReceipt"),
+                request_schema=_ref("DocumentDriftRequest"),
+                success_status="201",
+                success_description="Drift receipt created",
+                description=(
+                    "Corporate poweruser-only population stability and vocabulary drift "
+                    "check against supplied text or recent curated documents."
+                ),
+                extra_responses={"400": _ERR, "409": _ERR},
+            )
+        },
+        "/ml/ops/evidence": {
+            "get": _op(
+                "getDocumentMlOpsEvidence",
+                "Get model, deployment, and drift evidence",
+                "5 · MLOps",
+                _ref("DocumentMlOpsEvidence"),
+                description=(
+                    "Sanitized evidence separates locally completed deterministic work "
+                    "from actual SageMaker submissions and deployment targets."
+                ),
             )
         },
         "/scale/profiles": {
@@ -1680,21 +2182,42 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "the runtime role. All data is synthetic. No real CUI or PII is used."
             ),
             "contact": {"name": "Compass demo"},
-            "license": {"name": "Demonstration use only", "identifier": "LicenseRef-demo"},
+            "license": {
+                "name": "Demonstration use only",
+                "identifier": "LicenseRef-demo",
+            },
         },
         "servers": servers,
         "tags": [
-            {"name": "1 · identity", "description": "Who is calling, and with what entitlements"},
-            {"name": "3 · ingest", "description": "File drop, quality gate, live ticker"},
+            {
+                "name": "1 · identity",
+                "description": "Who is calling, and with what entitlements",
+            },
+            {
+                "name": "3 · ingest",
+                "description": "File drop, quality gate, live ticker",
+            },
             {"name": "4 · catalog", "description": "Datasets, quality scores, lineage"},
-            {"name": "5 · analytics", "description": "Topic model over curated abstracts"},
-            {"name": "6 · dashboard", "description": "KPIs, chat, anomalies, approvals, licenses"},
-            {"name": "7 · export", "description": "Governed export and the served contract"},
+            {
+                "name": "5 · analytics",
+                "description": "Topic model over curated abstracts",
+            },
+            {
+                "name": "6 · dashboard",
+                "description": "KPIs, chat, anomalies, approvals, licenses",
+            },
+            {
+                "name": "7 · export",
+                "description": "Governed export and the served contract",
+            },
             {
                 "name": "8 · scale lab",
                 "description": "Cost-gated synthetic workload rehearsal and evidence",
             },
-            {"name": "system evidence", "description": "Protected, sanitized runtime proof"},
+            {
+                "name": "system evidence",
+                "description": "Protected, sanitized runtime proof",
+            },
         ],
         "security": [{"cognitoJwt": []}],
         "paths": paths,
@@ -1705,8 +2228,8 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                     "scheme": "bearer",
                     "bearerFormat": "JWT",
                     "description": "Cognito user-pool token. The API Gateway JWT authorizer "
-                                   "validates it and the request context carries the "
-                                   "role / org_unit used for RLS.",
+                    "validates it and the request context carries the "
+                    "role / org_unit used for RLS.",
                 }
             },
             "responses": {

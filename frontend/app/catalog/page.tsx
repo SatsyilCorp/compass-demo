@@ -36,9 +36,9 @@ export default function CatalogPage() {
   return (
     <AppShell>
       <PageHeader
-        kicker="Mission flow | Govern"
+        kicker="Element 4 of 7 | Governance, Quality, and Catalog"
         icon={<Database className="size-[18px]" aria-hidden />}
-        title="Data Catalog"
+        title="Governed data and document catalog"
         lead="Every curated dataset in the S&T portfolio, with its data-quality gate result, freshness, and originating pipeline run. Expand a row for the score formula and rule-by-rule breakdown, or open the full lineage graph."
       />
 

@@ -25,6 +25,11 @@ build/
 *.egg-info/
 *.tsbuildinfo
 artifacts/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
 
 # --- Local / OS ---
 .DS_Store

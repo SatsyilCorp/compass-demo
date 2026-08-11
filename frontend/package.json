@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test:scenario": "node --test --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs components/requirements/model.test.ts lib/auth/identity-contract.test.ts lib/mission-data-source.test.ts lib/mock/export-contract.test.ts lib/mock/scenario-store.test.ts lib/scale/decision-projection.test.ts lib/scale/replay-adapter.test.ts",
+    "test:scenario": "node --test --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs components/requirements/model.test.ts lib/auth/identity-contract.test.ts lib/demonstration/trace.test.ts lib/documents/document-intake.test.ts lib/mlops/demo-model.test.ts lib/mlops/live-model.test.ts lib/mission-data-source.test.ts lib/mock/export-contract.test.ts lib/mock/scenario-store.test.ts lib/scale/decision-projection.test.ts lib/scale/replay-adapter.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

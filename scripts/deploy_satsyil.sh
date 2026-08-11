@@ -162,23 +162,24 @@ sam build \
   --config-env satsyil
 
 deploy_pass() {
-  local web_domain="${1:-}"
+  local identity_domain="${1:-}"
   local database_mode="${2:-$DATABASE_MODE}"
+  local cors_origin_domain="${3:-$identity_domain}"
   local web_parameters=(
     "DeployRevision=$DEPLOY_REVISION"
-    "WebCustomDomainName=$WEB_CUSTOM_DOMAIN_NAME"
-    "WebCertificateArn=$WEB_CERTIFICATE_ARN"
-    "WebHostedZoneId=$WEB_HOSTED_ZONE_ID"
   )
-  if [ -n "$web_domain" ]; then
-    web_parameters=(
-      "DeployRevision=$DEPLOY_REVISION"
+  if [ -n "$WEB_CUSTOM_DOMAIN_NAME" ]; then
+    web_parameters+=(
       "WebCustomDomainName=$WEB_CUSTOM_DOMAIN_NAME"
       "WebCertificateArn=$WEB_CERTIFICATE_ARN"
       "WebHostedZoneId=$WEB_HOSTED_ZONE_ID"
-      "WebCallbackUrl=https://$web_domain/login/"
-      "WebLogoutUrl=https://$web_domain/login/"
-      "WebOrigin=https://$web_domain"
+    )
+  fi
+  if [ -n "$identity_domain" ]; then
+    web_parameters+=(
+      "WebCallbackUrl=https://$identity_domain/login/"
+      "WebLogoutUrl=https://$identity_domain/login/"
+      "WebOrigin=https://$cors_origin_domain"
     )
   fi
 
@@ -225,7 +226,7 @@ if [ "$stack_exists" = true ]; then
   if [ -n "$WEB_CUSTOM_DOMAIN_NAME" ]; then
     identity_domain="$WEB_CUSTOM_DOMAIN_NAME"
   fi
-  deploy_pass "$identity_domain" "$DATABASE_MODE"
+  deploy_pass "$identity_domain" "$DATABASE_MODE" "$cloudfront_domain"
   unset identity_domain
 else
   echo "==> First deployment pass with recoverable database bootstrap"
@@ -241,7 +242,12 @@ else
   fi
 
   echo "==> Second deployment pass with exact web identity bindings"
-  deploy_pass "$cloudfront_domain" "$DATABASE_MODE"
+  identity_domain="$cloudfront_domain"
+  if [ -n "$WEB_CUSTOM_DOMAIN_NAME" ]; then
+    identity_domain="$WEB_CUSTOM_DOMAIN_NAME"
+  fi
+  deploy_pass "$identity_domain" "$DATABASE_MODE" "$cloudfront_domain"
+  unset identity_domain
 fi
 
 echo "==> Applying database migrations"

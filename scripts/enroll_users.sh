@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compatibility entrypoint for secure, resumable Cognito identity enrollment.
+# Canonical entrypoint for password-only team identities and a TOTP presenter.
 set -euo pipefail
 
 if [ "$#" -gt 1 ]; then
@@ -8,4 +8,4 @@ if [ "$#" -gt 1 ]; then
 fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "$here/provision_demo_identities.py" --stack "${1:-compass-demo}"
+exec python3 "$here/configure_demo_identity_posture.py" --stack "${1:-compass-demo}"
