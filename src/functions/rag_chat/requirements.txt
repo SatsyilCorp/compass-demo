@@ -1,0 +1,4 @@
+# No function-specific dependencies: psycopg2 comes from the CommonLayer,
+# boto3/botocore ship with the Lambda runtime. retrieval.py and rag.py are
+# vendored adaptations of the satsyil_search / satsyil_chatbot blocks (pure
+# Python, stdlib only).

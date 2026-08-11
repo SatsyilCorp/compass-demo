@@ -1,0 +1,212 @@
+# Compass intake pipeline - EXPRESS workflow.
+#
+# Fired by the RawObjectCreatedRule EventBridge rule whenever an object lands
+# under the raw bucket's drops/ prefix, and by POST /ingest/simulate.
+#
+# Input: an S3 "Object Created" event; only `$.detail` is read.
+#   { "detail": { "bucket": { "name": ... }, "object": { "key": ..., "size": ... } } }
+#
+#   Fetch ──► FetchGate ──skipped──► Skipped (Succeed)
+#                 │
+#                 ok
+#                 ▼
+#             Validate ──► QualityGate ──pass──► Persist ──► Curated (Succeed)
+#                                       └─fail─► Quarantine ──► Quarantined (Succeed)
+#
+# FetchGate exists because the EventBridge rule matches EVERY object created in
+# the bucket - including the export and RMF artifacts other functions write
+# there. The intake Lambda classifies those as `skipped` and the workflow ends
+# cleanly instead of failing a run for a file that was never an ingest drop.
+#
+# The Lambdas exchange a small manifest (batch_id, run_id, counts), never the
+# records themselves, so a large drop cannot approach the 256 KB state-payload
+# limit; each stage re-reads what it needs from `grants_raw` by batch_id.
+#
+# Every Task retries the transient Lambda faults (throttles, service errors,
+# and the cold-start VPC connect timeouts an Aurora-backed function can hit)
+# and catches everything else into a loud Fail state - an ingest that silently
+# "succeeds" after an error is worse than one that stops.
+#
+# ARNs are ${...} substitutions supplied by DefinitionSubstitutions in
+# template.yaml (IntakeFunctionArn, QualityGateFunctionArn).
+
+Comment: Compass ingest - land a dropped grants file, gate it, curate or quarantine it.
+StartAt: Fetch
+
+States:
+  # --- Land the drop in grants_raw (normalize + lineage) --------------------
+  Fetch:
+    Type: Task
+    Comment: Read the S3 object, normalize the schema variant, upsert grants_raw.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${IntakeFunctionArn}
+      Payload:
+        action: fetch
+        detail.$: $.detail
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+      - ErrorEquals: [States.Timeout]
+        IntervalSeconds: 5
+        MaxAttempts: 2
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    Next: FetchGate
+
+  FetchGate:
+    Type: Choice
+    Comment: Objects that are not ingest drops (exports, RMF artifacts) end here.
+    Choices:
+      - Variable: $.status
+        StringEquals: skipped
+        Next: Skipped
+      - Variable: $.status
+        StringEquals: ok
+        Next: Validate
+    Default: Failed
+
+  # --- Run the rules, score the batch, mark the rows -----------------------
+  Validate:
+    Type: Task
+    Comment: Quality rules -> grant_quality + row verdicts + the gate decision.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${QualityGateFunctionArn}
+      Payload:
+        action: validate
+        batch_id.$: $.batch_id
+        run_id.$: $.run_id
+        source_file.$: $.source_file
+        checked_at.$: $$.State.EnteredTime
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+      - ErrorEquals: [States.Timeout]
+        IntervalSeconds: 5
+        MaxAttempts: 2
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    Next: QualityGate
+
+  QualityGate:
+    Type: Choice
+    Comment: >-
+      Batch row pass-rate at or above QUALITY_PASS_THRESHOLD curates; below it
+      the whole batch is held. Rows that failed a rule are already marked
+      quarantined either way and are never curated.
+    Choices:
+      - Variable: $.gate
+        StringEquals: pass
+        Next: Persist
+      - Variable: $.gate
+        StringEquals: fail
+        Next: Quarantine
+    Default: Failed
+
+  # --- Curate the approved rows -------------------------------------------
+  Persist:
+    Type: Task
+    Comment: Insert gate-approved rows into grants_curated (RLS + embeddings).
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${IntakeFunctionArn}
+      Payload:
+        action: persist
+        batch_id.$: $.batch_id
+        run_id.$: $.run_id
+        source_file.$: $.source_file
+        rows_passed.$: $.rows_passed
+        overall_score.$: $.overall_score
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+      - ErrorEquals: [States.Timeout]
+        IntervalSeconds: 5
+        MaxAttempts: 2
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    Next: Curated
+
+  # --- Hold the batch ------------------------------------------------------
+  Quarantine:
+    Type: Task
+    Comment: Batch below threshold - held in grants_raw with a batch anomaly.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${QualityGateFunctionArn}
+      Payload:
+        action: quarantine
+        batch_id.$: $.batch_id
+        run_id.$: $.run_id
+        source_file.$: $.source_file
+        rows_checked.$: $.rows_checked
+        rows_failed.$: $.rows_failed
+        overall_score.$: $.overall_score
+        threshold.$: $.threshold
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 3
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: Failed
+    Next: Quarantined
+
+  # --- Terminal states -----------------------------------------------------
+  Curated:
+    Type: Succeed
+    Comment: Batch passed the gate and its clean rows are in grants_curated.
+
+  Quarantined:
+    Type: Succeed
+    Comment: Batch was held. Nothing curated; every row retained with its verdict.
+
+  Skipped:
+    Type: Succeed
+    Comment: The S3 object was not an ingest drop.
+
+  Failed:
+    Type: Fail
+    Error: CompassIntakeFailed
+    Cause: >-
+      Intake pipeline failed. Stage logs remain enabled without raw execution
+      data, and the failing Lambda emits a sanitized structured event to its
+      own CloudWatch log group.

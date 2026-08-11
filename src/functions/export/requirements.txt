@@ -1,0 +1,20 @@
+# Per-function dependencies for the export Lambda.
+#
+# Everything POST /export needs for CSV and JSON is in the Python standard
+# library (csv, json, base64) plus psycopg2 from the shared CommonLayer, so this
+# file is intentionally empty by default.
+#
+# --- Parquet -----------------------------------------------------------------
+# `format: "parquet"` requires pyarrow. It is NOT installed by default: the
+# arm64 manylinux wheel is roughly 90 MB unpacked and would dominate this
+# function's package for a format the demo rarely exercises. With pyarrow
+# absent, POST /export does not fail on a parquet request. It returns real CSV
+# with `requested_format: "parquet"` and a `note` saying the parquet layer is
+# not installed (see PARQUET_MISSING_NOTE in app.py).
+#
+# To turn parquet on, uncomment the pin below and redeploy. On macOS build in a
+# container so pip resolves the linux/aarch64 wheel rather than a darwin one:
+#
+#     sam build --use-container && sam deploy
+#
+# pyarrow==17.0.0

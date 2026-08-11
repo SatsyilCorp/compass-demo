@@ -1,0 +1,1388 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Compass - US Navy/ONR S&T Portfolio Intelligence demo (single stack,
+  us-east-1). Everything is created in-template for reproducibility: a minimal
+  VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito (MFA ON,
+  TOTP-only) with a JWT-guarded HttpApi, one Lambda per src/functions dir on a
+  shared CommonLayer, an Express intake state machine fired by S3 -> EventBridge,
+  an on-demand Kinesis ticker stream, a private S3 + CloudFront web tier behind
+  a CLOUDFRONT-scope WAF, and a customer-managed KMS key over data at rest.
+  All data is synthetic (mock ONR portfolio) - no real CUI/PII.
+  NOTE: the WAF WebACL is Scope CLOUDFRONT, so this stack MUST deploy in
+  us-east-1 (pinned in samconfig.toml).
+
+# -----------------------------------------------------------------------------
+# Parameters
+# -----------------------------------------------------------------------------
+Parameters:
+
+  WebCallbackUrl:
+    Type: String
+    Default: ""
+    Description: >
+      Deployed OAuth callback URL. The SPA (react-oidc-context, trailingSlash
+      static export) uses /login/ as its redirect_uri, so use e.g.
+      https://dXXXX.cloudfront.net/login/. Empty on the FIRST deploy
+      (CloudFront domain not yet known); fill it in samconfig.toml and
+      redeploy. http://localhost:3000/login/ is always registered for local dev.
+
+  WebLogoutUrl:
+    Type: String
+    Default: ""
+    Description: >
+      Deployed post-logout return URL, e.g. https://dXXXX.cloudfront.net/login/.
+      Same two-deploy dance as WebCallbackUrl.
+
+  WebOrigin:
+    Type: String
+    Default: ""
+    Description: >
+      Deployed web origin for API CORS, e.g. https://dXXXX.cloudfront.net.
+      Empty on the first deploy; http://localhost:3000 is always allowed.
+
+  CognitoDomainPrefix:
+    Type: String
+    Default: ""
+    Description: >
+      Globally-unique Cognito hosted-UI domain prefix. Leave empty to use
+      compass-demo-<account-id>.
+
+  ExportMaxRows:
+    Type: Number
+    Default: 5000
+    Description: >
+      Aggregation-guard threshold for POST /export - requests above this row
+      count return HTTP 428 (approval required) unless an approval token is
+      attached (see docs/CONTRACTS.md).
+
+  WafRateLimit:
+    Type: Number
+    Default: 2000
+    Description: 5-minute request cap per source IP on the WAF rate rule.
+
+  StreamTickerState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: >
+      EventBridge schedule that invokes the intake Lambda once a minute to
+      publish synthetic ticker records onto the Kinesis stream. DISABLED
+      switches the ticker off between demos.
+
+  DeploySecurityBaseline:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Toggle GuardDuty + Security Hub + Macie. These are ACCOUNT SINGLETONS:
+      only one stack per account may own them, so they default off. The KMS key
+      and the CloudFront WAF WebACL are NOT behind this flag; they always deploy.
+
+# -----------------------------------------------------------------------------
+# Conditions
+# -----------------------------------------------------------------------------
+Conditions:
+  EnableSecurityBaseline: !Equals [!Ref DeploySecurityBaseline, "true"]
+  HasWebCallbackUrl: !Not [!Equals [!Ref WebCallbackUrl, ""]]
+  HasWebLogoutUrl: !Not [!Equals [!Ref WebLogoutUrl, ""]]
+  HasWebOrigin: !Not [!Equals [!Ref WebOrigin, ""]]
+  HasCognitoDomainPrefix: !Not [!Equals [!Ref CognitoDomainPrefix, ""]]
+
+# -----------------------------------------------------------------------------
+# Globals - every Lambda: python3.11 on arm64, X-Ray on, DB contract env vars
+# (see src/common/python/compass_common/config.py for the env-var contract).
+# -----------------------------------------------------------------------------
+Globals:
+  Function:
+    # python3.12, not 3.11: Lambda disabled creation of new python3.11
+    # functions on 2026-07-31 (cfn-lint E2531), so a fresh deploy of this
+    # stack MUST use a newer runtime. All handler code is 3.11-compatible.
+    Runtime: python3.12
+    Architectures: [arm64]
+    Timeout: 30
+    MemorySize: 512
+    Tracing: Active
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+        DB_HOST: !GetAtt DbCluster.Endpoint.Address
+        DB_NAME: compass
+        DB_SECRET_ARN: !GetAtt DbCluster.MasterUserSecret.SecretArn
+        DB_SCHEMA: compass
+        BEDROCK_CHAT_MODEL: amazon.nova-lite-v1:0
+        BEDROCK_EMBED_MODEL: amazon.titan-embed-text-v2:0
+        DEPLOY_REV: "2"
+
+Resources:
+
+  # ===========================================================================
+  # (1) Minimal VPC - 2 public + 2 private subnets across two AZs, one NAT.
+  #     Private subnets host every DB-touching Lambda and the Aurora cluster;
+  #     NAT gives those Lambdas the outbound path to Bedrock / Secrets Manager /
+  #     S3 / Kinesis / Step Functions. Created in-template on purpose: the whole
+  #     demo must stand up from `sam deploy` alone (reproducibility requirement).
+  # ===========================================================================
+
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-vpc" }
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-igw" }
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-public-a" }
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-public-b" }
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-a" }
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-b" }
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-public-rt" }
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  # One NAT (not one per AZ) - deliberate demo-cost tradeoff, noted honestly:
+  # an AZ outage would sever private-subnet egress until repair.
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-nat" }
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-rt" }
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Compass DB-touching Lambdas (egress only)
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: All egress (Aurora, Bedrock, AWS APIs via NAT).
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-lambda-sg" }
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Compass Aurora cluster - PostgreSQL from Lambdas only
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+          Description: PostgreSQL from the Lambda security group.
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-db-sg" }
+
+  # ===========================================================================
+  # (2) Customer-managed KMS key - encrypts the Aurora cluster + its master
+  #     secret, both S3 buckets, and the Kinesis stream. Always deployed (NOT
+  #     behind DeploySecurityBaseline). The CloudFront statement lets OAC serve
+  #     KMS-encrypted web objects; it is account-scoped (not distribution-
+  #     scoped) to avoid a key<->distribution circular dependency.
+  # ===========================================================================
+
+  AppKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Compass customer-managed key for DB, buckets, stream, secrets.
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAccountRoot
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: kms:*
+            Resource: "*"
+          - Sid: AllowCloudFrontOacDecrypt
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: kms:Decrypt
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  AppKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${AWS::StackName}"
+      TargetKeyId: !Ref AppKey
+
+  # ===========================================================================
+  # (3) Aurora Serverless v2 PostgreSQL - created IN-TEMPLATE (reproducibility
+  #     requirement). RDS manages the master secret in Secrets Manager
+  #     (ManageMasterUserPassword) so no credential ever appears in the
+  #     template or samconfig. The migrator Lambda applies db/migrations
+  #     (schema `compass`, FORCE RLS, pgvector) as the owner role; app Lambdas
+  #     SET ROLE compass_app at connect time (see compass_common.db).
+  # ===========================================================================
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Compass private subnets.
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+  DbCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      DBClusterIdentifier: !Sub "${AWS::StackName}-db"
+      Engine: aurora-postgresql
+      EngineVersion: "16.9"
+      DatabaseName: compass
+      MasterUsername: compass_admin
+      ManageMasterUserPassword: true
+      MasterUserSecret:
+        KmsKeyId: !Ref AppKey
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 4
+      StorageEncrypted: true
+      KmsKeyId: !Ref AppKey
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DbSecurityGroup
+      Port: 5432
+      BackupRetentionPeriod: 1
+      CopyTagsToSnapshot: true
+      DeletionProtection: false   # demo stack - must tear down cleanly
+
+  DbInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${AWS::StackName}-db-writer"
+      DBClusterIdentifier: !Ref DbCluster
+      Engine: aurora-postgresql
+      DBInstanceClass: db.serverless
+      PubliclyAccessible: false
+
+  # ===========================================================================
+  # (4) Cognito - MFA ON (TOTP only), 16-char password policy, two demo groups
+  #     that map 1:1 to the RLS personas in docs/CONTRACTS.md:
+  #       compass-poweruser -> org_unit ONR-Corporate (sees all rows)
+  #       compass-viewer    -> org_unit Code-30       (sees Code-30 only)
+  # ===========================================================================
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      MfaConfiguration: "ON"
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true   # demo personas are seeded, no self-signup
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 16
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !If
+        - HasCognitoDomainPrefix
+        - !Ref CognitoDomainPrefix
+        - !Sub "${AWS::StackName}-${AWS::AccountId}"
+      UserPoolId: !Ref UserPool
+
+  PowerUserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: compass-poweruser
+      Description: "Portfolio power user - org_unit ONR-Corporate, sees the whole portfolio"
+      UserPoolId: !Ref UserPool
+      Precedence: 10
+
+  ViewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: compass-viewer
+      Description: "Program-office viewer - org_unit Code-30, RLS-scoped to Code-30 rows"
+      UserPoolId: !Ref UserPool
+      Precedence: 20
+
+  WebClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub "${AWS::StackName}-web"
+      GenerateSecret: false
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthFlows: [code]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: [openid, email, profile]
+      # localhost is always registered; the CloudFront URLs are parameters
+      # filled on the SECOND deploy (the domain does not exist until the first).
+      # /login/ (with the trailing slash) is the SPA's actual redirect_uri:
+      # see frontend/lib/auth/providers.tsx and next.config.ts trailingSlash.
+      CallbackURLs: !If
+        - HasWebCallbackUrl
+        - - http://localhost:3000/login/
+          - !Ref WebCallbackUrl
+        - - http://localhost:3000/login/
+      LogoutURLs: !If
+        - HasWebLogoutUrl
+        - - http://localhost:3000/login/
+          - !Ref WebLogoutUrl
+        - - http://localhost:3000/login/
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 8
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: hours
+
+  # ===========================================================================
+  # (5) HttpApi - JWT authorizer (Cognito issuer) as the DEFAULT authorizer, so
+  #     every route is deny-by-default: no valid token, no entry. Handlers read
+  #     claims (incl. cognito:groups) from requestContext.authorizer.jwt.claims
+  #     and derive org_unit via compass_common. The CompassContextAuthorizer
+  #     (the authorizer Lambda) is also registered as a named REQUEST authorizer
+  #     that validates the same Cognito JWT itself and injects
+  #     {role, org_unit, groups} into the request context for any route that
+  #     opts in per-event - and it serves GET /me.
+  # ===========================================================================
+
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/http-api/${AWS::StackName}"
+      RetentionInDays: 14
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","path":"$context.path","status":"$context.status","responseLatency":"$context.responseLatency","authorizerError":"$context.authorizer.error"}'
+      CorsConfiguration:
+        # Keep AllowOrigins a literal list through the SAM transform. Wrapping
+        # the entire list in Fn::If collapses the generated OpenAPI CORS object
+        # to an origin array, so API Gateway receives no CORS configuration.
+        AllowOrigins:
+          - http://localhost:3000
+          - !If [HasWebOrigin, !Ref WebOrigin, !Ref "AWS::NoValue"]
+        AllowHeaders: [Content-Type, Authorization]
+        AllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
+        MaxAge: 600
+      Auth:
+        DefaultAuthorizer: CognitoJwtAuthorizer
+        Authorizers:
+          CognitoJwtAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              # Web app sends ID tokens (aud = client id); access tokens carry
+              # client_id instead of aud - API Gateway checks either.
+              audience:
+                - !Ref WebClient
+          CompassContextAuthorizer:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            AuthorizerPayloadFormatVersion: "2.0"
+            EnableSimpleResponses: true
+            EnableFunctionDefaultPermissions: true
+            Identity:
+              Headers: [Authorization]
+
+  # ===========================================================================
+  # (6) Shared CommonLayer - compass_common (config, db w/ SET ROLE + RLS GUC,
+  #     http, llm/Bedrock, audit) + psycopg2 from src/common/requirements.txt.
+  # ===========================================================================
+
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-common"
+      Description: compass_common helpers + psycopg2.
+      ContentUri: src/common
+      CompatibleRuntimes: [python3.12]
+      CompatibleArchitectures: [arm64]
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: makefile
+      BuildArchitecture: arm64
+
+  # ===========================================================================
+  # (7) Data plane - raw landing bucket (EventBridge notifications on) and the
+  #     on-demand Kinesis ticker stream, both under the customer KMS key.
+  # ===========================================================================
+
+  RawBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-raw-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt AppKey.Arn
+            BucketKeyEnabled: true
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-incomplete-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  TickerStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub "${AWS::StackName}-ticker"
+      StreamModeDetails:
+        StreamMode: ON_DEMAND
+      RetentionPeriodHours: 24
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: !Ref AppKey
+
+  # ===========================================================================
+  # (8) Lambda functions - one per src/functions dir, all on CommonLayer.
+  #     DB-touching functions run in the private subnets. Route map follows
+  #     docs/CONTRACTS.md exactly (see each function's Events).
+  # ===========================================================================
+
+  # --- authorizer: GET /me + the named Lambda REQUEST authorizer. No VPC/DB:
+  #     identity, role and org_unit derive entirely from the Cognito JWT.
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-authorizer"
+      CodeUri: src/functions/authorizer/
+      Handler: app.handler
+      MemorySize: 256
+      Timeout: 10
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          WEB_CLIENT_ID: !Ref WebClient
+      Events:
+        GetMe:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /me
+
+  # --- intake: ingest simulation + status + stream ticker; also the first
+  #     worker of the intake state machine and the scheduled Kinesis producer.
+  IntakeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-intake"
+      CodeUri: src/functions/intake/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 60
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Environment:
+        Variables:
+          RAW_BUCKET: !Ref RawBucket
+          STREAM_NAME: !Ref TickerStream
+          # Name-derived ARN (not !Ref) to avoid a circular dependency with
+          # the state machine, whose definition references this function.
+          INTAKE_STATE_MACHINE_ARN: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-intake"
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsForDataPlane
+              Effect: Allow
+              Action: [kms:Decrypt, kms:GenerateDataKey]
+              Resource: !GetAtt AppKey.Arn
+            - Sid: RawBucketRW
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+              Resource:
+                - !GetAtt RawBucket.Arn
+                - !Sub "${RawBucket.Arn}/*"
+            - Sid: TickerStreamRW
+              Effect: Allow
+              Action:
+                - kinesis:PutRecord
+                - kinesis:PutRecords
+                - kinesis:GetRecords
+                - kinesis:GetShardIterator
+                - kinesis:DescribeStream
+                - kinesis:DescribeStreamSummary
+                - kinesis:ListShards
+              Resource: !GetAtt TickerStream.Arn
+            - Sid: StartIntakeStateMachine
+              Effect: Allow
+              Action: states:StartExecution
+              Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-intake"
+            - Sid: BedrockEmbed
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+      Events:
+        SimulateIngest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /ingest/simulate
+        IngestStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /ingest/status
+        StreamRecent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /stream/recent
+        StreamTick:
+          Type: Schedule
+          Properties:
+            Name: !Sub "${AWS::StackName}-stream-tick"
+            Description: Once-a-minute synthetic ticker producer onto Kinesis.
+            Schedule: rate(1 minute)
+            State: !Ref StreamTickerState
+            Input: '{"action": "stream_tick"}'
+
+  # --- quality_gate: rule engine invoked by the intake state machine; writes
+  #     grant_quality + lineage. Not routed on the API.
+  QualityGateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-quality-gate"
+      CodeUri: src/functions/quality_gate/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 60
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Environment:
+        Variables:
+          RAW_BUCKET: !Ref RawBucket
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsForDataPlane
+              Effect: Allow
+              Action: [kms:Decrypt, kms:GenerateDataKey]
+              Resource: !GetAtt AppKey.Arn
+            - Sid: RawBucketRead
+              Effect: Allow
+              Action: [s3:GetObject, s3:ListBucket]
+              Resource:
+                - !GetAtt RawBucket.Arn
+                - !Sub "${RawBucket.Arn}/*"
+            - Sid: BedrockEmbed
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+
+  # --- catalog: GET /catalog + GET /catalog/{id}/lineage.
+  CatalogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-catalog"
+      CodeUri: src/functions/catalog/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 30
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        ListCatalog:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /catalog
+        GetLineage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /catalog/{id}/lineage
+
+  # --- analytics: POST /analytics/run + GET /analytics/{run_id}. Topic model
+  #     over curated abstracts - the heavy one (1024 MB / 120 s).
+  AnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-analytics"
+      CodeUri: src/functions/analytics/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 120
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+            - Sid: BedrockModels
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+      Events:
+        RunAnalytics:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /analytics/run
+        GetAnalytics:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /analytics/{run_id}
+
+  # --- dashboard: GET /dashboard - one round trip: KPI tiles + every chart
+  #     series, shaped to frontend/lib/types.ts::DashboardResponse.
+  DashboardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-dashboard"
+      CodeUri: src/functions/dashboard/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 30
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        GetDashboard:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /dashboard
+
+  # --- summarize: GET /anomalies + the weekly executive summary (Bedrock Nova
+  #     Lite) generated on direct invoke ({"action": "weekly_summary"}).
+  #     GET /dashboard is served by DashboardFunction above (its response is
+  #     the locked frontend contract shape).
+  SummarizeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-summarize"
+      CodeUri: src/functions/summarize/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 60
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+            - Sid: BedrockChat
+              Effect: Allow
+              Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0"
+      Events:
+        GetAnomalies:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /anomalies
+
+  # --- rag_chat: POST /chat - RAG over curated grants via Bedrock (in-boundary
+  #     only: Nova Lite chat + Titan v2 embeddings, per CONTRACTS).
+  RagChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-rag-chat"
+      CodeUri: src/functions/rag_chat/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 60
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+            - Sid: BedrockModels
+              Effect: Allow
+              Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+      Events:
+        PostChat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /chat
+
+  # --- approvals: POST /approvals - create/advance an approval.
+  ApprovalsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-approvals"
+      CodeUri: src/functions/approvals/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 15
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        PostApprovals:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /approvals
+
+  # --- license: GET /licenses - license lifecycle table.
+  LicenseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-license"
+      CodeUri: src/functions/license/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 15
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+      Events:
+        GetLicenses:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /licenses
+
+  # --- export: POST /export (RLS/CLS + aggregation guard + audit_log) and
+  #     GET /openapi.json (the served OpenAPI 3.1 contract - element 7).
+  ExportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-export"
+      CodeUri: src/functions/export/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 120
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Environment:
+        Variables:
+          EXPORT_MAX_ROWS: !Ref ExportMaxRows
+          EXPORT_BUCKET: !Ref RawBucket   # large exports land under exports/
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsForDataPlane
+              Effect: Allow
+              Action: [kms:Decrypt, kms:GenerateDataKey]
+              Resource: !GetAtt AppKey.Arn
+            - Sid: ExportPrefixRW
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub "${RawBucket.Arn}/exports/*"
+      Events:
+        PostExport:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /export
+        GetOpenApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /openapi.json
+
+  # --- rmf_artifact: generates RMF/ATO evidence artifacts from the live stack
+  #     (direct invoke; no API route in CONTRACTS).
+  RmfArtifactFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-rmf-artifact"
+      CodeUri: src/functions/rmf_artifact/
+      Handler: app.handler
+      MemorySize: 1024
+      Timeout: 120
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsForDataPlane
+              Effect: Allow
+              Action: [kms:Decrypt, kms:GenerateDataKey]
+              Resource: !GetAtt AppKey.Arn
+            - Sid: RmfArtifactWrite
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub "${RawBucket.Arn}/rmf/*"
+            - Sid: BedrockChat
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0"
+
+  # --- migrator: in-VPC SQL runner that applies db/migrations against the
+  #     private cluster as the owner role (invoke directly; no API route).
+  MigratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-migrator"
+      CodeUri: src/functions/migrator/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 300
+      Layers: [!Ref CommonLayer]
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Policies:
+        - Statement:
+            - Sid: DbSecretRead
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !GetAtt DbCluster.MasterUserSecret.SecretArn
+            - Sid: KmsDecrypt
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+
+  # ===========================================================================
+  # (9) Intake pipeline - Express state machine (intake -> quality gate) fired
+  #     by EventBridge whenever an object lands in the raw bucket.
+  # ===========================================================================
+
+  IntakeStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}-intake"
+      RetentionInDays: 14
+
+  IntakeStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-intake"
+      Type: EXPRESS
+      DefinitionUri: statemachines/intake.asl.yaml
+      DefinitionSubstitutions:
+        IntakeFunctionArn: !GetAtt IntakeFunction.Arn
+        QualityGateFunctionArn: !GetAtt QualityGateFunction.Arn
+      Logging:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt IntakeStateMachineLogGroup.Arn
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref IntakeFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref QualityGateFunction }
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: "*"
+
+  EventsToStatesRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: start-intake-state-machine
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref IntakeStateMachine
+
+  RawObjectCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-raw-object-created"
+      Description: Raw grant file landed in S3 -> start the intake pipeline.
+      State: ENABLED
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Ref RawBucket]
+      Targets:
+        - Id: intake-state-machine
+          Arn: !Ref IntakeStateMachine
+          RoleArn: !GetAtt EventsToStatesRole.Arn
+
+  # ===========================================================================
+  # (10) Web tier - private S3 + OAC + CloudFront (PriceClass_100) with the
+  #      Next.js trailing-slash path-rewrite function (proven pattern from a prior static-export deployment),
+  #      fronted by the CLOUDFRONT-scope WAF WebACL below.
+  # ===========================================================================
+
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-web-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt AppKey.Arn
+            BucketKeyEnabled: true
+
+  WebOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-web-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Maps trailing-slash + extensionless URLs (/catalog/, /dashboard) to the
+  # underlying /foo/index.html object in S3. Without this, every Next.js
+  # static-export route 404s in S3. (Working function proven in a prior static-export deployment.)
+  WebPathRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${AWS::StackName}-path-rewrite"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Map trailing-slash + extensionless paths to /index.html
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+            var request = event.request;
+            var uri = request.uri;
+            if (uri.endsWith('/')) {
+                request.uri += 'index.html';
+            } else if (uri.indexOf('.') === -1) {
+                request.uri += '/index.html';
+            }
+            return request;
+        }
+
+  WebDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Compass demo web - Next.js static export
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        WebACLId: !GetAtt WebAcl.Arn
+        Origins:
+          - Id: web-s3-origin
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !GetAtt WebOriginAccessControl.Id
+        DefaultCacheBehavior:
+          TargetOriginId: web-s3-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt WebPathRewriteFunction.FunctionMetadata.FunctionARN
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+            ErrorCachingMinTTL: 60
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${WebBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebDistribution.Id}"
+
+  # ===========================================================================
+  # (11) WAF - CLOUDFRONT-scope WebACL (this is why the stack is pinned to
+  #      us-east-1): AWS managed common rules + per-IP rate rule, associated
+  #      to the distribution via WebACLId above. Always deployed.
+  # ===========================================================================
+
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub "${AWS::StackName}-web-acl"
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub "${AWS::StackName}-web-acl"
+      Rules:
+        - Name: RateLimitPerIp
+          Priority: 0
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref WafRateLimit
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitPerIp
+        - Name: AWSCommonRules
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSCommonRules
+
+  # ===========================================================================
+  # (12) OPTIONAL account-singleton detectors - GuardDuty + Security Hub +
+  #      Macie, gated behind DeploySecurityBaseline (default false: only ONE
+  #      stack per account may own these).
+  # ===========================================================================
+
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Condition: EnableSecurityBaseline
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: SIX_HOURS
+
+  SecurityHub:
+    Type: AWS::SecurityHub::Hub
+    Condition: EnableSecurityBaseline
+    Properties: {}
+
+  MacieSession:
+    Type: AWS::Macie::Session
+    Condition: EnableSecurityBaseline
+    Properties:
+      FindingPublishingFrequency: SIX_HOURS
+      Status: ENABLED
+
+# -----------------------------------------------------------------------------
+# Outputs
+# -----------------------------------------------------------------------------
+Outputs:
+  ApiBaseUrl:
+    Description: HttpApi base URL (JWT-guarded, deny-by-default).
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  CloudFrontDomain:
+    Description: CloudFront domain - feed back into WebCallbackUrl/WebLogoutUrl/WebOrigin on the second deploy.
+    Value: !GetAtt WebDistribution.DomainName
+  UserPoolId:
+    Description: Cognito user pool id.
+    Value: !Ref UserPool
+  WebClientId:
+    Description: Cognito web app client id.
+    Value: !Ref WebClient
+  CognitoDomain:
+    Description: Cognito hosted UI domain.
+    Value: !Sub "${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+  WebBucketName:
+    Description: Private S3 bucket for the Next.js static export.
+    Value: !Ref WebBucket
+  WebDistributionId:
+    Description: CloudFront distribution id (for cache invalidation on deploy).
+    Value: !GetAtt WebDistribution.Id
+  DbSecretArn:
+    Description: RDS-managed master secret ({"username","password"}) for the Aurora cluster.
+    Value: !GetAtt DbCluster.MasterUserSecret.SecretArn
+  DbClusterEndpoint:
+    Description: Aurora writer endpoint (DB_HOST for local tooling).
+    Value: !GetAtt DbCluster.Endpoint.Address
+  RawBucketName:
+    Description: Raw landing-zone bucket (drop a file to fire the intake pipeline).
+    Value: !Ref RawBucket
+  TickerStreamName:
+    Description: On-demand Kinesis stream backing the ingest ticker.
+    Value: !Ref TickerStream
+  IntakeStateMachineArn:
+    Description: Express intake pipeline (intake -> quality gate).
+    Value: !Ref IntakeStateMachine
+  MigratorFunctionName:
+    Description: Invoke in-VPC to apply db/migrations against the private cluster.
+    Value: !Ref MigratorFunction

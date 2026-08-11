@@ -1,0 +1,239 @@
+@import "tailwindcss";
+
+/* Compass visual system: naval authority, editorial clarity, and operational proof. */
+@theme {
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #edf1f4;
+  --color-border: #d9e0e6;
+  --color-border-2: #e8edf1;
+  --color-border-strong: #b8c3cd;
+
+  --color-text: #1a2733;
+  --color-text-strong: #091723;
+  --color-text-muted: #4f5f6d;
+  --color-text-subtle: #52626f;
+
+  --color-gov-primary: #082b46;
+  --color-gov-primary-dark: #061f34;
+  --color-gov-primary-darker: #031522;
+  --color-gov-primary-light: #b9cedd;
+  --color-gov-primary-lighter: #e7eff4;
+  --color-gov-primary-vivid: #10496f;
+
+  --color-gov-secondary: #8c6a22;
+  --color-gov-secondary-dark: #6e5016;
+  --color-gov-secondary-light: #f5edd9;
+
+  --color-accent: #082b46;
+  --color-accent-ink: #061f34;
+  --color-accent-soft: #e7eff4;
+  --color-gold: #8c6a22;
+  --color-gold-ink: #745415;
+  --color-gold-light: #d5b665;
+  --color-gold-soft: #f5edd9;
+
+  --color-success: #13704a;
+  --color-success-dark: #0d5538;
+  --color-success-soft: #dff2e8;
+  --color-warn: #93630d;
+  --color-warn-dark: #704b08;
+  --color-warn-soft: #faefd3;
+  --color-danger: #a3312a;
+  --color-danger-dark: #7c231d;
+  --color-danger-soft: #f7e3e1;
+  --color-info: #205a8a;
+  --color-info-soft: #e4eef8;
+
+  --color-severity-low: #56626e;
+  --color-severity-medium: #93630d;
+  --color-severity-high: #b5541f;
+  --color-severity-critical: #a3312a;
+
+  --color-link: #082b46;
+  --color-action-bg: #082b46;
+  --color-action-bg-hover: #10496f;
+
+  --font-sans: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-mono-compass), "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --shadow-soft: 0 1px 2px rgba(9, 23, 35, 0.06), 0 1px 1px rgba(9, 23, 35, 0.03);
+  --shadow-card: 0 1px 2px rgba(9, 23, 35, 0.06), 0 8px 22px -16px rgba(8, 43, 70, 0.35);
+  --shadow-elevated: 0 18px 48px -24px rgba(3, 21, 34, 0.55), 0 3px 8px rgba(9, 23, 35, 0.1);
+}
+
+@layer utilities {
+  .bg-bg { background-color: var(--color-bg); }
+  .bg-surface { background-color: var(--color-surface); }
+  .bg-surface-2 { background-color: var(--color-surface-2); }
+  .text-text { color: var(--color-text); }
+  .text-text-strong { color: var(--color-text-strong); }
+  .text-text-muted { color: var(--color-text-muted); }
+  .text-text-subtle { color: var(--color-text-subtle); }
+  .text-link { color: var(--color-link); }
+  .text-danger { color: var(--color-danger); }
+  .text-warn { color: var(--color-warn-dark); }
+  .text-success { color: var(--color-success-dark); }
+  .text-info { color: var(--color-info); }
+  .bg-danger-soft { background-color: var(--color-danger-soft); }
+  .bg-warn-soft { background-color: var(--color-warn-soft); }
+  .bg-success-soft { background-color: var(--color-success-soft); }
+  .bg-info-soft { background-color: var(--color-info-soft); }
+  .border-border { border-color: var(--color-border); }
+  .border-border-2 { border-color: var(--color-border-2); }
+  .border-danger { border-color: var(--color-danger); }
+  .border-warn { border-color: var(--color-warn); }
+  .border-success { border-color: var(--color-success); }
+  .bg-action { background-color: var(--color-action-bg); }
+  .bg-action-hover:hover { background-color: var(--color-action-bg-hover); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .shadow-elevated { box-shadow: var(--shadow-elevated); }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-width: 320px;
+    font-family: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
+
+  button,
+  a,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+code,
+kbd,
+.font-mono {
+  font-family: var(--font-mono-compass), "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+*:focus-visible {
+  outline: 3px solid var(--color-gold-light);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-gov-primary);
+  color: #ffffff;
+}
+
+.compass-rail {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(180deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 68%, var(--color-gov-primary-darker) 100%);
+  background-size: 32px 32px, 32px 32px, 100% 100%;
+}
+
+.compass-aurora {
+  background:
+    radial-gradient(65% 55% at 82% 10%, rgba(213, 182, 101, 0.14) 0%, transparent 55%),
+    linear-gradient(160deg, var(--color-gov-primary) 0%, var(--color-gov-primary-dark) 62%, var(--color-gov-primary-darker) 100%);
+}
+
+.compass-grid-overlay {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.compass-radar {
+  opacity: 0.72;
+  background:
+    radial-gradient(circle at 82% 50%, transparent 0 8%, rgba(213, 182, 101, 0.12) 8.2% 8.35%, transparent 8.55% 16%, rgba(213, 182, 101, 0.09) 16.2% 16.35%, transparent 16.55% 24%, rgba(255, 255, 255, 0.055) 24.2% 24.35%, transparent 24.55% 33%, rgba(255, 255, 255, 0.04) 33.2% 33.35%, transparent 33.55%),
+    linear-gradient(118deg, transparent 0 67%, rgba(213, 182, 101, 0.07) 67.1% 67.25%, transparent 67.35%),
+    linear-gradient(28deg, transparent 0 72%, rgba(255, 255, 255, 0.035) 72.1% 72.25%, transparent 72.35%);
+}
+
+.compass-proof-panel::before {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, var(--color-gold-light), transparent);
+}
+
+@media (max-width: 359px) {
+  .compass-adaptive-wordmark-label {
+    display: none;
+  }
+}
+
+@media (min-width: 360px) and (max-width: 479px) {
+  .compass-adaptive-wordmark-label .compass-adaptive-wordmark-subtitle {
+    display: none;
+  }
+}
+
+.compass-proto-pill {
+  color: var(--color-text-strong);
+  background: var(--color-warn-soft);
+  border: 1px solid color-mix(in srgb, var(--color-warn) 40%, transparent);
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-surface-2) 0%, var(--color-border) 50%, var(--color-surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes compass-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.compass-rise {
+  animation: compass-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes compass-drawer-enter {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.compass-drawer-enter {
+  animation: compass-drawer-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

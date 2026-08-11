@@ -1,0 +1,225 @@
+# Compass Scale Run lifecycle. This is a Standard workflow because partition
+# processing, Athena conversion, cancellation, and cost evidence can outlive a
+# synchronous request. The workflow carries only run_id. Durable run and
+# partition state stays in the DynamoDB ledger.
+
+Comment: Coordinate one bounded synthetic Scale Run from dispatch through terminal evidence.
+StartAt: DispatchPartitions
+TimeoutSeconds: 14400
+
+States:
+  DispatchPartitions:
+    Type: Task
+    Comment: Create idempotent partition ledger rows and enqueue bounded work messages.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${ScaleControlFunctionArn}
+      Payload:
+        action: dispatch
+        run_id.$: $.run_id
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 4
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: RecordWorkflowFailure
+    Next: WaitForPartitions
+
+  WaitForPartitions:
+    Type: Wait
+    Seconds: 5
+    Next: CheckPartitions
+
+  CheckPartitions:
+    Type: Task
+    Comment: Read terminal partition counts, cancellation, deadline, and readiness.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${ScaleControlFunctionArn}
+      Payload:
+        action: check
+        run_id.$: $.run_id
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 4
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: RecordWorkflowFailure
+    Next: PartitionDecision
+
+  PartitionDecision:
+    Type: Choice
+    Choices:
+      - Variable: $.status
+        StringEquals: failed
+        Next: WorkflowFailed
+      - Variable: $.status
+        StringEquals: canceled
+        Next: RunCanceled
+      - Variable: $.status
+        StringEquals: completed
+        Next: RunCompleted
+      - Variable: $.status
+        StringEquals: completed_with_quarantine
+        Next: RunCompleted
+      - Variable: $.ready_for_athena
+        BooleanEquals: true
+        Next: StartAthenaConversion
+    Default: WaitForPartitions
+
+  StartAthenaConversion:
+    Type: Task
+    Comment: Start one idempotent JSON-to-Parquet conversion per projected dataset.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${ScaleControlFunctionArn}
+      Payload:
+        action: start_athena
+        run_id.$: $.run_id
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 3
+        MaxAttempts: 4
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: RecordWorkflowFailure
+    Next: WaitForAthena
+
+  WaitForAthena:
+    Type: Wait
+    Seconds: 5
+    Next: CheckAthena
+
+  CheckAthena:
+    Type: Task
+    Comment: Poll all six conversion queries and accumulate observed bytes scanned.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${ScaleControlFunctionArn}
+      Payload:
+        action: check_athena
+        run_id.$: $.run_id
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 3
+        MaxAttempts: 4
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: RecordWorkflowFailure
+    Next: AthenaDecision
+
+  AthenaDecision:
+    Type: Choice
+    Choices:
+      - Variable: $.status
+        StringEquals: failed
+        Next: WorkflowFailed
+      - Variable: $.status
+        StringEquals: canceled
+        Next: RunCanceled
+      - Variable: $.athena_complete
+        BooleanEquals: true
+        Next: FinalizeRun
+    Default: WaitForAthena
+
+  FinalizeRun:
+    Type: Task
+    Comment: Reconcile every Partition Receipt and write terminal evidence manifests.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${ScaleControlFunctionArn}
+      Payload:
+        action: finalize
+        run_id.$: $.run_id
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 3
+        MaxAttempts: 3
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: RecordWorkflowFailure
+    Next: FinalDisposition
+
+  FinalDisposition:
+    Type: Choice
+    Choices:
+      - Variable: $.status
+        StringEquals: completed
+        Next: RunCompleted
+      - Variable: $.status
+        StringEquals: completed_with_quarantine
+        Next: RunCompleted
+      - Variable: $.status
+        StringEquals: canceled
+        Next: RunCanceled
+    Default: WorkflowFailed
+
+  RunCompleted:
+    Type: Succeed
+    Comment: Terminal Run Manifest, Quality Receipt, Intelligence Receipt, and Cost Receipt recorded.
+
+  RunCanceled:
+    Type: Succeed
+    Comment: Cooperative cancellation was recorded and the active-run lock was released.
+
+  RecordWorkflowFailure:
+    Type: Task
+    Comment: Persist the guarded failure receipt and release the active-run lock.
+    Resource: arn:aws:states:::lambda:invoke
+    Parameters:
+      FunctionName: ${ScaleControlFunctionArn}
+      Payload:
+        action: fail
+        run_id.$: $.run_id
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 4
+        BackoffRate: 2
+    Next: WorkflowFailed
+
+  WorkflowFailed:
+    Type: Fail
+    Error: CompassScaleRunFailed
+    Cause: Scale Run orchestration stopped at a guarded failure. Inspect sanitized run evidence and logs.

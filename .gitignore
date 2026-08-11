@@ -1,0 +1,48 @@
+# --- Secrets & credentials (NEVER commit - evaluators have read access) ---
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+samconfig.toml
+samconfig-*.toml
+aws.json
+credentials
+**/secrets/**
+
+# --- Build artifacts ---
+.aws-sam/
+frontend/out/
+frontend/.next/
+frontend/playwright-report/
+frontend/test-results/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+*.tsbuildinfo
+artifacts/
+
+# --- Local / OS ---
+.DS_Store
+*.log
+.venv/
+venv/
+.idea/
+.vscode/
+
+# --- Data (mock data is committed under seed/; real data never is) ---
+*.parquet
+!seed/**/*.parquet
+scratch/
+.scratch/
+tmp/
+
+# Proposal and submission working files are maintained outside the shared codebase.
+volume_iv/
+
+# Generated status page (contains local paths) - regenerate with scripts/status_dashboard.py
+dashboard.html

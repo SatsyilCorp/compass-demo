@@ -1,0 +1,190 @@
+{
+  "project": "Compass",
+  "purpose": "Synthetic-data S&T Portfolio Intelligence demonstration for N0001426R4002 Volume IV, Factor 3.",
+  "updated_at": "2026-08-11",
+  "candidate_state": "Satsyil HA live acceptance candidate deployed and technically verified on 2026-08-11. Recording release remains blocked on exact-commit workflow evidence and a timed human rehearsal.",
+  "deployment_modes": {
+    "live": "Cognito, protected API, 17 Lambda functions, Step Functions, SQS, DynamoDB, Glue, Athena, Kinesis, Aurora PostgreSQL, Bedrock adapters, S3, CloudFront, WAF, KMS, and CloudWatch.",
+    "replay": "Deterministic persistent browser scenario for rehearsal and evaluator quickstart. Clearly labeled and never represented as cloud runtime evidence."
+  },
+  "implementation": {
+    "protected_api_operations": 25,
+    "protected_api_url_paths": 23,
+    "scale_api_operations": 8,
+    "lambda_functions": 17,
+    "system_evidence_route": "GET /system/evidence",
+    "database_migrations": [
+      "001_schema",
+      "002_rls",
+      "003_security_hardening",
+      "004_opaque_approval_capability"
+    ],
+    "identity": "Centralized Cognito group normalization with deny-by-default role and organization resolution. Fixed poweruser, reviewer, and viewer personas are ready with distinct TOTP factors.",
+    "cors": "Explicit origin allowlist shared by API Gateway and Lambda responses. Live verification passed all 25 protected operations.",
+    "export_approval": "Exact query fingerprint, separate-persona decision, opaque token with stored SHA-256 verifier, expiry, atomic one-time consumption, and append-only audit.",
+    "system_inspector": "Poweruser-only sanitized application projection with live or replay source label.",
+    "observability": "Eleven alarms, two CloudWatch dashboards, API access logs, X-Ray, workflow logs, and one stack-owned 14-day application log group with function-specific streams.",
+    "delivery": "Automated quality workflow, protected GitHub OIDC deployment path, and bounded named-profile Satsyil deployment path with account guard, container build, migrations, exact web identity binding, and edge invalidation.",
+    "demo_preparation": "Explicitly confirmed synthetic-only bounded reset, five fixed non-triggering staged fixtures, exact MFA identity preflight, baseline quality and lineage receipts, deployed analytics baseline, redacted readiness receipt, and one-shot live drop release.",
+    "scale_data_plane": "Four fixed workload profiles, deterministic six-domain generation, maximum 25,000 records per partition, one-active-run gate, Standard workflow, SQS backpressure, immutable lake parts, durable receipt ledger, Glue catalog, scan-limited Athena, full-corpus deterministic intelligence, and asynchronous governed Parquet export.",
+    "frontend": "Responsive nine-screen mission UI, interactive Scale Lab, tab-scoped Mission Evidence selection, aggregate Scale receipt Decision Brief, mobile navigation, presenter rehearsal guide, live backend evidence, and accessibility smoke coverage."
+  },
+  "database_resilience": {
+    "current_satsyil": "HA mode with one private encrypted Aurora writer and one reader, 14-day backup retention, and deletion protection enabled.",
+    "default_demo": "One Aurora writer, seven-day backup retention, deletion protection disabled.",
+    "production_target": "Government landing-zone deployment with tested restore and failover procedures, required recovery objectives, cross-region copy or replication as approved, per-AZ egress, longer retention, monitoring integration, and recurring exercises."
+  },
+  "cost_model": {
+    "fixed_monthly_ha_forecast_usd": 163.70,
+    "fixed_monthly_ha_forecast_status": "Forecast for a 730-hour month, not observed billing.",
+    "planned_incremental_total_usd": 0.21131732,
+    "accrued_model_estimate_total_usd": 0.09554118,
+    "runtime_cost_status": "Price-model estimates only. Billing reconciliation remains pending."
+  },
+  "release_gates": [
+    {
+      "name": "Repository content policy",
+      "command": "python3 scripts/check_no_em_dash.py",
+      "status": "passed_local"
+    },
+    {
+      "name": "Backend lint and tests",
+      "command": "ruff check src scripts && PYTHONPATH=src/common/python python3 -m pytest -q",
+      "status": "passed_local_209_tests"
+    },
+    {
+      "name": "Production dependency audits",
+      "command": "Run the pip-audit and pnpm audit --prod commands in docs/RUNBOOK.md.",
+      "status": "passed_local"
+    },
+    {
+      "name": "Migration package synchronization",
+      "command": "./src/functions/migrator/prepare_migrations.sh && git diff --exit-code -- db/migrations src/functions/migrator/migrations",
+      "status": "passed_local_and_live"
+    },
+    {
+      "name": "Infrastructure validation and build",
+      "command": "sam validate --lint && sam build --use-container",
+      "status": "passed_local_and_live"
+    },
+    {
+      "name": "Frontend type, scenario, build, and browser checks",
+      "command": "cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e2e",
+      "status": "passed_local_and_published_28_scenario_30_browser_6_intentional_mobile_skips"
+    },
+    {
+      "name": "Demo preparation",
+      "command": "Follow the bounded prepare command in docs/RUNBOOK.md.",
+      "status": "passed_live_19_of_19"
+    },
+    {
+      "name": "Scale acceptance matrix",
+      "command": "Run scripts/run_scale_acceptance.py for 1k, 10k, 100k, and 1m in order.",
+      "status": "passed_live_all_profiles_and_exports"
+    },
+    {
+      "name": "Live CORS and browser boundary",
+      "command": "Run the exact-origin CORS check and authenticated nine-screen browser tour.",
+      "status": "passed_live"
+    },
+    {
+      "name": "Exact-commit workflow evidence",
+      "command": "Preserve successful quality and controlled deployment records for the recording commit.",
+      "status": "pending_human_release_process"
+    },
+    {
+      "name": "Timed human rehearsal",
+      "command": "Follow docs/RUNBOOK.md and docs/DEMO_SCRIPT.md against the deployed candidate.",
+      "status": "pending_human_rehearsal"
+    }
+  ],
+  "live_verification": {
+    "stack": "HA deployment completed in Satsyil AWS on 2026-08-11.",
+    "database": "Writer and reader available, private and encrypted, with 14-day backups and deletion protection. All four migrations and runtime-role bootstrap passed.",
+    "identity": "Poweruser, reviewer, and viewer personas enabled, confirmed, correctly grouped, and ready with password plus TOTP.",
+    "preparation": "artifacts/demo-preflight.json reports ready with 19 of 19 checks passing.",
+    "api": "25 protected operations across 23 URL paths; live CORS verification passed all 25.",
+    "browser": "Real Cognito password and TOTP login loaded all nine screens. No Failed to fetch result or browser command error was observed. Scale controls worked, the 1M profile was unlocked, its exact cost gate was enabled, and the selected 1M receipt replaced the 400-grant Decision Brief with 1,000,000 total records and 200,000 grants.",
+    "security_boundary": "CSP, Permissions Policy, HSTS, and WAF verified live.",
+    "acceptance_transport": "Scale receipts use direct IAM Lambda invocation with a staged /prod API Gateway event. This exercises the deployed route handler and live data plane but bypasses Cognito, API Gateway transport, WAF, and the browser. Those boundaries were verified separately.",
+    "scale_runs": [
+      {
+        "profile": "1k",
+        "records": 1000,
+        "partitions": 6,
+        "duration_seconds": 21.351,
+        "quality_score": 98.90,
+        "passed_records": 989,
+        "quarantined_records": 11,
+        "anomalies": 143,
+        "export_rows": 989,
+        "planned_cost_usd": 0.01898818,
+        "accrued_model_estimate_usd": 0.01227206
+      },
+      {
+        "profile": "10k",
+        "records": 10000,
+        "partitions": 6,
+        "duration_seconds": 20.329,
+        "quality_score": 98.91,
+        "passed_records": 9891,
+        "quarantined_records": 109,
+        "anomalies": 1403,
+        "export_rows": 9891,
+        "planned_cost_usd": 0.01915314,
+        "accrued_model_estimate_usd": 0.01232190
+      },
+      {
+        "profile": "100k",
+        "records": 100000,
+        "partitions": 11,
+        "duration_seconds": 25.853,
+        "quality_score": 98.92,
+        "passed_records": 98921,
+        "quarantined_records": 1079,
+        "anomalies": 13727,
+        "export_rows": 98921,
+        "planned_cost_usd": 0.03380464,
+        "accrued_model_estimate_usd": 0.01785423
+      },
+      {
+        "profile": "1m",
+        "records": 1000000,
+        "partitions": 41,
+        "duration_seconds": 72.615,
+        "quality_score": 98.98,
+        "passed_records": 989852,
+        "quarantined_records": 10148,
+        "grants_analyzed": 200000,
+        "anomalies": 137852,
+        "export_rows": 989852,
+        "planned_cost_usd": 0.13937136,
+        "accrued_model_estimate_usd": 0.05309299
+      }
+    ],
+    "recording_release": false
+  },
+  "limitations": [
+    "Production-shaped bounded synthetic evidence, not an ATO or accreditation.",
+    "Not an unlimited-load, sustained-concurrency, or multi-terabyte capacity test.",
+    "Not Government-data processing evidence or Exhibit B certification.",
+    "No cross-region disaster recovery, tested restore, or validated production RTO or RPO.",
+    "Cost values are forecasts and model estimates, not observed billing."
+  ],
+  "external_inputs": [
+    "Final repository host, read-only evaluator access method, tag, and full commit SHA.",
+    "Final video host, private URL, password, runtime, and recording date.",
+    "Presenter names exactly matching Attachment 7 and Volume II resumes.",
+    "Actual recording timestamps for all seven elements and five strategic prompts.",
+    "Offeror exact legal name and submission date.",
+    "Submission and technical support point-of-contact details.",
+    "Exact-commit GitHub quality and controlled deployment records.",
+    "Bedrock model-access confirmation for the final recording path.",
+    "Final timed human rehearsal result."
+  ],
+  "recording_target": {
+    "planned_runtime": "39:15",
+    "maximum_runtime": "50:00",
+    "format": "Single continuous evidence-first run using the live application, terminal, and repository. No slides, marketing overlays, or post-production edits."
+  }
+}

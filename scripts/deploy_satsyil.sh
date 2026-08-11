@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+# Build and deploy a fresh production-scale Compass stack through the named
+# Satsyil AWS profile. The script never reads the repository's default SAM
+# config, so callback URLs from another account cannot cross into this stack.
+set -euo pipefail
+
+readonly REQUIRED_AWS_PROFILE="satsyil"
+if [ -n "${AWS_PROFILE:-}" ] && [ "$AWS_PROFILE" != "$REQUIRED_AWS_PROFILE" ]; then
+  echo "ERROR: this deployment entrypoint requires AWS_PROFILE=satsyil" >&2
+  exit 1
+fi
+export AWS_PROFILE="$REQUIRED_AWS_PROFILE"
+export AWS_DEFAULT_PROFILE="$REQUIRED_AWS_PROFILE"
+export AWS_REGION="${AWS_REGION:-us-east-1}"
+export AWS_DEFAULT_REGION="$AWS_REGION"
+
+# A named profile does not override ambient credential providers by itself.
+# Scrub them, then pass the profile explicitly to every AWS and SAM command.
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN
+unset AWS_ROLE_ARN AWS_ROLE_SESSION_NAME AWS_WEB_IDENTITY_TOKEN_FILE
+unset AWS_CONTAINER_CREDENTIALS_FULL_URI AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
+
+SATSYIL_EXPECTED_ACCOUNT_ID="${SATSYIL_EXPECTED_ACCOUNT_ID:-}"
+
+STACK_NAME="${STACK_NAME:-compass-demo}"
+DATABASE_MODE="${DATABASE_MODE:-ha}"
+SCALE_MAX_RECORDS="${SCALE_MAX_RECORDS:-1000000}"
+SCALE_MAX_CONCURRENCY="${SCALE_MAX_CONCURRENCY:-4}"
+SCALE_EXPORT_CONCURRENCY="${SCALE_EXPORT_CONCURRENCY:-2}"
+SCALE_MAX_COST_USD="${SCALE_MAX_COST_USD:-10}"
+SCALE_DATA_RETENTION_DAYS="${SCALE_DATA_RETENTION_DAYS:-7}"
+SCALE_EVIDENCE_RETENTION_DAYS="${SCALE_EVIDENCE_RETENTION_DAYS:-30}"
+SCALE_ATHENA_SCAN_CUTOFF_BYTES="${SCALE_ATHENA_SCAN_CUTOFF_BYTES:-10737418240}"
+COGNITO_DOMAIN_PREFIX="${COGNITO_DOMAIN_PREFIX:-satsyil-compass-demo}"
+DEPLOY_REVISION="${DEPLOY_REVISION:-local-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/.." && pwd)"
+config="$repo/samconfig-satsyil.toml"
+cd "$repo"
+
+if ! [[ "$SATSYIL_EXPECTED_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+  echo "ERROR: SATSYIL_EXPECTED_ACCOUNT_ID must be supplied as a 12-digit protected environment value" >&2
+  exit 1
+fi
+if [ "$AWS_REGION" != "us-east-1" ]; then
+  echo "ERROR: Compass CloudFront WAF resources require us-east-1" >&2
+  exit 1
+fi
+if [ "$DATABASE_MODE" != "demo" ] && [ "$DATABASE_MODE" != "ha" ]; then
+  echo "ERROR: DATABASE_MODE must be demo or ha" >&2
+  exit 1
+fi
+if ! [[ "$COGNITO_DOMAIN_PREFIX" =~ ^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$ ]]; then
+  echo "ERROR: COGNITO_DOMAIN_PREFIX must be a 2 to 63 character lowercase prefix" >&2
+  exit 1
+fi
+if [ ! -f "$config" ]; then
+  echo "ERROR: missing $config" >&2
+  exit 1
+fi
+
+aws_satsyil() {
+  aws --profile "$REQUIRED_AWS_PROFILE" --region "$AWS_REGION" "$@"
+}
+
+echo "==> Verifying the named Satsyil AWS session and expected account"
+caller_account="$(aws_satsyil sts get-caller-identity --query 'Account' --output text)"
+if [ "$caller_account" != "$SATSYIL_EXPECTED_ACCOUNT_ID" ]; then
+  echo "ERROR: the satsyil profile resolved to an unexpected AWS account; refusing deployment" >&2
+  exit 1
+fi
+unset caller_account SATSYIL_EXPECTED_ACCOUNT_ID
+
+stack_exists=false
+stack_probe=""
+if stack_probe="$(aws_satsyil cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query 'Stacks[0].StackStatus' \
+    --output text 2>&1)"; then
+  stack_exists=true
+  case "$stack_probe" in
+    CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE)
+      ;;
+    ROLLBACK_COMPLETE)
+      echo "ERROR: stack creation previously rolled back; inspect events and remove the failed stack before retrying" >&2
+      exit 1
+      ;;
+    *)
+      echo "ERROR: existing stack is not in an updateable state: $stack_probe" >&2
+      exit 1
+      ;;
+  esac
+elif [[ "$stack_probe" == *"(ValidationError)"* && "$stack_probe" == *"does not exist"* ]]; then
+  stack_exists=false
+else
+  echo "ERROR: unable to determine whether the target stack exists; refusing deployment" >&2
+  exit 1
+fi
+unset stack_probe
+
+if [ "$stack_exists" = false ]; then
+  vpc_count="$(aws_satsyil ec2 describe-vpcs --query 'length(Vpcs)' --output text)"
+  vpc_quota="$(aws_satsyil service-quotas get-service-quota \
+    --service-code vpc \
+    --quota-code L-F678F1CE \
+    --query 'Quota.Value' \
+    --output text)"
+  eip_count="$(aws_satsyil ec2 describe-addresses --query 'length(Addresses)' --output text)"
+  eip_quota="$(aws_satsyil service-quotas get-service-quota \
+    --service-code ec2 \
+    --quota-code L-0263D0A3 \
+    --query 'Quota.Value' \
+    --output text)"
+  if ! awk "BEGIN { exit !($vpc_count < $vpc_quota) }"; then
+    echo "ERROR: regional VPC quota has no free slot; wait for the submitted quota request" >&2
+    exit 1
+  fi
+  if ! awk "BEGIN { exit !($eip_count < $eip_quota) }"; then
+    echo "ERROR: regional Elastic IP quota has no free slot; wait for the submitted quota request" >&2
+    exit 1
+  fi
+fi
+
+echo "==> Verifying the Linux container build runtime"
+docker info >/dev/null
+
+echo "==> Staging database migrations"
+"$repo/src/functions/migrator/prepare_migrations.sh"
+
+echo "==> Validating the SAM template"
+sam validate \
+  --lint \
+  --region "$AWS_REGION" \
+  --profile "$REQUIRED_AWS_PROFILE" \
+  --config-file "$config" \
+  --config-env satsyil
+
+echo "==> Building Linux ARM Lambda packages"
+sam build \
+  --use-container \
+  --region "$AWS_REGION" \
+  --profile "$REQUIRED_AWS_PROFILE" \
+  --config-file "$config" \
+  --config-env satsyil
+
+deploy_pass() {
+  local web_domain="${1:-}"
+  local database_mode="${2:-$DATABASE_MODE}"
+  local web_parameters=(
+    "DeployRevision=$DEPLOY_REVISION"
+  )
+  if [ -n "$web_domain" ]; then
+    web_parameters=(
+      "DeployRevision=$DEPLOY_REVISION"
+      "WebCallbackUrl=https://$web_domain/login/"
+      "WebLogoutUrl=https://$web_domain/login/"
+      "WebOrigin=https://$web_domain"
+    )
+  fi
+
+  sam deploy \
+    --config-file "$config" \
+    --config-env satsyil \
+    --template-file "$repo/.aws-sam/build/template.yaml" \
+    --stack-name "$STACK_NAME" \
+    --region "$AWS_REGION" \
+    --profile "$REQUIRED_AWS_PROFILE" \
+    --resolve-s3 \
+    --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+    --no-confirm-changeset \
+    --no-fail-on-empty-changeset \
+    --parameter-overrides \
+      "DatabaseResilienceMode=$database_mode" \
+      "ExportMaxRows=5000" \
+      "WafRateLimit=2000" \
+      "StreamTickerState=ENABLED" \
+      "DeploySecurityBaseline=false" \
+      "ScaleFeatureEnabled=true" \
+      "ScaleMaxRecords=$SCALE_MAX_RECORDS" \
+      "ScaleMaxConcurrency=$SCALE_MAX_CONCURRENCY" \
+      "ScaleExportConcurrency=$SCALE_EXPORT_CONCURRENCY" \
+      "ScaleMaxEstimatedCostUsd=$SCALE_MAX_COST_USD" \
+      "ScaleDataRetentionDays=$SCALE_DATA_RETENTION_DAYS" \
+      "ScaleEvidenceRetentionDays=$SCALE_EVIDENCE_RETENTION_DAYS" \
+      "ScaleAthenaBytesScannedCutoff=$SCALE_ATHENA_SCAN_CUTOFF_BYTES" \
+      "CognitoDomainPrefix=$COGNITO_DOMAIN_PREFIX" \
+      "${web_parameters[@]}"
+}
+
+if [ "$stack_exists" = true ]; then
+  cloudfront_domain="$(aws_satsyil cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue | [0]' \
+    --output text)"
+  if [ -z "$cloudfront_domain" ] || [ "$cloudfront_domain" = "None" ]; then
+    echo "ERROR: existing stack did not return CloudFrontDomain" >&2
+    exit 1
+  fi
+  echo "==> Updating the existing stack with its exact web identity bindings"
+  deploy_pass "$cloudfront_domain" "$DATABASE_MODE"
+else
+  echo "==> First deployment pass with recoverable database bootstrap"
+  deploy_pass "" demo
+
+  cloudfront_domain="$(aws_satsyil cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue | [0]' \
+    --output text)"
+  if [ -z "$cloudfront_domain" ] || [ "$cloudfront_domain" = "None" ]; then
+    echo "ERROR: first deployment did not return CloudFrontDomain" >&2
+    exit 1
+  fi
+
+  echo "==> Second deployment pass with exact web identity bindings"
+  deploy_pass "$cloudfront_domain" "$DATABASE_MODE"
+fi
+
+echo "==> Applying database migrations"
+"$repo/scripts/migrate.sh" "$STACK_NAME" "$REQUIRED_AWS_PROFILE"
+
+echo "==> Building the authenticated live frontend"
+"$repo/scripts/build-frontend.sh" "$STACK_NAME" "$REQUIRED_AWS_PROFILE"
+
+echo "==> Publishing the frontend and waiting for edge invalidation"
+WAIT_FOR_INVALIDATION=true "$repo/scripts/upload-to-cloudfront.sh" "$STACK_NAME" "$REQUIRED_AWS_PROFILE"
+
+echo
+echo "Compass URL: https://$cloudfront_domain/"
+echo "Scale Lab: https://$cloudfront_domain/admin/scale/"
