@@ -3,8 +3,9 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   Compass - US Navy/ONR S&T Portfolio Intelligence demo (single stack,
   us-east-1). Everything is created in-template for reproducibility: a minimal
-  VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito (MFA ON,
-  TOTP-only) with a JWT-guarded HttpApi, one Lambda per src/functions dir on a
+  VPC + Aurora Serverless v2 PostgreSQL (RLS-enforced), Cognito with a
+  deployment-controlled TOTP requirement, a JWT-guarded HttpApi, one Lambda
+  per src/functions dir on a
   shared CommonLayer, an Express intake state machine fired by S3 -> EventBridge,
   an on-demand Kinesis ticker stream, a private S3 + CloudFront web tier behind
   a CLOUDFRONT-scope WAF, and a customer-managed KMS key over data at rest.
@@ -47,6 +48,15 @@ Parameters:
     Description: >
       Globally-unique Cognito hosted-UI domain prefix. Leave empty to use
       compass-demo-<account-id>.
+
+  MfaMode:
+    Type: String
+    Default: required
+    AllowedValues: [required, team_preview]
+    Description: >
+      required enforces software-token MFA for the evaluated demo. team_preview
+      keeps password authentication and named accounts but temporarily disables
+      the MFA challenge for controlled internal review.
 
   ExportMaxRows:
     Type: Number
@@ -155,6 +165,7 @@ Conditions:
   HasWebLogoutUrl: !Not [!Equals [!Ref WebLogoutUrl, ""]]
   HasWebOrigin: !Not [!Equals [!Ref WebOrigin, ""]]
   HasCognitoDomainPrefix: !Not [!Equals [!Ref CognitoDomainPrefix, ""]]
+  RequireMfa: !Equals [!Ref MfaMode, required]
   EnableDatabaseHa: !Equals [!Ref DatabaseResilienceMode, ha]
   EnableScaleFeature: !Equals [!Ref ScaleFeatureEnabled, "true"]
 
@@ -458,7 +469,7 @@ Resources:
       PubliclyAccessible: false
 
   # ===========================================================================
-  # (4) Cognito - MFA ON (TOTP only), 16-char password policy, two demo groups
+  # (4) Cognito - deployment-controlled TOTP, 16-char password policy, groups
   #     that map 1:1 to the RLS personas in docs/CONTRACTS.md:
   #       compass-poweruser -> org_unit ONR-Corporate (sees all rows)
   #       compass-viewer    -> org_unit Code-30       (sees Code-30 only)
@@ -470,9 +481,11 @@ Resources:
       UserPoolName: !Sub "${AWS::StackName}-users"
       AutoVerifiedAttributes: [email]
       UsernameAttributes: [email]
-      MfaConfiguration: "ON"
-      EnabledMfas:
-        - SOFTWARE_TOKEN_MFA
+      MfaConfiguration: !If [RequireMfa, "ON", "OFF"]
+      EnabledMfas: !If
+        - RequireMfa
+        - [SOFTWARE_TOKEN_MFA]
+        - !Ref "AWS::NoValue"
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true   # demo personas are seeded, no self-signup
       Policies:
@@ -2768,6 +2781,9 @@ Resources:
 # Outputs
 # -----------------------------------------------------------------------------
 Outputs:
+  MfaModeStatus:
+    Description: Active Cognito MFA posture for this deployment.
+    Value: !If [RequireMfa, required, team_preview]
   ScaleFeatureStatus:
     Description: Whether the optional, cost-bounded Scale Run data plane is deployed.
     Value: !If [EnableScaleFeature, enabled, disabled]

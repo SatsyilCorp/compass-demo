@@ -28,14 +28,16 @@ import type { MeResponse } from "@/lib/types";
  *
  *   1. Cognito Hosted UI redirect (or, in the offline demo, a persona
  *      switcher standing in for it - see lib/auth/demo-persona.ts).
- *   2. An MFA explainer, grounded in the real UserPool config in
- *      template.yaml (MfaConfiguration: ON, SOFTWARE_TOKEN_MFA).
+ *   2. An authentication-posture explainer, grounded in the selected
+ *      template.yaml MfaMode deployment parameter.
  *   3. A zero-trust / least-privilege panel, grounded in the real
  *      deny-by-default JWT authorizer + RLS/CLS story in docs/CONTRACTS.md
  *      and db/migrations/002_rls.sql.
  *   4. Once signed in, the actual GET /me response: role, org_unit, and the
  *      rest of the identity claim set the JWT authorizer derives.
  */
+const MFA_REQUIRED = process.env.NEXT_PUBLIC_MFA_MODE !== "team_preview";
+
 export default function LoginPage() {
   const auth = useAppAuth();
   const router = useRouter();
@@ -82,8 +84,8 @@ export default function LoginPage() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-gov-primary">Secure mission access</p>
           <h1 className="mt-1.5 text-2xl font-bold text-text-strong sm:text-3xl">Sign in to Compass</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
-            Identity, MFA, and every downstream row a user can see all derive from one Cognito JWT:
-            this page walks through how.
+            Identity, authentication controls, and every downstream row a user can see derive from one Cognito JWT.
+            This page shows the active deployment posture.
           </p>
 
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
@@ -128,7 +130,7 @@ function IdentityCard({
         </p>
         <p className="mt-2 text-[12.5px] leading-relaxed text-text-muted">
           Compass has no password form of its own - signing in redirects to the Cognito Hosted UI,
-          which challenges for a password and then a TOTP code before issuing a JWT carrying{" "}
+          which challenges for a password{MFA_REQUIRED ? " and then a TOTP code" : ""} before issuing a JWT carrying{" "}
           <code className="font-mono text-[11.5px]">cognito:groups</code>.
         </p>
         <button
@@ -185,7 +187,7 @@ function IdentityCard({
           <Field label="org_unit" value={me.org_unit} mono />
           <Field label="email" value={me.email} />
           <Field label="groups" value={me.groups.join(", ") || " - "} mono />
-          <Field label="assurance" value="Password + TOTP" />
+          <Field label="assurance" value={MFA_REQUIRED ? "Password + TOTP" : "Password, team preview"} />
         </dl>
       )}
 
@@ -224,13 +226,23 @@ function MfaExplainer() {
   return (
     <section className="rounded-lg border border-border bg-surface p-5 shadow-card">
       <p className="flex items-center gap-2 text-[13px] font-semibold text-text-strong">
-        <Smartphone className="size-4 text-gov-primary" aria-hidden /> Multi-factor authentication
+        <Smartphone className="size-4 text-gov-primary" aria-hidden /> Authentication posture
       </p>
       <ul className="mt-3 space-y-2 text-[12px] leading-relaxed text-text-muted">
         <li className="flex gap-2">
           <KeyRound className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          MFA is enforced pool-wide (<code className="font-mono text-[11px]">MfaConfiguration: ON</code>) with a TOTP
-          software token - no SMS fallback.
+          {MFA_REQUIRED ? (
+            <>
+              MFA is enforced pool-wide (<code className="font-mono text-[11px]">MfaConfiguration: ON</code>) with
+              a TOTP software token and no SMS fallback.
+            </>
+          ) : (
+            <>
+              Team preview mode is active (<code className="font-mono text-[11px]">MfaConfiguration: OFF</code>).
+              Named Cognito users, passwords, JWT authorization, and role-based access remain enforced while the
+              TOTP challenge is temporarily bypassed.
+            </>
+          )}
         </li>
         <li className="flex gap-2">
           <Lock className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
@@ -243,14 +255,14 @@ function MfaExplainer() {
         </li>
         <li className="flex gap-2">
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          ID and access tokens live 1 hour, refresh tokens 8 hours - short-lived by design, re-issued through the
-          same MFA-gated flow.
+          ID and access tokens live 1 hour and refresh tokens live 8 hours. The formal demo restores the same
+          TOTP-gated flow through the deployment-controlled MFA switch.
         </li>
       </ul>
       {AUTH_DISABLED && (
         <p className="mt-3 border-t border-border-2 pt-3 text-[11px] text-text-subtle">
-          None of this runs in this walkthrough - the Hosted UI redirect is bypassed for the offline demo. It is
-          real configuration on the deployed user pool.
+          The Hosted UI redirect is bypassed in the offline walkthrough. The deployed environment still uses
+          Cognito authentication and the selected deployment posture.
         </p>
       )}
     </section>

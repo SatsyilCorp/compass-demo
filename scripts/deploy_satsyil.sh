@@ -32,6 +32,7 @@ SCALE_DATA_RETENTION_DAYS="${SCALE_DATA_RETENTION_DAYS:-7}"
 SCALE_EVIDENCE_RETENTION_DAYS="${SCALE_EVIDENCE_RETENTION_DAYS:-30}"
 SCALE_ATHENA_SCAN_CUTOFF_BYTES="${SCALE_ATHENA_SCAN_CUTOFF_BYTES:-10737418240}"
 COGNITO_DOMAIN_PREFIX="${COGNITO_DOMAIN_PREFIX:-satsyil-compass-demo}"
+MFA_MODE="${MFA_MODE:-required}"
 DEPLOY_REVISION="${DEPLOY_REVISION:-local-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,6 +54,10 @@ if [ "$DATABASE_MODE" != "demo" ] && [ "$DATABASE_MODE" != "ha" ]; then
 fi
 if ! [[ "$COGNITO_DOMAIN_PREFIX" =~ ^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$ ]]; then
   echo "ERROR: COGNITO_DOMAIN_PREFIX must be a 2 to 63 character lowercase prefix" >&2
+  exit 1
+fi
+if [ "$MFA_MODE" != "required" ] && [ "$MFA_MODE" != "team_preview" ]; then
+  echo "ERROR: MFA_MODE must be required or team_preview" >&2
   exit 1
 fi
 if [ ! -f "$config" ]; then
@@ -139,6 +144,7 @@ sam validate \
 echo "==> Building Linux ARM Lambda packages"
 sam build \
   --use-container \
+  --no-cached \
   --region "$AWS_REGION" \
   --profile "$REQUIRED_AWS_PROFILE" \
   --config-file "$config" \
@@ -185,6 +191,7 @@ deploy_pass() {
       "ScaleEvidenceRetentionDays=$SCALE_EVIDENCE_RETENTION_DAYS" \
       "ScaleAthenaBytesScannedCutoff=$SCALE_ATHENA_SCAN_CUTOFF_BYTES" \
       "CognitoDomainPrefix=$COGNITO_DOMAIN_PREFIX" \
+      "MfaMode=$MFA_MODE" \
       "${web_parameters[@]}"
 }
 
@@ -228,3 +235,4 @@ WAIT_FOR_INVALIDATION=true "$repo/scripts/upload-to-cloudfront.sh" "$STACK_NAME"
 echo
 echo "Compass URL: https://$cloudfront_domain/"
 echo "Scale Lab: https://$cloudfront_domain/admin/scale/"
+echo "MFA mode: $MFA_MODE"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the Next.js static export against a deployed Compass stack.
 #
-# Reads ApiBaseUrl, CognitoDomain, UserPoolId, WebClientId, CloudFrontDomain
+# Reads ApiBaseUrl, CognitoDomain, UserPoolId, WebClientId, CloudFrontDomain,
+# and MfaModeStatus
 # from the CFN stack outputs and exports them as the NEXT_PUBLIC_* vars read
 # by frontend/lib/api.ts and frontend/lib/auth/{providers.tsx,use-app-auth.ts}
 # (see frontend/.env.example / docs/RUNBOOK.md §7). Live mode only - this
@@ -35,9 +36,11 @@ COGNITO_DOMAIN_HOST="$(outputs CognitoDomain)"
 USER_POOL_ID="$(outputs UserPoolId)"
 WEB_CLIENT_ID="$(outputs WebClientId)"
 CLOUDFRONT_DOMAIN="$(outputs CloudFrontDomain)"
+MFA_MODE_STATUS="$(outputs MfaModeStatus)"
 
 for name_val in "ApiBaseUrl:$API_BASE_URL" "CognitoDomain:$COGNITO_DOMAIN_HOST" \
-    "UserPoolId:$USER_POOL_ID" "WebClientId:$WEB_CLIENT_ID" "CloudFrontDomain:$CLOUDFRONT_DOMAIN"; do
+    "UserPoolId:$USER_POOL_ID" "WebClientId:$WEB_CLIENT_ID" "CloudFrontDomain:$CLOUDFRONT_DOMAIN" \
+    "MfaModeStatus:$MFA_MODE_STATUS"; do
   key="${name_val%%:*}"
   val="${name_val#*:}"
   if [ -z "$val" ] || [ "$val" = "None" ]; then
@@ -45,6 +48,10 @@ for name_val in "ApiBaseUrl:$API_BASE_URL" "CognitoDomain:$COGNITO_DOMAIN_HOST" 
     exit 1
   fi
 done
+if [ "$MFA_MODE_STATUS" != "required" ] && [ "$MFA_MODE_STATUS" != "team_preview" ]; then
+  echo "ERROR: stack output MfaModeStatus must be required or team_preview" >&2
+  exit 1
+fi
 
 export NEXT_PUBLIC_USE_MOCK=false
 export NEXT_PUBLIC_AUTH_DISABLED=false
@@ -54,6 +61,7 @@ export NEXT_PUBLIC_COGNITO_DOMAIN="https://${COGNITO_DOMAIN_HOST}"
 export NEXT_PUBLIC_COGNITO_CLIENT_ID="$WEB_CLIENT_ID"
 export NEXT_PUBLIC_COGNITO_REDIRECT_URI="https://${CLOUDFRONT_DOMAIN}/login/"
 export NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI="https://${CLOUDFRONT_DOMAIN}/login/"
+export NEXT_PUBLIC_MFA_MODE="$MFA_MODE_STATUS"
 
 echo "==> Frontend env:"
 echo "  NEXT_PUBLIC_USE_MOCK=$NEXT_PUBLIC_USE_MOCK"
@@ -64,6 +72,7 @@ echo "  NEXT_PUBLIC_COGNITO_DOMAIN=$NEXT_PUBLIC_COGNITO_DOMAIN"
 echo "  NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID"
 echo "  NEXT_PUBLIC_COGNITO_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_REDIRECT_URI"
 echo "  NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI=$NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI"
+echo "  NEXT_PUBLIC_MFA_MODE=$NEXT_PUBLIC_MFA_MODE"
 
 cd "$repo/frontend"
 readonly PNPM_VERSION="10.33.2"

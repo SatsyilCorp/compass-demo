@@ -50,6 +50,19 @@ Prepare these outside the repository:
 Do not put passwords, TOTP secrets, bearer tokens, AWS keys, or evaluator
 credentials in the repository, terminal history, video, or System Inspector.
 
+### Controlled team-preview login
+
+The secure default is `MfaMode=required`. For a time-bounded internal review,
+an operator may deploy `MFA_MODE=team_preview` through
+`scripts/deploy_satsyil.sh`. This disables only the Cognito MFA challenge.
+Named accounts, passwords, group authorization, JWT validation, RLS, and audit
+remain enforced. It does not enable self-sign-up or anonymous access.
+
+Before the evaluated demonstration, redeploy with `MFA_MODE=required`, confirm
+the `MfaModeStatus` stack output is `required`, and complete the interactive
+TOTP preflight for every presenter account. Do not use `team_preview` as an
+ATO, production, or external-access posture.
+
 ## 2. Release gates before deployment
 
 Run the same checks as `.github/workflows/quality.yml`:

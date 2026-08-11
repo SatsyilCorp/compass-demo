@@ -118,9 +118,30 @@ if sys.argv[1] == "deploy":
     assert "DatabaseResilienceMode=ha" in deploy_calls[1]
     assert "CognitoDomainPrefix=satsyil-compass-demo" in deploy_calls[0]
     assert "CognitoDomainPrefix=satsyil-compass-demo" in deploy_calls[1]
+    assert "MfaMode=required" in deploy_calls[0]
+    assert "MfaMode=required" in deploy_calls[1]
     assert not any(value.startswith("WebOrigin=") for value in deploy_calls[0])
     assert "WebOrigin=https://demo.invalid" in deploy_calls[1]
 
     template_text = (REPOSITORY_ROOT / "template.yaml").read_text(encoding="utf-8")
     assert "EnableDatabaseHa: !Equals [!Ref DatabaseResilienceMode, ha]" in template_text
     assert "DeletionProtection: !If [EnableDatabaseHa, true, false]" in template_text
+    assert "RequireMfa: !Equals [!Ref MfaMode, required]" in template_text
+
+
+def test_team_preview_mfa_mode_is_forwarded() -> None:
+    script = (REPOSITORY_ROOT / "scripts" / "deploy_satsyil.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'MFA_MODE="${MFA_MODE:-required}"' in script
+    assert '"MfaMode=$MFA_MODE"' in script
+    assert 'MFA_MODE" != "required"' in script
+    assert 'MFA_MODE" != "team_preview"' in script
+    assert "--use-container" in script
+    assert "--no-cached" in script
+
+    frontend_builder = (REPOSITORY_ROOT / "scripts" / "build-frontend.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "MFA_MODE_STATUS=\"$(outputs MfaModeStatus)\"" in frontend_builder
+    assert 'export NEXT_PUBLIC_MFA_MODE="$MFA_MODE_STATUS"' in frontend_builder
