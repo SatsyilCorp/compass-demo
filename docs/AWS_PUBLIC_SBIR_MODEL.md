@@ -1,6 +1,6 @@
 # AWS public SBIR transition model receipt
 
-Status: trained, registered candidate, executed for bounded smoke scoring, not approved, not deployed
+Status: trained, registered candidate, executed on a current public cohort, not approved, no endpoint
 
 ## Outcome
 
@@ -11,13 +11,13 @@ KMS-encrypted model artifact. SageMaker Model Registry package version 2 is
 `PendingManualApproval`. There is no model endpoint.
 
 Compass also executed package version 2 through an ephemeral, network-isolated
-SageMaker Batch Transform job on eight PII-minimized, label-excluded records
-sampled from the public training cohort. This is execution smoke evidence, not
-an independent holdout evaluation.
-Execution `sbir-batch-20260812T150516-2b9b35cd` completed with eight of eight
-responses in 71 observed transform seconds. The temporary SageMaker Model was
-deleted, the single-run lock was released, package approval stayed unchanged,
-and no endpoint was created.
+SageMaker Batch Transform job on 25 PII-minimized, label-excluded public Navy
+Phase I records dated after the model evaluation cutoff. Execution
+`sbir-batch-20260812T215434-d6230e7c` completed with 25 of 25 responses in 72
+observed transform seconds. The temporary SageMaker Model was deleted, the
+single-run lock was released, package approval stayed unchanged, and no
+endpoint was created. This is current-cohort scoring evidence, not an
+independent accuracy evaluation and not a production approval.
 
 The candidate estimates whether a public Navy SBIR Phase I record is followed
 by a public Phase II or Phase III record for the same normalized organization
@@ -46,25 +46,30 @@ commercialization, causation, source-selection merit, or an internal decision.
 
 | Item | Value |
 |---|---|
-| Execution ID | `sbir-batch-20260812T150516-2b9b35cd` |
-| Transform job ARN | `arn:aws:sagemaker:us-east-1:551185375163:transform-job/sbir-batch-20260812T150516-2b9b35cd` |
+| Execution ID | `sbir-batch-20260812T215434-d6230e7c` |
+| Transform job ARN | `arn:aws:sagemaker:us-east-1:551185375163:transform-job/sbir-batch-20260812T215434-d6230e7c` |
 | Terminal status | `COMPLETED` |
-| Input records | 8 public, PII-minimized records |
-| Prediction records | 8, all marked for human review |
-| Observed probability range | 0.36769619 to 0.63901642 |
-| Observed duration | 71 seconds |
-| Estimate-only compute | $0.002268 at the configured $0.115 per hour rate |
-| Input digest | `b0825f8e5b7d8d3b61075cca5a3321608a87e85d91691b25a1ec36781acceab9` |
-| Output digest | `eb56d25efb056cb31eddc748b0a5c609de2ceac9486f1ab5a1e64b02ccab645b` |
-| Receipt digest | `0c73cd9909b054144c526d76c3fbc78734045a63dec20bef0d2d9c2a85da0216` |
+| Input records | 25 public, PII-minimized, post-cutoff Phase I records |
+| Prediction records | 25, all marked for human review |
+| Positive proxy signals | 21 of 25 at the candidate threshold |
+| Observed probability range | 0.42408883 to 0.73451578 |
+| Observed mean probability | 0.593405744 |
+| Observed duration | 72 seconds |
+| Estimate-only compute | $0.0023 at the configured $0.115 per hour rate |
+| Current scoring source digest | `fcfb8499daacc1ab1b83c2b3d250572b2379cc7f3f9cc954bc7fa0b443b7b28f` |
+| Candidate pool digest | `45df1368c1dced57ee99bb16f74ce2d8596587a4a177462011394b1526ee5aba` |
+| Input digest | `199564f9a92ce0d74e411772d04da76efc00ad0065e92121ac31447cb90a42b6` |
+| Output digest | `ea1dfe25474a35b8582d04125a2aaee1b52c79003dd9ca550114da4a03e5f489` |
+| Receipt digest | `19ba154538eb0a4f2e35c3c41555cbc113052d3e04468f82449ea9a5357f42ac` |
 | Temporary model | Deleted after receipt reconciliation |
 | Endpoint count | 0 |
 
 The values are public transition signals, not ONR mission-success predictions.
-The first bounded execution was stopped after network isolation exposed an
-offline package-install defect. Its failed evidence remains durable. The retry
-used the managed image's installed build tools with index access disabled and
-then completed normally.
+The 25 current records were selected reproducibly as the newest eligible
+public Phase I record per normalized organization and exact topic after
+2023-12-31 and through 2026-08-12. Outcome labels and later follow-on awards
+were excluded from the scoring input. Earlier smoke and failed receipts remain
+durable in the protected execution history.
 
 ## Evaluation
 

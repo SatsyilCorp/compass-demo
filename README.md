@@ -28,7 +28,9 @@ all four Scale Run profiles. A public-intelligence path now serves 177,503
 records across 12 source families through a 1,098-record bounded index. An
 authentic 11,287-row public Navy SBIR transition model completed a
 network-isolated SageMaker job and is registered as `PendingManualApproval`.
-No SageMaker endpoint exists.
+A live 25-record current public cohort run completed through SageMaker Batch
+Transform, and its hash-bound predictions are shown in Intelligence and MLOps
+for human review. No SageMaker endpoint exists.
 
 Scale and document seed data remain synthetic and contain no CUI or direct PII.
 Public intelligence is a separate, provenance-bound public corpus with direct

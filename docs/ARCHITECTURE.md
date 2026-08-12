@@ -163,7 +163,9 @@ verified index. Unsupported questions produce an explicit refusal. The full
 source snapshots never pass through the browser.
 
 The same isolated function exposes a cost-bounded public model execution
-Adapter. It selects only from a digest-bound, PII-minimized smoke pool,
+Adapter. It selects only from a digest-bound, PII-minimized current public
+Phase I pool whose records occur after the model evaluation cutoff and exclude
+outcome labels,
 verifies one exact Model Registry package, reads one exact S3 object version,
 checks the registry bundle bytes against the pinned bundle SHA-256 value, and executes a
 per-run versioned, write-once copy with a digest-qualified image. It then

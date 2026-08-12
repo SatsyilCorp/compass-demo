@@ -12,10 +12,11 @@ exports, interactive browser path, document success and quarantine paths,
 model training, Champion promotion, and drift evaluation have accepted live
 receipts. The authentic public SBIR candidate completed a 109-second SageMaker
 training job and entered Model Registry as `PendingManualApproval`. A bounded
-eight-record Batch Transform training-cohort smoke run then completed in 71
-observed seconds with a hash-bound terminal receipt and $0.002268 estimate-only
-compute. The
-temporary model was deleted and no endpoint was created. The exact revision
+25-record Batch Transform run on a label-excluded public cohort after the
+evaluation cutoff then completed in 72 observed seconds with a hash-bound
+terminal receipt and $0.0023 estimate-only compute. All 25 predictions are
+available in the protected Intelligence and MLOps surfaces for human review.
+The temporary model was deleted and no endpoint was created. The exact revision
 still requires clean GitHub workflow evidence and protected-environment release
 evidence. The candidate is not the recording release until those gates and one
 timed human rehearsal pass exist.
@@ -41,7 +42,7 @@ timed human rehearsal pass exist.
 | Activity ticker | Ordered database projection is authoritative; recent Kinesis receipts merge by stable ID; missing transport organization scope is corporate-only |
 | Application compute | 19 deployed Lambda functions behind the narrow API, workflow, queue, public-intelligence, and data adapters |
 | Document intelligence and MLOps | Deployed eight-operation document and model contract with a bounded Step Functions workflow, Lambda classifier, optional SageMaker submission seam, accepted success and quarantine runs, 1.0 accuracy and macro F1 training evidence, exact-version Champion promotion, and shifted-data drift evidence |
-| Public SBIR model execution | Package version 2 remained `PendingManualApproval` while one network-isolated eight-record Batch Transform training-cohort smoke run completed with eight predictions, input and output digests, a durable receipt digest, 71 observed seconds, $0.002268 estimate-only compute, temporary-model deletion, and zero endpoints |
+| Public SBIR model execution | Package version 2 remained `PendingManualApproval` while one network-isolated 25-record Batch Transform current-cohort run completed with 25 predictions, input and output digests, a durable receipt digest, 72 observed seconds, $0.0023 estimate-only compute, temporary-model deletion, and zero endpoints |
 
 ## 2. Required automated gate
 
@@ -128,7 +129,8 @@ The following checks passed against the current Satsyil HA deployment on
 | MLOps | Model `doc-nb-f828a29acd1e` reached 1.0 accuracy, 1.0 macro F1, and 6 of 6 classes; Champion promotion and shifted drift with PSI 11.51, 91 percent OOV, and `retrain-and-review` passed |
 | Public protection | CSP, Permissions Policy, HSTS, and WAF were present on the live boundary |
 | Scale data plane | 1K, 10K, 100K, and 1M runs completed, reconciled, and produced ready governed Parquet exports |
-| Local automation | 265 aggregate offline contract and function tests, 45 public-collector tests, 19 public-model and submission tests, 55 frontend scenarios, lint, typecheck, a 32-route production build, SAM validation, git whitespace checks, and the repository no-em-dash policy passed |
+| Current public SBIR scoring | Execution `sbir-batch-20260812T215434-d6230e7c` scored 25 post-cutoff public Phase I records, returned 25 predictions and 21 positive proxy signals, preserved source and selection provenance, deleted its temporary model, and remained candidate-only with no endpoint |
+| Local automation | 305 aggregate offline contract and function tests, 62 frontend scenarios, lint, typecheck, a 32-page production build, SAM validation, git whitespace checks, and the repository no-em-dash policy passed |
 
 The direct acceptance path invoked the deployed Scale Control Lambda through
 AWS IAM with a staged `/prod` event. It exercised the production route handler

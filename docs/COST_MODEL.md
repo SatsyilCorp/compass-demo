@@ -27,7 +27,7 @@ bill. The values remain planning estimates rather than observed billing.
 | One live 10K Scale Run | $0.01915314 |
 | One live demo with one document intake and one 10K Scale Run | Up to $0.025 |
 | One optional SageMaker training job, `ml.m5.large`, 30-minute hard limit | $0.0575 compute, plus storage and requests |
-| Completed eight-record SageMaker Batch Transform training-cohort smoke run | $0.002268 estimate-only compute for 71 observed seconds |
+| Completed 25-record SageMaker Batch Transform current-cohort run | $0.0023 estimate-only compute for 72 observed seconds |
 | Per submitted Batch Transform cleanup guard and retained execution data | Budget up to $0.01 for the bounded schedule, reconciliation requests, dead-letter safety path, and seven-day input, copied-model, and output retention, excluding the transform compute above |
 | Current public-intelligence live-object storage | About $0.0068/month at 294,668,909 bytes across the evidence and SBIR model prefixes |
 | Low-use month, one writer, Scale enabled, four live demos | About $126.62 |
@@ -156,10 +156,12 @@ The successful job accounts for 109 seconds, or about $0.00348 of that modeled
 compute. These are rate-based estimates, not reconciled billed values.
 
 The bounded inference session first stopped one diagnosed offline packaging
-attempt after 726 observed seconds, modeled at $0.02319. The corrected retry
-completed eight predictions in 71 observed seconds, modeled at $0.002268. The
-combined rate-based inference estimate is $0.025458, excluding storage,
-requests, logs, and tax. These are estimate-only values, not reconciled billing.
+attempt after 726 observed seconds, modeled at $0.02319. The corrected smoke
+retry completed eight predictions in 71 observed seconds, modeled at
+$0.002268. The current-cohort production-path run completed 25 predictions in
+72 observed seconds, with a rounded estimate of $0.0023. The combined
+rate-based inference estimate is about $0.02776, excluding storage, requests,
+logs, and tax. These are estimate-only values, not reconciled billing.
 
 Every submitted transform also creates one per-run EventBridge Scheduler
 cleanup guard. It starts after five minutes, invokes reconciliation once per
