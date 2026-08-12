@@ -39,7 +39,7 @@ jobs:
       PGUSER: postgres
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install PostgreSQL client
         run: |
@@ -57,13 +57,13 @@ jobs:
 
   source-and-backend:
     name: Source, contracts, and infrastructure
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -73,7 +73,7 @@ jobs:
             src/functions/document_ml/requirements.txt
 
       - name: Set up AWS SAM
-        uses: aws-actions/setup-sam@v2
+        uses: aws-actions/setup-sam@v3
 
       - name: Install verification dependencies
         run: |
@@ -130,15 +130,15 @@ jobs:
         working-directory: frontend
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.33.2
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: pnpm
@@ -170,7 +170,7 @@ jobs:
 
       - name: Publish browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-evidence
           path: |
