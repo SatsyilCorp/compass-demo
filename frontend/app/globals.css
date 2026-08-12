@@ -54,9 +54,9 @@
   --color-action-bg: #082b46;
   --color-action-bg-hover: #10496f;
 
-  --font-sans: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
-  --font-display: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
-  --font-mono: var(--font-mono-compass), "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --font-sans: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -102,7 +102,7 @@
 
   body {
     min-width: 320px;
-    font-family: var(--font-public-sans), "Helvetica Neue", Arial, sans-serif;
+    font-family: "Public Sans", "Helvetica Neue", Arial, sans-serif;
     color: var(--color-text);
     background-color: var(--color-bg);
     -webkit-font-smoothing: antialiased;
@@ -125,7 +125,7 @@
 code,
 kbd,
 .font-mono {
-  font-family: var(--font-mono-compass), "SF Mono", Menlo, monospace;
+  font-family: "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
 

@@ -1,29 +1,14 @@
 import type { Metadata } from "next";
-import { Public_Sans, Source_Code_Pro } from "next/font/google";
 
 import "./globals.css";
 
 import { Providers } from "@/lib/auth/providers";
 
 /**
- * Compass type system - the federal USWDS stack (Public Sans), Navy-branded.
- *
- *   Public Sans     → --font-public-sans   (body, UI, headings, display)
- *   Source Code Pro → --font-mono-compass  (grant numbers, run ids, figures)
+ * Compass uses deterministic system font stacks so production builds do not
+ * depend on a third-party font host. The primary sans stack is aligned with
+ * the federal USWDS typography profile, with native monospace for evidence.
  */
-const publicSans = Public_Sans({
-  subsets: ["latin"],
-  variable: "--font-public-sans",
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const sourceCodePro = Source_Code_Pro({
-  subsets: ["latin"],
-  variable: "--font-mono-compass",
-  weight: ["400", "500", "600"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: {
@@ -40,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${publicSans.variable} ${sourceCodePro.variable}`}>
+    <html lang="en">
       <body className="bg-bg text-text antialiased">
         <Providers>{children}</Providers>
       </body>
