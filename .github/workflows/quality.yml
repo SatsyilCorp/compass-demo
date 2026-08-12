@@ -104,7 +104,7 @@ jobs:
       - name: Run offline contract tests
         env:
           PYTHONPATH: src/common/python
-        run: python -m pytest -q scripts/tests src/common/tests src/functions/*/tests
+        run: python -m pytest -q --import-mode=importlib scripts/tests src/common/tests src/functions/*/tests
 
       - name: Verify staged migrations match source migrations
         run: |
