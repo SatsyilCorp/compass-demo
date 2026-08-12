@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 CONTRACT = "compass.public-intelligence.model-execution.v1"
 CANDIDATE_POOL_CONTRACT = "compass.public-intelligence.inference-candidates.v1"
 EXECUTION_MODE = "sagemaker_batch_transform"
-PURPOSE = "training_cohort_smoke_scoring"
+PURPOSE = "current_public_cohort_scoring"
 TERMINAL_STATUSES = {"COMPLETED", "FAILED", "STOPPED"}
 MAX_SAMPLE_SIZE_HARD = 25
 MAX_POOL_BYTES = 1024 * 1024
@@ -340,6 +340,17 @@ def _pool() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "piiMinimized": True,
     }:
         raise ExecutionError("public SBIR candidate pool boundary is not permitted")
+    source_dataset = value.get("sourceDataset")
+    selection = value.get("selection")
+    if (
+        not isinstance(source_dataset, dict)
+        or source_dataset.get("datasetId")
+        != "navy-sbir-current-phase-i-public-scoring"
+        or not SHA256_PATTERN.fullmatch(str(source_dataset.get("sha256") or ""))
+        or not isinstance(selection, dict)
+        or selection.get("cutoffExclusive") != "2023-12-31"
+    ):
+        raise ExecutionError("public SBIR scoring cohort provenance is invalid")
     records = value.get("records")
     if not isinstance(records, list) or not records or len(records) > MAX_SAMPLE_SIZE_HARD:
         raise ExecutionError("public SBIR candidate pool record count is invalid")
@@ -357,9 +368,15 @@ def _pool() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         public_text = _clean_text(features.get("public_text"), max_chars=10_000)
         if not public_text or EMAIL_PATTERN.search(public_text):
             raise ExecutionError("public SBIR candidate text failed minimization validation")
+        try:
+            event_time = _parse_timestamp(record.get("eventTime"))
+        except (TypeError, ValueError) as exc:
+            raise ExecutionError("public SBIR candidate event time is invalid") from exc
+        if event_time.date().isoformat() <= str(selection["cutoffExclusive"]):
+            raise ExecutionError("public SBIR scoring record overlaps the model evaluation cohort")
         normalized = {
             "recordId": record_id,
-            "eventTime": _clean_text(record.get("eventTime"), max_chars=64),
+            "eventTime": _timestamp(event_time),
             "sourceRecordIds": [
                 _clean_text(item, max_chars=120)
                 for item in record.get("sourceRecordIds") or []
@@ -377,10 +394,13 @@ def _pool() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         }
         seen.add(record_id)
         cleaned.append(normalized)
+    if int(selection.get("recordCount") or 0) != len(cleaned):
+        raise ExecutionError("public SBIR scoring cohort record count is invalid")
     return cleaned, {
         "sha256": expected_sha,
         "versionId": version,
-        "sourceDataset": value.get("sourceDataset") or {},
+        "sourceDataset": source_dataset,
+        "selection": selection,
     }
 
 
@@ -849,12 +869,13 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
                 "candidatePoolSha256": pool_provenance["sha256"],
                 "candidatePoolVersionId": pool_provenance["versionId"],
                 "sourceDataset": pool_provenance["sourceDataset"],
+                "selection": pool_provenance["selection"],
                 "inputVersionId": input_version,
                 "executionModelVersionId": execution_model_version,
                 "outputVersionId": None,
             },
             "humanReviewRequired": True,
-            "disclosure": "Training-cohort smoke scoring only. This run proves bounded execution, does not provide independent evaluation, does not approve or deploy the model, and does not predict ONR mission success.",
+            "disclosure": "Current public post-cutoff cohort scoring only. This run produces review-only transition signals for newer public Navy Phase I records. It does not approve the candidate and does not predict ONR mission success.",
         }
         _write_receipt(receipt, create=True)
         _, _, _, receipt_etag = _read_receipt_with_etag(execution_id)

@@ -1906,8 +1906,8 @@ Resources:
           PUBLIC_SBIR_EXECUTION_BUCKET: !Ref RawBucket
           PUBLIC_SBIR_EXECUTION_PREFIX: mlops/public-sbir-transition/executions/
           PUBLIC_SBIR_EXECUTION_ENABLED: !Ref PublicSbirExecutionEnabled
-          PUBLIC_SBIR_CANDIDATE_POOL_KEY: mlops/public-sbir-transition/validation/candidates-20260812.json
-          PUBLIC_SBIR_CANDIDATE_POOL_SHA256: 779e050da144a866dd62572716129b1a9c72637c1f3efd49e6da8fbad2e4ba81
+          PUBLIC_SBIR_CANDIDATE_POOL_KEY: mlops/public-sbir-transition/validation/current-public-phase-i-20260812.json
+          PUBLIC_SBIR_CANDIDATE_POOL_SHA256: 45df1368c1dced57ee99bb16f74ce2d8596587a4a177462011394b1526ee5aba
           PUBLIC_SBIR_MODEL_PACKAGE_GROUP_ARN: !Ref PublicSbirTransitionModelPackageGroup
           PUBLIC_SBIR_MODEL_PACKAGE_ARN: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:model-package/${AWS::StackName}-public-sbir-transition/2"
           PUBLIC_SBIR_TRAINING_JOB_ARN: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:training-job/compass-doc-sbir-transition-20260812-0134"
@@ -1952,7 +1952,9 @@ Resources:
               Resource: !GetAtt RawBucket.Arn
               Condition:
                 StringLike:
-                  s3:prefix: [mlops/public-sbir-transition/executions/history/*]
+                  s3:prefix:
+                    - mlops/public-sbir-transition/executions/history/*
+                    - mlops/public-sbir-transition/executions/control/*
             - Sid: EncryptPublicEvidenceAndExecution
               Effect: Allow
               Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey, kms:DescribeKey]

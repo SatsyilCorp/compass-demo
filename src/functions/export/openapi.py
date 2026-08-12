@@ -787,10 +787,14 @@ def _schemas() -> dict[str, Any]:
                 "completedAt": {"type": ["string", "null"], "format": "date-time"},
                 "purpose": {
                     "type": "string",
-                    "enum": ["training_cohort_smoke_scoring", "bounded_public_validation"],
+                    "enum": [
+                        "current_public_cohort_scoring",
+                        "training_cohort_smoke_scoring",
+                        "bounded_public_validation",
+                    ],
                     "description": (
-                        "Training-cohort smoke scoring. bounded_public_validation is retained "
-                        "only for compatibility with earlier hash-bound execution receipts."
+                        "Current public post-cutoff cohort scoring. Earlier values are retained "
+                        "only for compatibility with prior hash-bound execution receipts."
                     ),
                 },
                 "executionMode": {"type": "string", "const": "sagemaker_batch_transform"},

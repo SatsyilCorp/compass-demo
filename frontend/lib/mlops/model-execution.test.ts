@@ -15,7 +15,7 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
     createdAt: "2026-08-12T15:00:00Z",
     updatedAt: "2026-08-12T15:01:00Z",
     completedAt: status === "COMPLETED" ? "2026-08-12T15:01:00Z" : null,
-    purpose: "training_cohort_smoke_scoring",
+    purpose: "current_public_cohort_scoring",
     executionMode: "sagemaker_batch_transform",
     model: {
       name: "compass-demo-public-sbir-transition",
@@ -30,7 +30,15 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
       modelCardSha256: "f".repeat(64),
       imageDigest: `sha256:${"1".repeat(64)}`,
     },
-    input: { recordCount: 8, sha256: "b".repeat(64) },
+    input: {
+      recordCount: 8,
+      sha256: "b".repeat(64),
+      records: Array.from({ length: 8 }, (_, index) => ({
+        recordId: `sbir-${index + 1}`,
+        eventTime: "2025-01-01T00:00:00Z",
+        sourceRecordIds: [`N25-${index + 1}`],
+      })),
+    },
     execution: {
       transformJobArn: status === "SUBMITTED" ? null : "arn:aws:sagemaker:us-east-1:111122223333:transform-job/example",
       transformJobName: status === "SUBMITTED" ? null : "example",
@@ -63,6 +71,18 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
       inputVersionId: "input-v1",
       executionModelVersionId: "execution-model-v1",
       outputVersionId: "output-v1",
+      sourceDataset: {
+        datasetId: "navy-sbir-current-phase-i-public-scoring",
+        datasetVersion: "2026-08-12-example",
+        sha256: "9".repeat(64),
+        snapshotId: "sbir-current",
+      },
+      selection: {
+        rule: "newest eligible public Phase I records",
+        cutoffExclusive: "2023-12-31",
+        asOfInclusive: "2026-08-12",
+        recordCount: 8,
+      },
     } : null,
     humanReviewRequired: true,
     disclosure: "Candidate output requires human review and is not a mission-success decision.",
@@ -79,6 +99,8 @@ test("parses submitted and completed backend execution receipts without filling 
   const completed = parsePublicModelExecutionReceipt(receipt("COMPLETED"));
   assert.equal(completed?.output?.predictionCount, 8);
   assert.equal(completed?.output?.predictions[0]?.recordId, "sbir-1");
+  assert.equal(completed?.input.records[0]?.sourceRecordIds[0], "N25-1");
+  assert.equal(completed?.provenance?.selection?.cutoffExclusive, "2023-12-31");
   assert.equal(completed?.cost?.estimateOnly, true);
 });
 

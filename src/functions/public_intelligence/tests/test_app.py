@@ -432,7 +432,8 @@ def test_sam_resource_is_isolated_and_least_privilege():
     assert "GovernPublicSbirExecutionReceipts" in block
     assert 'Resource: !Sub "${RawBucket.Arn}/mlops/public-sbir-transition/executions/*"' in block
     assert "Action: s3:ListBucket" in block
-    assert "s3:prefix: [mlops/public-sbir-transition/executions/history/*]" in block
+    assert "mlops/public-sbir-transition/executions/history/*" in block
+    assert "mlops/public-sbir-transition/executions/control/*" in block
     assert "bedrock:InvokeModelWithResponseStream" not in block
     assert "amazon.nova-lite-v1:0" in block
     assert '${RawBucket.Arn}/public-intelligence/*' in block

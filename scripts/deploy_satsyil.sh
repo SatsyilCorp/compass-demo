@@ -217,7 +217,7 @@ if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" = "true" ]; then
   fi
   aws_satsyil s3api head-object \
     --bucket "$public_sbir_bucket" \
-    --key mlops/public-sbir-transition/validation/candidates-20260812.json \
+    --key mlops/public-sbir-transition/validation/current-public-phase-i-20260812.json \
     >/dev/null
   unset public_sbir_bucket public_sbir_package_arn public_sbir_package public_sbir_training public_sbir_version
 fi

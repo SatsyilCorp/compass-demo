@@ -16,6 +16,12 @@ export type ModelExecutionPrediction = {
   humanReviewRequired: boolean;
 };
 
+export type ModelExecutionInputRecord = {
+  recordId: string;
+  eventTime: string;
+  sourceRecordIds: string[];
+};
+
 export type PublicModelExecutionReceipt = {
   contract: "compass.public-intelligence.model-execution.v1";
   executionId: string;
@@ -23,7 +29,10 @@ export type PublicModelExecutionReceipt = {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
-  purpose: "training_cohort_smoke_scoring" | "bounded_public_validation";
+  purpose:
+    | "current_public_cohort_scoring"
+    | "training_cohort_smoke_scoring"
+    | "bounded_public_validation";
   executionMode: "sagemaker_batch_transform";
   model: {
     name: string;
@@ -41,6 +50,7 @@ export type PublicModelExecutionReceipt = {
   input: {
     recordCount: number;
     sha256: string;
+    records: ModelExecutionInputRecord[];
   };
   execution: {
     transformJobArn: string | null;
@@ -68,6 +78,18 @@ export type PublicModelExecutionReceipt = {
     inputVersionId: string | null;
     executionModelVersionId: string | null;
     outputVersionId: string | null;
+    sourceDataset: {
+      datasetId: string;
+      datasetVersion: string | null;
+      sha256: string;
+      snapshotId: string | null;
+    } | null;
+    selection: {
+      rule: string | null;
+      cutoffExclusive: string | null;
+      asOfInclusive: string | null;
+      recordCount: number | null;
+    } | null;
   } | null;
   humanReviewRequired: true;
   disclosure: string;
@@ -136,6 +158,16 @@ function parsePrediction(value: unknown): ModelExecutionPrediction | null {
   };
 }
 
+function parseInputRecord(value: unknown): ModelExecutionInputRecord | null {
+  if (!isObject(value)) return null;
+  const recordId = stringValue(value.recordId);
+  const eventTime = stringValue(value.eventTime);
+  if (!recordId || !eventTime || !Array.isArray(value.sourceRecordIds)) return null;
+  const sourceRecordIds = value.sourceRecordIds.map(stringValue);
+  if (sourceRecordIds.some((item) => item === null)) return null;
+  return { recordId, eventTime, sourceRecordIds: sourceRecordIds as string[] };
+}
+
 export function parsePublicModelExecutionReceipt(
   value: unknown,
 ): PublicModelExecutionReceipt | null {
@@ -181,7 +213,11 @@ export function parsePublicModelExecutionReceipt(
     !createdAt ||
     !updatedAt ||
     completedAt === undefined ||
-    !["training_cohort_smoke_scoring", "bounded_public_validation"].includes(
+    ![
+      "current_public_cohort_scoring",
+      "training_cohort_smoke_scoring",
+      "bounded_public_validation",
+    ].includes(
       String(value.purpose),
     ) ||
     value.executionMode !== "sagemaker_batch_transform" ||
@@ -222,6 +258,12 @@ export function parsePublicModelExecutionReceipt(
   ) {
     return null;
   }
+
+  const inputRecordsRaw = input.records === undefined ? [] : input.records;
+  if (!Array.isArray(inputRecordsRaw)) return null;
+  const inputRecords = inputRecordsRaw.map(parseInputRecord);
+  if (inputRecords.some((record) => record === null)) return null;
+  if (inputRecords.length > 0 && inputRecords.length !== recordCount) return null;
 
   let output: PublicModelExecutionReceipt["output"] = null;
   if (value.output !== null) {
@@ -277,7 +319,45 @@ export function parsePublicModelExecutionReceipt(
       executionModelVersionId === undefined ||
       outputVersionId === undefined
     ) return null;
-    provenance = { receiptSha256, inputVersionId, executionModelVersionId, outputVersionId };
+    let sourceDataset: NonNullable<PublicModelExecutionReceipt["provenance"]>["sourceDataset"] = null;
+    if (isObject(value.provenance.sourceDataset)) {
+      const datasetId = stringValue(value.provenance.sourceDataset.datasetId);
+      const datasetVersion = nullableString(value.provenance.sourceDataset.datasetVersion ?? null);
+      const sourceSha256 = stringValue(value.provenance.sourceDataset.sha256);
+      const snapshotId = nullableString(value.provenance.sourceDataset.snapshotId ?? null);
+      if (
+        !datasetId ||
+        datasetVersion === undefined ||
+        !sourceSha256 ||
+        !SHA256_PATTERN.test(sourceSha256) ||
+        snapshotId === undefined
+      ) return null;
+      sourceDataset = { datasetId, datasetVersion, sha256: sourceSha256, snapshotId };
+    }
+    let selection: NonNullable<PublicModelExecutionReceipt["provenance"]>["selection"] = null;
+    if (isObject(value.provenance.selection)) {
+      const rule = nullableString(value.provenance.selection.rule ?? null);
+      const cutoffExclusive = nullableString(value.provenance.selection.cutoffExclusive ?? null);
+      const asOfInclusive = nullableString(value.provenance.selection.asOfInclusive ?? null);
+      const selectionRecordCount = value.provenance.selection.recordCount === undefined
+        ? null
+        : nonNegativeInteger(value.provenance.selection.recordCount);
+      if (
+        rule === undefined ||
+        cutoffExclusive === undefined ||
+        asOfInclusive === undefined ||
+        (value.provenance.selection.recordCount !== undefined && selectionRecordCount === null)
+      ) return null;
+      selection = { rule, cutoffExclusive, asOfInclusive, recordCount: selectionRecordCount };
+    }
+    provenance = {
+      receiptSha256,
+      inputVersionId,
+      executionModelVersionId,
+      outputVersionId,
+      sourceDataset,
+      selection,
+    };
   }
 
   if (status === "COMPLETED" && (!output || !cost || !provenance)) return null;
@@ -316,7 +396,11 @@ export function parsePublicModelExecutionReceipt(
       modelCardSha256,
       imageDigest,
     },
-    input: { recordCount, sha256: inputSha256 },
+    input: {
+      recordCount,
+      sha256: inputSha256,
+      records: inputRecords as ModelExecutionInputRecord[],
+    },
     execution: {
       transformJobArn,
       transformJobName,

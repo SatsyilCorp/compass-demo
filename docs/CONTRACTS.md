@@ -156,7 +156,8 @@ returns a conservative deterministic answer with the same citations.
 
 The model-execution interface uses one exact registered public SBIR candidate
 without approving or deploying it. A corporate poweruser can submit 1 to 25
-PII-minimized records from a digest-bound training-cohort smoke pool. Compass
+PII-minimized, label-excluded public Navy Phase I records that occur after the
+model evaluation cutoff. Compass
 verifies the package ARN, training job, source object version, registry bundle
 digest, model-card digest, image digest, and versioned, write-once per-run model copy before starting one
 network-isolated `ml.m5.large` Batch Transform job. It caps concurrency at one,

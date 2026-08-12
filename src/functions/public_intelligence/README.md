@@ -74,8 +74,9 @@ documents are rejected at the read boundary.
 
 ## Bounded model execution
 
-The execution routes use a digest-bound public Navy SBIR training-cohort smoke
-pool and one exact completed `PendingManualApproval` package. Before a run,
+The execution routes use a digest-bound cohort of newer public Navy Phase I
+records that occur after the model evaluation cutoff and one exact completed
+`PendingManualApproval` package. Before a run,
 the Adapter verifies the package ARN, training job, source object version,
 registry bundle SHA-256, model-card SHA-256, and container image digest. Only a corporate poweruser can
 start a run. Powerusers and viewers can read its durable receipt. A request

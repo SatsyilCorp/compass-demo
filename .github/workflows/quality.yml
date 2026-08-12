@@ -108,6 +108,7 @@ jobs:
           python -m pytest -q --import-mode=importlib
           scripts/tests src/common/tests src/functions/*/tests
           mlops/sagemaker/public_sbir_transition/test_prepare_inference_candidates.py
+          mlops/sagemaker/public_sbir_transition/test_prepare_current_scoring_candidates.py
 
       - name: Verify staged migrations match source migrations
         run: |

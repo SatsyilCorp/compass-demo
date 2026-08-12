@@ -54,7 +54,7 @@ def pool():
     for index in range(3):
         records.append(
             {
-                "eventTime": "2023-01-01T00:00:00Z",
+                "eventTime": "2025-01-01T00:00:00Z",
                 "recordId": f"record-{index}",
                 "sourceRecordIds": [f"source-{index}"],
                 "features": {
@@ -62,7 +62,7 @@ def pool():
                     "title_character_count": 20,
                     "abstract_character_count": 200,
                     "abstract_token_count": 30,
-                    "award_year": 2023,
+                    "award_year": 2025,
                     "topic_family": "N23",
                     "public_text": "Public research abstract",
                 },
@@ -76,7 +76,14 @@ def pool():
             "labelsExcluded": True,
             "piiMinimized": True,
         },
-        "sourceDataset": {"datasetId": "dataset", "sha256": "b" * 64},
+        "sourceDataset": {
+            "datasetId": "navy-sbir-current-phase-i-public-scoring",
+            "sha256": "b" * 64,
+        },
+        "selection": {
+            "cutoffExclusive": "2023-12-31",
+            "recordCount": len(records),
+        },
         "records": records,
     }
 
@@ -278,6 +285,8 @@ def test_start_execution_is_bounded_candidate_only(configured):
     assert receipt["status"] == "SUBMITTED"
     assert receipt["model"]["approvalStatus"] == "PendingManualApproval"
     assert receipt["model"]["candidateOnly"] is True
+    assert receipt["purpose"] == "current_public_cohort_scoring"
+    assert receipt["provenance"]["selection"]["cutoffExclusive"] == "2023-12-31"
     assert receipt["model"]["modelBundleSha256"] == MODEL_BUNDLE_SHA256
     assert receipt["model"]["modelArtifactSourceVersionId"] == MODEL_VERSION
     assert receipt["input"]["recordCount"] == 2
@@ -419,6 +428,17 @@ def test_pool_rejects_non_public_boundary(configured):
     os.environ["PUBLIC_SBIR_CANDIDATE_POOL_SHA256"] = execution._sha256(encoded(value))
 
     with pytest.raises(execution.ExecutionError, match="boundary"):
+        execution._pool()
+
+
+def test_pool_rejects_training_cohort_overlap(configured):
+    fake_s3, _, _ = configured
+    value = pool()
+    value["records"][0]["eventTime"] = "2023-12-31T00:00:00Z"
+    fake_s3.objects[ENV["PUBLIC_SBIR_CANDIDATE_POOL_KEY"]] = encoded(value)
+    os.environ["PUBLIC_SBIR_CANDIDATE_POOL_SHA256"] = execution._sha256(encoded(value))
+
+    with pytest.raises(execution.ExecutionError, match="overlaps"):
         execution._pool()
 
 
