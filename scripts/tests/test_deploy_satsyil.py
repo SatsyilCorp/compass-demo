@@ -261,6 +261,7 @@ def test_public_sbir_preflight_uses_the_full_model_package_arn() -> None:
     )
     assert '--model-package-name "$public_sbir_package_arn"' in deploy_text
     assert '--model-package-name "${STACK_NAME}-public-sbir-transition/2"' not in deploy_text
+    assert "sam build \\\n  --use-container \\\n  --no-cached" in deploy_text
 
 
 def test_lambda_cors_includes_the_configured_custom_domain() -> None:

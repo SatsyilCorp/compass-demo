@@ -269,6 +269,7 @@ sam validate \
 echo "==> Building Linux ARM Lambda packages"
 sam build \
   --use-container \
+  --no-cached \
   --region "$AWS_REGION" \
   --profile "$REQUIRED_AWS_PROFILE" \
   --config-file "$config" \
