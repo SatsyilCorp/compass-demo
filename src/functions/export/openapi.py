@@ -713,6 +713,258 @@ def _schemas() -> dict[str, Any]:
             },
             "additionalProperties": False,
         },
+        "PublicModelExecutionRequest": {
+            "type": "object",
+            "properties": {
+                "sampleSize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 25,
+                    "default": 8,
+                }
+            },
+            "additionalProperties": False,
+        },
+        "PublicModelExecutionPrediction": {
+            "type": "object",
+            "required": [
+                "recordId",
+                "observedPublicTransitionProbability",
+                "candidateLabel",
+                "semantics",
+                "humanReviewRequired",
+            ],
+            "properties": {
+                "recordId": {"type": "string"},
+                "observedPublicTransitionProbability": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                },
+                "candidateLabel": {"type": "integer", "enum": [0, 1]},
+                "semantics": {"type": "string"},
+                "humanReviewRequired": {"type": "boolean", "const": True},
+            },
+            "additionalProperties": False,
+        },
+        "PublicModelExecutionReceipt": {
+            "type": "object",
+            "required": [
+                "contract",
+                "version",
+                "executionId",
+                "status",
+                "createdAt",
+                "updatedAt",
+                "completedAt",
+                "purpose",
+                "executionMode",
+                "model",
+                "input",
+                "execution",
+                "output",
+                "cost",
+                "provenance",
+                "humanReviewRequired",
+                "disclosure",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.model-execution.v1",
+                },
+                "version": {"type": "integer", "const": 1},
+                "executionId": {
+                    "type": "string",
+                    "pattern": "^sbir-batch-[0-9]{8}T[0-9]{6}-[a-f0-9]{8}$",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["SUBMITTED", "IN_PROGRESS", "COMPLETED", "FAILED", "STOPPED"],
+                },
+                "createdAt": {"type": "string", "format": "date-time"},
+                "updatedAt": {"type": "string", "format": "date-time"},
+                "completedAt": {"type": ["string", "null"], "format": "date-time"},
+                "purpose": {"type": "string", "const": "bounded_public_validation"},
+                "executionMode": {"type": "string", "const": "sagemaker_batch_transform"},
+                "model": {
+                    "type": "object",
+                    "required": [
+                        "name",
+                        "packageArn",
+                        "packageVersion",
+                        "approvalStatus",
+                        "candidateOnly",
+                        "trainingJobArn",
+                        "modelArtifactSha256",
+                        "modelCardSha256",
+                        "imageDigest",
+                    ],
+                    "properties": {
+                        "name": {"type": "string"},
+                        "packageArn": {"type": "string"},
+                        "packageVersion": {"type": "integer", "minimum": 1},
+                        "approvalStatus": {"type": "string", "const": "PendingManualApproval"},
+                        "candidateOnly": {"type": "boolean", "const": True},
+                        "trainingJobArn": {"type": "string"},
+                        "modelArtifactSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "modelCardSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "imageDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+                    },
+                    "additionalProperties": False,
+                },
+                "input": {
+                    "type": "object",
+                    "required": ["recordCount", "sha256", "records"],
+                    "properties": {
+                        "recordCount": {"type": "integer", "minimum": 1, "maximum": 25},
+                        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "records": {
+                            "type": "array",
+                            "maxItems": 25,
+                            "items": {
+                                "type": "object",
+                                "required": ["recordId", "eventTime", "sourceRecordIds"],
+                                "properties": {
+                                    "recordId": {"type": "string"},
+                                    "eventTime": {"type": "string", "format": "date-time"},
+                                    "sourceRecordIds": {
+                                        "type": "array",
+                                        "maxItems": 10,
+                                        "items": {"type": "string"},
+                                    },
+                                },
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                "execution": {
+                    "type": "object",
+                    "required": [
+                        "transformJobArn",
+                        "transformJobName",
+                        "instanceType",
+                        "instanceCount",
+                        "networkIsolation",
+                        "maxRuntimeSeconds",
+                        "temporaryModelName",
+                        "temporaryModelCleanupStatus",
+                    ],
+                    "properties": {
+                        "transformJobArn": {"type": ["string", "null"]},
+                        "transformJobName": {"type": "string"},
+                        "instanceType": {"type": "string", "const": "ml.m5.large"},
+                        "instanceCount": {"type": "integer", "const": 1},
+                        "networkIsolation": {"type": "boolean", "const": True},
+                        "maxRuntimeSeconds": {"type": "integer", "maximum": 1800},
+                        "temporaryModelName": {"type": "string"},
+                        "temporaryModelCleanupStatus": {
+                            "type": "string",
+                            "enum": ["PENDING", "DELETED", "DELETE_PENDING", "REFUSED_INVALID_NAME"],
+                        },
+                        "stopRequestedAt": {"type": "string", "format": "date-time"},
+                        "stopReason": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+                "output": {
+                    "oneOf": [
+                        {"type": "null"},
+                        {
+                            "type": "object",
+                            "required": ["predictionCount", "sha256", "predictions"],
+                            "properties": {
+                                "predictionCount": {"type": "integer", "minimum": 1, "maximum": 25},
+                                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                                "predictions": {
+                                    "type": "array",
+                                    "maxItems": 25,
+                                    "items": _ref("PublicModelExecutionPrediction"),
+                                },
+                            },
+                            "additionalProperties": False,
+                        },
+                    ]
+                },
+                "cost": {
+                    "oneOf": [
+                        {"type": "null"},
+                        {
+                            "type": "object",
+                            "required": [
+                                "observedDurationSeconds",
+                                "estimatedComputeUsd",
+                                "estimateOnly",
+                                "basis",
+                            ],
+                            "properties": {
+                                "observedDurationSeconds": {"type": ["integer", "null"], "minimum": 0},
+                                "estimatedComputeUsd": {"type": ["number", "null"], "minimum": 0},
+                                "estimateOnly": {"type": "boolean", "const": True},
+                                "basis": {"type": "string"},
+                            },
+                            "additionalProperties": False,
+                        },
+                    ]
+                },
+                "provenance": {
+                    "type": "object",
+                    "required": [
+                        "requestId",
+                        "actorRole",
+                        "candidatePoolSha256",
+                        "candidatePoolVersionId",
+                        "sourceDataset",
+                        "inputVersionId",
+                        "outputVersionId",
+                        "receiptSha256",
+                        "receiptVersionId",
+                    ],
+                    "properties": {
+                        "requestId": {"type": "string"},
+                        "actorRole": {"type": "string", "const": "poweruser"},
+                        "candidatePoolSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "candidatePoolVersionId": {"type": ["string", "null"]},
+                        "sourceDataset": {"type": "object", "additionalProperties": True},
+                        "inputVersionId": {"type": ["string", "null"]},
+                        "outputVersionId": {"type": ["string", "null"]},
+                        "receiptSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "receiptVersionId": {"type": ["string", "null"]},
+                    },
+                    "additionalProperties": False,
+                },
+                "failure": {
+                    "type": "object",
+                    "required": ["code", "message"],
+                    "properties": {
+                        "code": {"type": "string"},
+                        "message": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+                "humanReviewRequired": {"type": "boolean", "const": True},
+                "disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "PublicModelExecutionList": {
+            "type": "object",
+            "required": ["contract", "executions"],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.model-execution-list.v1",
+                },
+                "executions": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": _ref("PublicModelExecutionReceipt"),
+                },
+            },
+            "additionalProperties": False,
+        },
         "Anomaly": {
             "type": "object",
             "properties": {
@@ -2020,6 +2272,62 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                     "produces an explicit refusal without a model call."
                 ),
                 extra_responses={"400": _ERR, "503": _ERR},
+            )
+        },
+        "/public-intelligence/model-executions": {
+            "get": _op(
+                "listPublicModelExecutions",
+                "List recent durable public-model execution receipts",
+                "9 · public intelligence",
+                _ref("PublicModelExecutionList"),
+                description=(
+                    "Returns at most ten newest KMS-encrypted execution receipts. "
+                    "The route can resume polling after a browser refresh without "
+                    "starting compute."
+                ),
+                extra_responses={"503": _ERR},
+            ),
+            "post": _op(
+                "startPublicModelExecution",
+                "Start one bounded SageMaker public-model validation run",
+                "9 · public intelligence",
+                _ref("PublicModelExecutionReceipt"),
+                request_schema=_ref("PublicModelExecutionRequest"),
+                success_status="202",
+                success_description="Submitted",
+                description=(
+                    "Power-user-only submission of one ephemeral Batch Transform job "
+                    "for 1 to 25 PII-minimized public Navy SBIR records. The model stays "
+                    "PendingManualApproval, no endpoint is created, and receipts are "
+                    "digest-bound."
+                ),
+                extra_responses={"400": _ERR, "409": _ERR, "503": _ERR},
+            ),
+        },
+        "/public-intelligence/model-executions/{executionId}": {
+            "get": _op(
+                "getPublicModelExecution",
+                "Read and reconcile one public-model execution receipt",
+                "9 · public intelligence",
+                _ref("PublicModelExecutionReceipt"),
+                parameters=[
+                    {
+                        "name": "executionId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^sbir-batch-[0-9]{8}T[0-9]{6}-[a-f0-9]{8}$",
+                        },
+                    }
+                ],
+                description=(
+                    "Reads the durable receipt and reconciles it against the bounded "
+                    "SageMaker Batch Transform job. Terminal reconciliation records "
+                    "output digest, prediction count, observed duration, estimated cost, "
+                    "and temporary-model cleanup."
+                ),
+                extra_responses={"404": _ERR, "503": _ERR},
             )
         },
         "/anomalies": {

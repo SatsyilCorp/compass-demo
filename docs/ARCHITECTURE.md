@@ -17,7 +17,7 @@ flowchart LR
   U["User browser"]
   CF["CloudFront and WAF\nPrivate S3 origin through OAC"]
   COG["Cognito hosted UI\npassword-only team access, TOTP presenter, OIDC"]
-  API["HTTP API\n35 JWT-protected operations"]
+  API["HTTP API\n38 JWT-protected operations"]
 
   subgraph VPC["Private application boundary across two AZs"]
     L["Application Lambdas\nShared identity, HTTP, DB, AI, and audit layer"]
@@ -139,7 +139,7 @@ Forward migrations 003 and 004 provide five database safeguards:
 
 ## 5. API and CORS boundary
 
-The 35 method-and-path operations across 33 URL paths are listed in
+The 38 method-and-path operations across 35 URL paths are listed in
 `docs/CONTRACTS.md`. The default JWT authorizer protects every operation,
 including the eight conditional Scale Run operations, OpenAPI document, and
 System Inspector. Scale Run operations apply an additional corporate
@@ -160,6 +160,15 @@ manifests. The accepted S3 serving manifest binds a compact index by SHA-256.
 record, and `POST /public-intelligence/explain` retrieves only from that
 verified index. Unsupported questions produce an explicit refusal. The full
 source snapshots never pass through the browser.
+
+The same isolated function exposes a cost-bounded public model execution
+Adapter. It selects only from a digest-bound, PII-minimized validation pool,
+loads the exact pending SageMaker package, and creates one network-isolated
+Batch Transform job on one `ml.m5.large` instance. An S3 lock limits execution
+to one active run. Versioned KMS-encrypted input, output, history pointers, and
+terminal receipts preserve provenance across browser refreshes. The temporary
+SageMaker Model is removed after reconciliation, and no endpoint or approval
+change is allowed by the interface.
 
 ```mermaid
 flowchart LR

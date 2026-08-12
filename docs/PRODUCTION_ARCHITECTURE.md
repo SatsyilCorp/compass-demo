@@ -1,6 +1,6 @@
 # Compass production-scale architecture
 
-Status: the current 35-operation resources are deployed in Satsyil AWS in HA
+Status: the current 38-operation resources are deployed in Satsyil AWS in HA
 mode. Scale, browser, document intelligence, model training, exact-version
 promotion, drift, public-evidence verification, cited explanation, and one
 authentic public SBIR SageMaker training job have live acceptance receipts. The
@@ -93,7 +93,7 @@ flowchart TB
 
 | Boundary | Live Satsyil evidence |
 |---|---|
-| Interface | 35 Cognito-protected API operations across 33 URL paths are deployed; unauthenticated protected requests return 401 |
+| Interface | 38 Cognito-protected API operations across 35 URL paths are deployed; unauthenticated protected requests return 401 |
 | Compute | 19 Lambda functions and 3 state machines are deployed; bounded Scale, document, model, and public-intelligence paths have accepted receipts |
 | Data | Private encrypted Aurora with one writer and one reader, 14-day backups, deletion protection, DynamoDB ledger, SQS with DLQ, governed Scale zones, and an isolated KMS-encrypted public-evidence prefix |
 | Intelligence | Six Glue tables, scan-limited Athena, Parquet materialization, full-corpus deterministic topic and anomaly aggregation, governed export, SHA-256 verified public evidence, and Bedrock cited explanation |
@@ -126,7 +126,7 @@ The saved acceptance receipts invoked the deployed Scale Control Lambda using
 AWS IAM and a staged API Gateway event. That path exercised the same route
 handler and live data plane, but bypassed Cognito, API Gateway transport, WAF,
 and the browser. Those interfaces were verified separately through the live
-browser and 25-operation CORS checks.
+browser and recorded CORS boundary checks.
 
 ## Evaluator flow
 

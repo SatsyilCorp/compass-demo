@@ -1,6 +1,6 @@
 # AWS public SBIR transition model receipt
 
-Status: trained, registered candidate, not approved, not deployed
+Status: trained, registered candidate, executed for bounded validation, not approved, not deployed
 
 ## Outcome
 
@@ -9,6 +9,13 @@ SageMaker training job
 AWS. It used 11,287 authentic public Navy SBIR examples and wrote a
 KMS-encrypted model artifact. SageMaker Model Registry package version 2 is
 `PendingManualApproval`. There is no model endpoint.
+
+Compass also executed package version 2 through an ephemeral, network-isolated
+SageMaker Batch Transform job on eight PII-minimized public validation records.
+Execution `sbir-batch-20260812T150516-2b9b35cd` completed with eight of eight
+responses in 71 observed transform seconds. The temporary SageMaker Model was
+deleted, the single-run lock was released, package approval stayed unchanged,
+and no endpoint was created.
 
 The candidate estimates whether a public Navy SBIR Phase I record is followed
 by a public Phase II or Phase III record for the same normalized organization
@@ -30,6 +37,30 @@ commercialization, causation, source-selection merit, or an internal decision.
 | Dataset digest | `0dda670313a1e9d3098b4d4e0b2048a3c7d7b4186de87731afad53f9f77400db` |
 | Model artifact digest | `652665a26f65230c2eb6019c65ca706bdb248414ed71b8d3365a05431045fd0a` |
 | Registry bundle digest | `51a3fcc71c46ecb514b2c3866f5153f7771838d07b43fc0807f4a89a5d6b424b` |
+
+## Bounded execution evidence
+
+| Item | Value |
+|---|---|
+| Execution ID | `sbir-batch-20260812T150516-2b9b35cd` |
+| Transform job ARN | `arn:aws:sagemaker:us-east-1:551185375163:transform-job/sbir-batch-20260812T150516-2b9b35cd` |
+| Terminal status | `COMPLETED` |
+| Input records | 8 public, PII-minimized records |
+| Prediction records | 8, all marked for human review |
+| Observed probability range | 0.36769619 to 0.63901642 |
+| Observed duration | 71 seconds |
+| Estimate-only compute | $0.002268 at the configured $0.115 per hour rate |
+| Input digest | `b0825f8e5b7d8d3b61075cca5a3321608a87e85d91691b25a1ec36781acceab9` |
+| Output digest | `eb56d25efb056cb31eddc748b0a5c609de2ceac9486f1ab5a1e64b02ccab645b` |
+| Receipt digest | `0c73cd9909b054144c526d76c3fbc78734045a63dec20bef0d2d9c2a85da0216` |
+| Temporary model | Deleted after receipt reconciliation |
+| Endpoint count | 0 |
+
+The values are public transition signals, not ONR mission-success predictions.
+The first bounded execution was stopped after network isolation exposed an
+offline package-install defect. Its failed evidence remains durable. The retry
+used the managed image's installed build tools with index access disabled and
+then completed normally.
 
 ## Evaluation
 

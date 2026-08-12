@@ -4,24 +4,25 @@
 **Purpose:** evaluator orientation and recording release gate
 
 This report distinguishes deployed resources from accepted execution evidence.
-The current Satsyil stack is deployed with 35 protected
+The current Satsyil stack is deployed with 38 protected
 operations, 19 Lambda functions, 13 alarms, 2 dashboards, and 3 state machines.
 The HA stack, identity preparation, fixed baseline, four Scale Runs, governed
 exports, interactive browser path, document success and quarantine paths,
 model training, Champion promotion, and drift evaluation have accepted live
 receipts. The authentic public SBIR candidate completed a 109-second SageMaker
-training job and entered Model Registry as `PendingManualApproval`. No endpoint
-was created. The candidate has a committed branch and draft pull request with
-green quality and security workflow evidence. The exact revision has not yet
-been released through the protected GitHub deployment environment. The
-candidate is not the recording release until that gate and one timed human
-rehearsal pass exist.
+training job and entered Model Registry as `PendingManualApproval`. A bounded
+eight-record Batch Transform validation then completed in 71 observed seconds
+with a hash-bound terminal receipt and $0.002268 estimate-only compute. The
+temporary model was deleted and no endpoint was created. The exact revision
+still requires clean GitHub workflow evidence and protected-environment release
+evidence. The candidate is not the recording release until those gates and one
+timed human rehearsal pass exist.
 
 ## 1. Current implementation by source inspection
 
 | Area | Current evidence |
 |---|---|
-| API | 33 JWT-protected method-and-path operations across 31 URL paths, including eight Scale operations, eight document MLOps operations, the reviewer inbox, and `GET /system/evidence` |
+| API | 38 JWT-protected method-and-path operations across 35 URL paths, including eight Scale operations, eight document MLOps operations, three public-model execution operations, the reviewer inbox, and `GET /system/evidence` |
 | Identity | Shared Cognito group normalization for native JWT and request-authorizer events; verified groups override forwarded roles and conflicting organizations fail closed |
 | CORS | Exact-origin allowlist in API Gateway and shared Lambda response helpers |
 | Database security | FORCE RLS, non-owner runtime role, corporate GUC gate, explicit runtime grants, and append-only audit trigger |
@@ -38,6 +39,7 @@ rehearsal pass exist.
 | Activity ticker | Ordered database projection is authoritative; recent Kinesis receipts merge by stable ID; missing transport organization scope is corporate-only |
 | Application compute | 19 deployed Lambda functions behind the narrow API, workflow, queue, public-intelligence, and data adapters |
 | Document intelligence and MLOps | Deployed eight-operation document and model contract with a bounded Step Functions workflow, Lambda classifier, optional SageMaker submission seam, accepted success and quarantine runs, 1.0 accuracy and macro F1 training evidence, exact-version Champion promotion, and shifted-data drift evidence |
+| Public SBIR model execution | Package version 2 remained `PendingManualApproval` while one network-isolated eight-record Batch Transform validation completed with eight predictions, input and output digests, a durable receipt digest, 71 observed seconds, $0.002268 estimate-only compute, temporary-model deletion, and zero endpoints |
 
 ## 2. Required automated gate
 
@@ -118,7 +120,7 @@ The following checks passed against the current Satsyil HA deployment on
 | Database | Private encrypted Aurora writer and reader available, 14-day backups configured, deletion protection enabled, all four migrations applied, and runtime-role bootstrap granted |
 | Identity | Poweruser, reviewer, and viewer accounts enabled for password-only team access; a separate presenter identity is enrolled with TOTP |
 | Preparation | Redacted receipt reported ready with all 19 of 19 checks passing |
-| API contract | OpenAPI described 33 protected operations across 31 URL paths; unauthenticated protected requests returned 401 |
+| API contract | OpenAPI describes 38 protected operations across 35 URL paths; unauthenticated protected requests return 401 |
 | Browser | Real password-only poweruser login loaded the current dashboard with 480 grants across eight program areas and no `Failed to fetch` or console errors; the MLOps screen trained, promoted, and evaluated the exact live model version |
 | Document intelligence | One document reached `gold-published` with a `technical_report` classification at 0.999991 confidence; one failed extractable-content and produced a quarantine receipt |
 | MLOps | Model `doc-nb-f828a29acd1e` reached 1.0 accuracy, 1.0 macro F1, and 6 of 6 classes; Champion promotion and shifted drift with PSI 11.51, 91 percent OOV, and `retrain-and-review` passed |
@@ -131,7 +133,7 @@ AWS IAM with a staged `/prod` event. It exercised the production route handler
 and live SQS, Lambda, S3, DynamoDB, Step Functions, Glue, Athena, and export
 flow. It bypassed Cognito, API Gateway transport, WAF, and the browser. Those
 interfaces were verified separately through the real Cognito browser pass and
-the 25-operation CORS check.
+the recorded CORS boundary checks.
 
 | Profile | Partitions | Duration | Quality | Passed | Quarantined | Anomalies | Export rows | Planned | Accrued estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|

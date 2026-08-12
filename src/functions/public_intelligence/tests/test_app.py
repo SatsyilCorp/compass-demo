@@ -387,11 +387,82 @@ def test_sam_resource_is_isolated_and_least_privilege():
 
     assert "VpcConfig:" not in block
     assert "Action: s3:GetObject" in block
-    assert "s3:PutObject" not in block
-    assert "s3:ListBucket" not in block
+    assert "GovernPublicSbirExecutionReceipts" in block
+    assert 'Resource: !Sub "${RawBucket.Arn}/mlops/public-sbir-transition/executions/*"' in block
+    assert "Action: s3:ListBucket" in block
+    assert "s3:prefix: [mlops/public-sbir-transition/executions/history/*]" in block
     assert "bedrock:InvokeModelWithResponseStream" not in block
     assert "amazon.nova-lite-v1:0" in block
     assert '${RawBucket.Arn}/public-intelligence/*' in block
     assert '${ScaleDataLakeBucket.Arn}/public-intelligence/*' in block
     assert "Path: /public-intelligence/snapshot" in block
     assert "Path: /public-intelligence/explain" in block
+    assert "Path: /public-intelligence/model-executions" in block
+    assert "Path: /public-intelligence/model-executions/{executionId}" in block
+
+
+def test_model_execution_routes_enforce_auth_and_role(monkeypatch):
+    monkeypatch.setattr(
+        app.model_execution,
+        "start_execution",
+        lambda **kwargs: {
+            "contract": app.model_execution.CONTRACT,
+            "executionId": "sbir-batch-20260812T120000-1234abcd",
+            "status": "SUBMITTED",
+        },
+    )
+    poweruser = app.handler(
+        event(
+            "POST",
+            "/public-intelligence/model-executions",
+            {"sampleSize": 8},
+        ),
+        SimpleNamespace(aws_request_id="aws-model"),
+    )
+    viewer = app.handler(
+        event(
+            "POST",
+            "/public-intelligence/model-executions",
+            {"sampleSize": 8},
+            role="viewer",
+        ),
+        SimpleNamespace(aws_request_id="aws-model"),
+    )
+
+    assert poweruser["statusCode"] == 202
+    assert response_body(poweruser)["status"] == "SUBMITTED"
+    assert viewer["statusCode"] == 403
+
+
+def test_model_execution_list_and_get_are_readable_by_viewer(monkeypatch):
+    execution_id = "sbir-batch-20260812T120000-1234abcd"
+    receipt = {
+        "contract": app.model_execution.CONTRACT,
+        "executionId": execution_id,
+        "status": "COMPLETED",
+    }
+    monkeypatch.setattr(
+        app.model_execution,
+        "list_executions",
+        lambda: {
+            "contract": "compass.public-intelligence.model-execution-list.v1",
+            "executions": [receipt],
+        },
+    )
+    monkeypatch.setattr(app.model_execution, "get_execution", lambda _: receipt)
+
+    listed = app.handler(
+        event("GET", "/public-intelligence/model-executions", role="viewer"),
+        SimpleNamespace(aws_request_id="aws-list"),
+    )
+    fetched = app.handler(
+        event(
+            "GET",
+            f"/public-intelligence/model-executions/{execution_id}",
+            role="viewer",
+        ),
+        SimpleNamespace(aws_request_id="aws-get"),
+    )
+
+    assert response_body(listed)["executions"][0]["executionId"] == execution_id
+    assert response_body(fetched)["status"] == "COMPLETED"

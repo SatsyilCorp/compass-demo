@@ -344,7 +344,7 @@ Complete every row after deployment and before the timed rehearsal.
 | Poweruser login | Cognito presents TOTP and `/me` resolves corporate scope |
 | Viewer login | `/me` resolves Code-30; funding values are masked or refused |
 | System Inspector | Badge says Live service; revision matches recording commit; refresh changes correlation ID |
-| Identity contract | All 33 protected operations accept the intended Cognito session in the current document MLOps deployment |
+| Identity contract | All 38 protected operations accept the intended Cognito session in the current document MLOps deployment |
 | CORS | Approved origin succeeds; a random origin is not reflected |
 | Clean intake | Batch passes and curated row count is positive |
 | Legacy intake | Compatible renamed schema normalizes and reaches an allowed disposition |

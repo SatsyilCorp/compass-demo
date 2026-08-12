@@ -11,6 +11,7 @@ const ROUTES = [
   "/licenses/",
   "/admin/requirements/",
   "/admin/architecture/",
+  "/admin/mlops/",
   "/admin/scale/",
   "/admin/pipeline/",
 ];
@@ -134,6 +135,15 @@ test("demo command center walks the scored sequence and strategic prompts", asyn
 
   await page.getByRole("button", { name: "Zero Trust and Cybersecurity Compliance" }).click();
   await expect(page.getByText("Continuously evaluate source, dependencies, IaC, STIG policy", { exact: false })).toBeVisible();
+});
+
+test("model operations refuses to present replay or registry evidence as an execution", async ({ page }) => {
+  await page.goto("/admin/mlops/");
+  await expect(page.getByRole("heading", { name: "Execute the registered candidate" })).toBeVisible();
+  await expect(page.getByText("Replay mode cannot claim cloud execution", { exact: true })).toBeVisible();
+  await expect(page.getByText("No execution receipt in this session", { exact: true })).toBeVisible();
+  await expect(page.getByText("Registry evidence is not execution evidence", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Execute candidate now" })).toBeDisabled();
 });
 
 test("a completed ingest appears in the shared System Inspector evidence", async ({ page }, testInfo) => {

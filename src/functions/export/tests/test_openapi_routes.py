@@ -38,7 +38,7 @@ def openapi_routes() -> set[tuple[str, str]]:
 def test_openapi_matches_every_deployed_application_route():
     deployed = template_routes()
     served = openapi_routes()
-    assert len(deployed) == 35
+    assert len(deployed) == 38
     assert served == deployed
 
 
@@ -165,6 +165,37 @@ def test_public_intelligence_operations_publish_bounded_grounded_contracts():
     assert "source_url" in citation["required"]
     assert "model_run_id" in citation["required"]
     assert "uncertainty" in citation["required"]
+
+
+def test_public_model_execution_operations_publish_bounded_receipt_contracts():
+    document = build_openapi()
+    paths = document["paths"]
+    collection = paths["/public-intelligence/model-executions"]
+    item = paths["/public-intelligence/model-executions/{executionId}"]["get"]
+
+    assert collection["post"]["responses"]["202"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PublicModelExecutionReceipt"}
+    assert collection["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PublicModelExecutionRequest"}
+    assert collection["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PublicModelExecutionList"}
+    assert item["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PublicModelExecutionReceipt"
+    }
+    schemas = document["components"]["schemas"]
+    assert schemas["PublicModelExecutionRequest"]["properties"]["sampleSize"][
+        "maximum"
+    ] == 25
+    receipt = schemas["PublicModelExecutionReceipt"]
+    assert receipt["properties"]["model"]["properties"]["approvalStatus"][
+        "const"
+    ] == "PendingManualApproval"
+    assert receipt["properties"]["execution"]["properties"]["instanceCount"][
+        "const"
+    ] == 1
 
 
 def test_scale_lab_component_shapes_match_the_frontend_contract():

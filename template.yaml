@@ -1873,6 +1873,18 @@ Resources:
           PUBLIC_INTELLIGENCE_MAX_INDEX_BYTES: "1572864"
           PUBLIC_INTELLIGENCE_READ_ROLES: poweruser,viewer
           PUBLIC_INTELLIGENCE_EXPLAIN_ROLES: poweruser,viewer
+          PUBLIC_SBIR_EXECUTION_BUCKET: !Ref RawBucket
+          PUBLIC_SBIR_EXECUTION_PREFIX: mlops/public-sbir-transition/executions/
+          PUBLIC_SBIR_CANDIDATE_POOL_KEY: mlops/public-sbir-transition/validation/candidates-20260812.json
+          PUBLIC_SBIR_CANDIDATE_POOL_SHA256: 779e050da144a866dd62572716129b1a9c72637c1f3efd49e6da8fbad2e4ba81
+          PUBLIC_SBIR_MODEL_PACKAGE_GROUP_ARN: !Ref PublicSbirTransitionModelPackageGroup
+          PUBLIC_SBIR_TRAINING_JOB_ARN: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:training-job/compass-doc-sbir-transition-20260812-0134"
+          PUBLIC_SBIR_MODEL_ARTIFACT_SHA256: 652665a26f65230c2eb6019c65ca706bdb248414ed71b8d3365a05431045fd0a
+          PUBLIC_SBIR_EXECUTION_ROLE_ARN: !GetAtt DocumentSageMakerExecutionRole.Arn
+          PUBLIC_SBIR_EXECUTION_KMS_KEY_ARN: !GetAtt AppKey.Arn
+          PUBLIC_SBIR_EXECUTION_MAX_RECORDS: "25"
+          PUBLIC_SBIR_EXECUTION_MAX_RUNTIME_SECONDS: "1800"
+          PUBLIC_SBIR_M5_LARGE_PRICE_USD_HOUR: "0.115"
       Policies:
         - Statement:
             - Sid: ReadVerifiedPublicEvidence
@@ -1882,10 +1894,52 @@ Resources:
                 - EnableScaleFeature
                 - !Sub "${ScaleDataLakeBucket.Arn}/public-intelligence/*"
                 - !Sub "${RawBucket.Arn}/public-intelligence/*"
-            - Sid: DecryptPublicEvidence
+            - Sid: ReadPublicSbirValidationPool
               Effect: Allow
-              Action: kms:Decrypt
+              Action: s3:GetObject
+              Resource: !Sub "${RawBucket.Arn}/mlops/public-sbir-transition/validation/*"
+            - Sid: GovernPublicSbirExecutionReceipts
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+              Resource: !Sub "${RawBucket.Arn}/mlops/public-sbir-transition/executions/*"
+            - Sid: ListPublicSbirExecutionHistory
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt RawBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix: [mlops/public-sbir-transition/executions/history/*]
+            - Sid: EncryptPublicEvidenceAndExecution
+              Effect: Allow
+              Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey, kms:DescribeKey]
               Resource: !GetAtt AppKey.Arn
+            - Sid: FindPublicSbirCandidate
+              Effect: Allow
+              Action: sagemaker:ListModelPackages
+              Resource: "*"
+            - Sid: ReadPublicSbirCandidate
+              Effect: Allow
+              Action: sagemaker:DescribeModelPackage
+              Resource: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:model-package/${AWS::StackName}-public-sbir-transition/*"
+            - Sid: ExecuteBoundedPublicSbirTransform
+              Effect: Allow
+              Action:
+                - sagemaker:CreateTransformJob
+                - sagemaker:DescribeTransformJob
+                - sagemaker:StopTransformJob
+                - sagemaker:AddTags
+              Resource: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:transform-job/sbir-batch-*"
+            - Sid: ManageEphemeralPublicSbirModel
+              Effect: Allow
+              Action: [sagemaker:CreateModel, sagemaker:DeleteModel, sagemaker:AddTags]
+              Resource: !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:model/compass-sbir-*"
+            - Sid: PassPublicSbirExecutionRole
+              Effect: Allow
+              Action: iam:PassRole
+              Resource: !GetAtt DocumentSageMakerExecutionRole.Arn
+              Condition:
+                StringEquals:
+                  iam:PassedToService: sagemaker.amazonaws.com
             - Sid: GenerateGroundedPublicExplanation
               Effect: Allow
               Action: bedrock:InvokeModel
@@ -1904,6 +1958,24 @@ Resources:
             ApiId: !Ref HttpApi
             Method: POST
             Path: /public-intelligence/explain
+        StartPublicSbirModelExecution:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /public-intelligence/model-executions
+        ListPublicSbirModelExecutions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /public-intelligence/model-executions
+        GetPublicSbirModelExecution:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /public-intelligence/model-executions/{executionId}
 
   # Approvals: shared pending inbox plus request and decision actions.
   ApprovalsFunction:

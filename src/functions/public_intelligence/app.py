@@ -30,6 +30,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from compass_common import config, http, llm
+import model_execution
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -822,7 +823,17 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return http.unauthorized()
         path = http.get_path(event)
         method = (http.get_method(event) or "").upper()
+        is_execution_collection = path == "/public-intelligence/model-executions"
+        is_execution_item = bool(
+            isinstance(path, str)
+            and re.fullmatch(
+                r"/public-intelligence/model-executions/sbir-batch-[0-9]{8}T[0-9]{6}-[a-f0-9]{8}",
+                path,
+            )
+        )
         kind = "explain" if path == "/public-intelligence/explain" else "snapshot"
+        if is_execution_collection or is_execution_item:
+            kind = "model-execution"
         if str(claims.role).lower() not in _allowed_roles(kind):
             return http.forbidden("role is not permitted for public intelligence")
 
@@ -849,9 +860,43 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     org_unit=str(claims.org_unit),
                 )
             )
+        if method == "POST" and is_execution_collection:
+            if str(claims.role).lower() != "poweruser":
+                return http.forbidden("only a power user can start model execution")
+            raw = event.get("body")
+            if isinstance(raw, str) and len(raw.encode("utf-8")) > MAX_REQUEST_BYTES:
+                raise ValueError(f"request body exceeds {MAX_REQUEST_BYTES} bytes")
+            sample_size = model_execution.parse_start_request(http.parse_body(event))
+            receipt = model_execution.start_execution(
+                sample_size=sample_size,
+                request_id=_request_id(event, context),
+                actor_role=str(claims.role),
+            )
+            return http.json_response(202, receipt)
+        if method == "GET" and is_execution_collection:
+            return http.ok(model_execution.list_executions())
+        if method == "GET" and is_execution_item and isinstance(path, str):
+            execution_id = path.rsplit("/", 1)[-1]
+            return http.ok(model_execution.get_execution(execution_id))
         return http.not_found()
     except ValueError as exc:
         return http.bad_request(str(exc))
+    except model_execution.ExecutionConflict as exc:
+        return http.error_response(
+            409,
+            str(exc),
+            code="MODEL_EXECUTION_ACTIVE",
+            executionId=exc.execution_id,
+        )
+    except model_execution.ExecutionNotFound:
+        return http.not_found("model execution was not found")
+    except model_execution.ExecutionError:
+        logger.exception("public model execution unavailable")
+        return http.error_response(
+            503,
+            "public model execution is unavailable or failed provenance validation",
+            code="MODEL_EXECUTION_UNAVAILABLE",
+        )
     except EvidenceUnavailable:
         logger.exception("public evidence snapshot unavailable")
         return http.error_response(

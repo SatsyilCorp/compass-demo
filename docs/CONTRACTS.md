@@ -58,7 +58,7 @@ Core relations:
 
 ## 3. Identity and HTTP contract
 
-All 35 method-and-path operations across 33 URL paths use the Cognito JWT
+All 38 method-and-path operations across 35 URL paths use the Cognito JWT
 authorizer by default when the Scale Run feature is enabled. No application
 operation is intentionally public. The eight Scale Run operations also require
 the corporate poweruser persona.
@@ -123,6 +123,9 @@ viewer.
 | 33 | GET | `/ml/ops/evidence` | Read sanitized training, registry, deployment, and drift evidence | 5 and cross-cutting |
 | 34 | GET | `/public-intelligence/snapshot` | Read a versioned, checksummed public-evidence snapshot | 5 and cross-cutting |
 | 35 | POST | `/public-intelligence/explain` | Produce a bounded cited explanation or an explicit evidence refusal | 5 and 6 |
+| 36 | GET | `/public-intelligence/model-executions` | Read the newest durable, governed public-model execution receipts | 5 and cross-cutting |
+| 37 | POST | `/public-intelligence/model-executions` | Start one bounded public SBIR candidate Batch Transform run | 5 |
+| 38 | GET | `/public-intelligence/model-executions/{executionId}` | Reconcile one Batch Transform run to its terminal receipt | 5 and cross-cutting |
 
 The document upload request accepts either `synthetic-demo` input or a
 PII-minimized `public` document. A public upload must explicitly declare
@@ -150,6 +153,16 @@ snapshot, record digest, model run identifier when one exists, and reported
 uncertainty. No supporting record produces
 `INSUFFICIENT_CITABLE_EVIDENCE` without calling a model. A Bedrock outage
 returns a conservative deterministic answer with the same citations.
+
+The model-execution interface uses the exact registered public SBIR candidate
+without approving or deploying it. A corporate poweruser can submit 1 to 25
+PII-minimized records from a digest-bound validation pool. Compass creates one
+network-isolated `ml.m5.large` Batch Transform job, caps concurrency at one,
+stores input, output, and receipt objects with KMS encryption and versioning,
+and deletes the temporary SageMaker Model after terminal reconciliation. The
+receipt records package, training, candidate-pool, input, output, and receipt
+digests, per-record probabilities, review flags, observed duration, and an
+estimate-only compute cost. No endpoint or automatic promotion is created.
 
 ### Scale Run contract
 

@@ -1,10 +1,13 @@
 # Public intelligence Lambda
 
-This function exposes two Cognito-protected routes without touching the
+This function exposes five Cognito-protected operations without touching the
 synthetic Compass database:
 
 - `GET /public-intelligence/snapshot`
 - `POST /public-intelligence/explain`
+- `GET /public-intelligence/model-executions`
+- `POST /public-intelligence/model-executions`
+- `GET /public-intelligence/model-executions/{executionId}`
 
 The function loads a small current manifest from the configured S3 bucket. The
 manifest must point to an immutable, versioned evidence index under
@@ -68,3 +71,16 @@ call.
 
 Raw payloads, CUI, non-public records, non-HTTPS citations, and unbounded source
 documents are rejected at the read boundary.
+
+## Bounded model execution
+
+The execution routes use a digest-bound public Navy SBIR validation pool and
+the newest completed `PendingManualApproval` package in the configured Model
+Package Group. Only a corporate poweruser can start a run. Powerusers and
+viewers can read its durable receipt. A request selects 1 to 25 records and
+creates one network-isolated SageMaker Batch Transform job with one
+`ml.m5.large` instance. Input, output, history, and receipt objects are
+versioned and KMS encrypted. One active-run lock prevents concurrent spend.
+The temporary SageMaker Model is deleted after a terminal result. The Adapter
+cannot create an endpoint, approve a package, assign a production alias, or
+describe the output as ONR mission success.

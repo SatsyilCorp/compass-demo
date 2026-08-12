@@ -61,6 +61,12 @@ import type {
   PublicIntelligenceExplanationResponse,
   PublicIntelligenceSnapshotResponse,
 } from "@/lib/public-intelligence/types";
+import {
+  parsePublicModelExecutionList,
+  parsePublicModelExecutionReceipt,
+  type PublicModelExecutionList,
+  type PublicModelExecutionReceipt,
+} from "@/lib/mlops/model-execution";
 
 export const USE_MOCK =
   typeof process !== "undefined" && process.env.NEXT_PUBLIC_USE_MOCK !== "false";
@@ -462,6 +468,39 @@ export function postModelDriftApi(documents?: string[]): Promise<Record<string, 
 
 export function getModelOpsEvidenceApi(): Promise<Record<string, unknown>> {
   return fetchJson<Record<string, unknown>>("/ml/ops/evidence", { cache: "no-store" });
+}
+
+export async function postPublicModelExecutionApi(
+  sampleSize: number,
+): Promise<PublicModelExecutionReceipt> {
+  const response = await fetchJson<unknown>("/public-intelligence/model-executions", {
+    method: "POST",
+    body: JSON.stringify({ sampleSize }),
+  });
+  const receipt = parsePublicModelExecutionReceipt(response);
+  if (!receipt) throw new ApiError(502, response, "model_execution_receipt_contract_invalid");
+  return receipt;
+}
+
+export async function getPublicModelExecutionApi(
+  executionId: string,
+): Promise<PublicModelExecutionReceipt> {
+  const response = await fetchJson<unknown>(
+    `/public-intelligence/model-executions/${encodeURIComponent(executionId)}`,
+    { cache: "no-store" },
+  );
+  const receipt = parsePublicModelExecutionReceipt(response);
+  if (!receipt) throw new ApiError(502, response, "model_execution_receipt_contract_invalid");
+  return receipt;
+}
+
+export async function getPublicModelExecutionsApi(): Promise<PublicModelExecutionList> {
+  const response = await fetchJson<unknown>("/public-intelligence/model-executions", {
+    cache: "no-store",
+  });
+  const list = parsePublicModelExecutionList(response);
+  if (!list) throw new ApiError(502, response, "model_execution_list_contract_invalid");
+  return list;
 }
 
 // Public intelligence is intentionally backed only by the protected live API.

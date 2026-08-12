@@ -17,7 +17,7 @@ dashboard, approval, export, and system evidence views.
 ## Current live boundary
 
 The current Satsyil stack at `https://compass.aws.satsyil.com/` is deployed at
-`public-intel-20260812-full`. It has 35 protected operations across 33 URL paths, 19 Lambda
+`public-intel-20260812-full`. It has 38 protected operations across 35 URL paths, 19 Lambda
 functions, 13 alarms, 2 dashboards, and 3 state machines. The stack is in HA
 mode, Scale is enabled through 1,000,000 records, and document MLOps uses the
 bounded Lambda `demo` Adapter.
@@ -41,7 +41,7 @@ The seven required scenario elements are presented in sequence.
 
 | # | Required element | Product proof |
 |---|---|---|
-| 1 | Secure access, MFA, and Zero Trust | Cognito optional TOTP for the formal presenter, JWT protection on all 33 current method-and-path operations across 31 URL paths, centralized group-to-role normalization, transaction-scoped RLS, and role-gated funding data |
+| 1 | Secure access, MFA, and Zero Trust | Cognito optional TOTP for the formal presenter, JWT protection on all 38 current method-and-path operations across 35 URL paths, centralized group-to-role normalization, transaction-scoped RLS, and role-gated funding data |
 | 2 | Infrastructure as Code and automation | `template.yaml`, forward SQL migrations, automated quality gates, controlled OIDC deployment, deploy revision evidence, and deterministic RMF artifact generation |
 | 3 | Automated ingestion, DataOps, and streaming | S3 and EventBridge trigger an Express Step Functions workflow with normalization, quality scoring, curate or quarantine decisions, an ordered database activity projection, and deduplicated Kinesis transport receipts |
 | 4 | Governance, quality, and cataloging | Explainable quality scores, a governed catalog, and run-emitted lineage at `/catalog/lineage/?batch=<id>` |
@@ -224,7 +224,7 @@ cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e
 
 | Path | Purpose |
 |---|---|
-| `template.yaml` | Reproducible AWS environment, 35 protected API operations, document MLOps, optional Scale Run resources, observability, and resilience modes |
+| `template.yaml` | Reproducible AWS environment, 38 protected API operations, document MLOps, optional Scale Run resources, observability, and resilience modes |
 | `db/migrations/` | Versioned schema, RLS and CLS, explicit runtime grants, append-only audit, and opaque approval verifier storage |
 | `src/common/` | Shared database, identity, HTTP, CORS, Bedrock, audit, deterministic workload, and price-backed cost contracts |
 | `src/functions/` | Application handlers, System Inspector, Scale Control, Scale Worker, Scale Export, migrator, and RMF generator |

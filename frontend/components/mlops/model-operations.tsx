@@ -48,6 +48,7 @@ import {
   resolvePromotionVersion,
   type LiveModelProjection,
 } from "@/lib/mlops/live-model";
+import { ModelExecutionControl } from "@/components/mlops/model-execution-control";
 
 type View = "lifecycle" | "taxonomy" | "registry" | "monitoring";
 
@@ -222,6 +223,7 @@ export function ModelOperations() {
 
   return (
     <div className="mt-6 space-y-6">
+      <ModelExecutionControl />
       <section className="overflow-hidden rounded-xl border border-gov-primary/20 bg-gov-primary text-white shadow-card">
         <div className="compass-grid-overlay grid gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] lg:px-6">
           <div>
