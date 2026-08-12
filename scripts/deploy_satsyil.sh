@@ -32,7 +32,7 @@ SCALE_DATA_RETENTION_DAYS="${SCALE_DATA_RETENTION_DAYS:-7}"
 SCALE_EVIDENCE_RETENTION_DAYS="${SCALE_EVIDENCE_RETENTION_DAYS:-30}"
 SCALE_ATHENA_SCAN_CUTOFF_BYTES="${SCALE_ATHENA_SCAN_CUTOFF_BYTES:-10737418240}"
 COGNITO_DOMAIN_PREFIX="${COGNITO_DOMAIN_PREFIX:-satsyil-compass-demo}"
-DEPLOY_REVISION="${DEPLOY_REVISION:-local-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+PUBLIC_SBIR_EXECUTION_ENABLED="${PUBLIC_SBIR_EXECUTION_ENABLED:-false}"
 WEB_CUSTOM_DOMAIN_NAME="${WEB_CUSTOM_DOMAIN_NAME:-}"
 WEB_CERTIFICATE_ARN="${WEB_CERTIFICATE_ARN:-}"
 WEB_HOSTED_ZONE_ID="${WEB_HOSTED_ZONE_ID:-}"
@@ -42,6 +42,29 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 config="$repo/samconfig-satsyil.toml"
 cd "$repo"
+
+require_clean_source_tree() {
+  local dirty_paths
+  dirty_paths="$(git status --porcelain=v1 --untracked-files=all)"
+  if [ -n "$dirty_paths" ]; then
+    echo "ERROR: deployment requires a clean Git source tree; commit or remove every listed change" >&2
+    printf '%s\n' "$dirty_paths" >&2
+    exit 1
+  fi
+}
+
+source_revision="$(git rev-parse --verify HEAD)"
+if ! [[ "$source_revision" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: unable to resolve the exact 40-character Git commit SHA" >&2
+  exit 1
+fi
+if [ -n "${DEPLOY_REVISION:-}" ] && [ "$DEPLOY_REVISION" != "$source_revision" ]; then
+  echo "ERROR: DEPLOY_REVISION must exactly equal the full Git commit SHA at HEAD" >&2
+  exit 1
+fi
+DEPLOY_REVISION="$source_revision"
+unset source_revision
+require_clean_source_tree
 
 if ! [[ "$SATSYIL_EXPECTED_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
   echo "ERROR: SATSYIL_EXPECTED_ACCOUNT_ID must be supplied as a 12-digit protected environment value" >&2
@@ -53,6 +76,11 @@ if [ "$AWS_REGION" != "us-east-1" ]; then
 fi
 if [ "$DATABASE_MODE" != "demo" ] && [ "$DATABASE_MODE" != "ha" ]; then
   echo "ERROR: DATABASE_MODE must be demo or ha" >&2
+  exit 1
+fi
+if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" != "true" ] \
+    && [ "$PUBLIC_SBIR_EXECUTION_ENABLED" != "false" ]; then
+  echo "ERROR: PUBLIC_SBIR_EXECUTION_ENABLED must be true or false" >&2
   exit 1
 fi
 if ! [[ "$COGNITO_DOMAIN_PREFIX" =~ ^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$ ]]; then
@@ -153,6 +181,48 @@ if [ -n "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
 fi
 unset SATSYIL_ACCOUNT_ID
 
+if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" = "true" ]; then
+  if [ "$stack_exists" != "true" ]; then
+    echo "ERROR: public SBIR execution can be enabled only after its pinned evidence is provisioned" >&2
+    exit 1
+  fi
+  public_sbir_bucket="$(aws_satsyil cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query 'Stacks[0].Outputs[?OutputKey==`RawBucketName`].OutputValue | [0]' \
+    --output text)"
+  public_sbir_package="$(aws_satsyil sagemaker describe-model-package \
+    --model-package-name "${STACK_NAME}-public-sbir-transition/2" \
+    --query '[ModelPackageStatus,ModelApprovalStatus] | join(`:`, @)' \
+    --output text)"
+  if [ "$public_sbir_package" != "Completed:PendingManualApproval" ]; then
+    echo "ERROR: pinned public SBIR Model Registry package is not ready" >&2
+    exit 1
+  fi
+  public_sbir_training="$(aws_satsyil sagemaker describe-training-job \
+    --training-job-name compass-doc-sbir-transition-20260812-0134 \
+    --query TrainingJobStatus \
+    --output text)"
+  if [ "$public_sbir_training" != "Completed" ]; then
+    echo "ERROR: pinned public SBIR training job is not complete" >&2
+    exit 1
+  fi
+  public_sbir_version="$(aws_satsyil s3api head-object \
+    --bucket "$public_sbir_bucket" \
+    --key mlops/public-sbir-transition/registry/sbir_transition-0dda670313a1e9d3/model-v2.tar.gz \
+    --version-id 6ki61OUXqpqujj5uHes3k0Sz2AoryxlB \
+    --query VersionId \
+    --output text)"
+  if [ "$public_sbir_version" != "6ki61OUXqpqujj5uHes3k0Sz2AoryxlB" ]; then
+    echo "ERROR: pinned public SBIR model object version did not resolve exactly" >&2
+    exit 1
+  fi
+  aws_satsyil s3api head-object \
+    --bucket "$public_sbir_bucket" \
+    --key mlops/public-sbir-transition/validation/candidates-20260812.json \
+    >/dev/null
+  unset public_sbir_bucket public_sbir_package public_sbir_training public_sbir_version
+fi
+
 if [ "$stack_exists" = false ]; then
   vpc_count="$(aws_satsyil ec2 describe-vpcs --query 'length(Vpcs)' --output text)"
   vpc_quota="$(aws_satsyil service-quotas get-service-quota \
@@ -184,6 +254,9 @@ echo "==> Staging database migrations"
 
 echo "==> Staging the current SAM template into the RMF artifact package"
 "$repo/src/functions/rmf_artifact/prepare_template.sh"
+
+echo "==> Confirming staged deployment artifacts match the committed source"
+require_clean_source_tree
 
 echo "==> Validating the SAM template"
 sam validate \
@@ -253,6 +326,7 @@ deploy_pass() {
       "ScaleDataRetentionDays=$SCALE_DATA_RETENTION_DAYS" \
       "ScaleEvidenceRetentionDays=$SCALE_EVIDENCE_RETENTION_DAYS" \
       "ScaleAthenaBytesScannedCutoff=$SCALE_ATHENA_SCAN_CUTOFF_BYTES" \
+      "PublicSbirExecutionEnabled=$PUBLIC_SBIR_EXECUTION_ENABLED" \
       "CognitoDomainPrefix=$COGNITO_DOMAIN_PREFIX" \
       "${web_parameters[@]}"
 }

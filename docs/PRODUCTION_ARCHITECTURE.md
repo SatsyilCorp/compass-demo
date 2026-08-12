@@ -98,7 +98,7 @@ flowchart TB
 | Data | Private encrypted Aurora with one writer and one reader, 14-day backups, deletion protection, DynamoDB ledger, SQS with DLQ, governed Scale zones, and an isolated KMS-encrypted public-evidence prefix |
 | Intelligence | Six Glue tables, scan-limited Athena, Parquet materialization, full-corpus deterministic topic and anomaly aggregation, governed export, SHA-256 verified public evidence, and Bedrock cited explanation |
 | Edge and identity | CloudFront, WAF, exact-origin CORS, password-only Cognito team accounts, a dedicated TOTP presenter, and ready poweruser, reviewer, and viewer personas |
-| Operations | 13 alarms, 2 dashboards, API and workflow logs, application logs, and X-Ray tracing are deployed |
+| Operations | 15 alarms, 2 dashboards, API and workflow logs, application logs, and X-Ray tracing are deployed |
 
 The fixed demonstration baseline passed 19 of 19 preparation checks. A live
 password-only poweruser session loaded the dashboard with 480 grants across

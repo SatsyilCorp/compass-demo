@@ -16,9 +16,9 @@ dashboard, approval, export, and system evidence views.
 
 ## Current live boundary
 
-The current Satsyil stack at `https://compass.aws.satsyil.com/` is deployed at
-`public-intel-20260812-full`. It has 38 protected operations across 35 URL paths, 19 Lambda
-functions, 13 alarms, 2 dashboards, and 3 state machines. The stack is in HA
+The current Satsyil stack at `https://compass.aws.satsyil.com/` has 38 protected
+operations across 35 URL paths, 19 Lambda functions, 15 alarms, 2 dashboards,
+and 3 state machines. The stack is in HA
 mode, Scale is enabled through 1,000,000 records, and document MLOps uses the
 bounded Lambda `demo` Adapter.
 
@@ -230,7 +230,7 @@ cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e
 | `src/functions/` | Application handlers, System Inspector, Scale Control, Scale Worker, Scale Export, migrator, and RMF generator |
 | `statemachines/` | Express intake and Standard Scale Run workflow definitions |
 | `scripts/prepare_demo.py` | Bounded synthetic reset, baseline preparation, read-only preflight, and one-shot live drop release |
-| `scripts/deploy_satsyil.sh` | Named-profile deployment path with Scale Run controls enabled |
+| `scripts/deploy_satsyil.sh` | Named-profile deployment path with a clean-tree, exact-commit release guard and Scale Run controls enabled |
 | `scripts/run_scale_acceptance.py` | Direct-IAM Scale Adapter acceptance runner and sanitized receipt writer |
 | `frontend/` | Responsive mission application with live, Scale, and deterministic Rehearsal Adapters |
 | `.github/workflows/` | Quality gates and controlled OIDC deployment |

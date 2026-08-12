@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[4]
 FUNCTION_DIR = ROOT / "src" / "functions" / "public_intelligence"
 COMMON_DIR = ROOT / "src" / "common" / "python"
@@ -149,6 +151,46 @@ def response_body(response):
 
 def setup_function():
     app._S3_CLIENT = evidence_fixture()
+
+
+def test_scheduler_reconciliation_bypasses_http_auth_and_propagates_result(monkeypatch):
+    calls = []
+
+    def reconcile(execution_id=None):
+        calls.append(execution_id)
+        return {
+            "contract": "compass.public-intelligence.model-execution-reconcile.v1",
+            "status": "COMPLETED",
+            "executionId": execution_id,
+        }
+
+    monkeypatch.setattr(app.model_execution, "reconcile_active_execution", reconcile)
+    execution_id = "sbir-batch-20260812T150516-2b9b35cd"
+
+    response = app.handler(
+        {
+            "source": "aws.scheduler",
+            "detail-type": "Public SBIR Reconciliation",
+            "executionId": execution_id,
+        },
+        SimpleNamespace(aws_request_id="scheduled-1"),
+    )
+
+    assert response["status"] == "COMPLETED"
+    assert calls == [execution_id]
+
+
+def test_scheduler_reconciliation_raises_for_lambda_retry(monkeypatch):
+    def fail(execution_id=None):
+        raise app.model_execution.ExecutionError("transient")
+
+    monkeypatch.setattr(app.model_execution, "reconcile_active_execution", fail)
+
+    with pytest.raises(app.model_execution.ExecutionError, match="transient"):
+        app.handler(
+            {"source": "aws.scheduler", "executionId": "sbir-batch-20260812T150516-2b9b35cd"},
+            SimpleNamespace(aws_request_id="scheduled-2"),
+        )
 
 
 def test_snapshot_verifies_manifest_and_returns_sanitized_public_index():
@@ -399,6 +441,11 @@ def test_sam_resource_is_isolated_and_least_privilege():
     assert "Path: /public-intelligence/explain" in block
     assert "Path: /public-intelligence/model-executions" in block
     assert "Path: /public-intelligence/model-executions/{executionId}" in block
+    assert "PUBLIC_SBIR_EXECUTION_ENABLED: !Ref PublicSbirExecutionEnabled" in block
+    assert "PUBLIC_SBIR_RECONCILIATION_DLQ_ARN" in block
+    assert "scheduler:CreateSchedule, scheduler:DeleteSchedule" in block
+    assert "aws:SourceAccount: !Ref AWS::AccountId" in block
+    assert "schedule-group/default" in block
 
 
 def test_model_execution_routes_enforce_auth_and_role(monkeypatch):

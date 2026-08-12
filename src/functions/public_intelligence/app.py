@@ -817,6 +817,11 @@ def _parse_explain_request(event: Mapping[str, Any]) -> tuple[str, list[str], in
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    if event.get("source") in {"aws.events", "aws.scheduler"}:
+        execution_id = event.get("executionId")
+        return model_execution.reconcile_active_execution(
+            str(execution_id) if execution_id is not None else None
+        )
     try:
         claims = http.get_claims(event)
         if not claims.is_authenticated:

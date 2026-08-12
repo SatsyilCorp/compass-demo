@@ -154,15 +154,19 @@ uncertainty. No supporting record produces
 `INSUFFICIENT_CITABLE_EVIDENCE` without calling a model. A Bedrock outage
 returns a conservative deterministic answer with the same citations.
 
-The model-execution interface uses the exact registered public SBIR candidate
+The model-execution interface uses one exact registered public SBIR candidate
 without approving or deploying it. A corporate poweruser can submit 1 to 25
-PII-minimized records from a digest-bound validation pool. Compass creates one
-network-isolated `ml.m5.large` Batch Transform job, caps concurrency at one,
-stores input, output, and receipt objects with KMS encryption and versioning,
-and deletes the temporary SageMaker Model after terminal reconciliation. The
-receipt records package, training, candidate-pool, input, output, and receipt
-digests, per-record probabilities, review flags, observed duration, and an
-estimate-only compute cost. No endpoint or automatic promotion is created.
+PII-minimized records from a digest-bound training-cohort smoke pool. Compass
+verifies the package ARN, training job, source object version, registry bundle
+digest, model-card digest, image digest, and versioned, write-once per-run model copy before starting one
+network-isolated `ml.m5.large` Batch Transform job. It caps concurrency at one,
+enforces the 1,800-second runtime limit through a per-run EventBridge Scheduler
+cleanup guard, requires finite probabilities from zero through one, binary
+labels, nonempty semantics, and a mandatory human-review flag, and deletes the
+temporary SageMaker Model after terminal reconciliation. The receipt records package,
+training, candidate-pool, input, output, object-version, and receipt digests,
+per-record probabilities, review flags, observed duration, and an estimate-only
+compute cost. No endpoint or automatic promotion is created.
 
 ### Scale Run contract
 

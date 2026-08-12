@@ -5,14 +5,16 @@
 
 This report distinguishes deployed resources from accepted execution evidence.
 The current Satsyil stack is deployed with 38 protected
-operations, 19 Lambda functions, 13 alarms, 2 dashboards, and 3 state machines.
+operations across 35 URL paths, 19 Lambda functions, 15 alarms, 2 dashboards,
+and 3 state machines.
 The HA stack, identity preparation, fixed baseline, four Scale Runs, governed
 exports, interactive browser path, document success and quarantine paths,
 model training, Champion promotion, and drift evaluation have accepted live
 receipts. The authentic public SBIR candidate completed a 109-second SageMaker
 training job and entered Model Registry as `PendingManualApproval`. A bounded
-eight-record Batch Transform validation then completed in 71 observed seconds
-with a hash-bound terminal receipt and $0.002268 estimate-only compute. The
+eight-record Batch Transform training-cohort smoke run then completed in 71
+observed seconds with a hash-bound terminal receipt and $0.002268 estimate-only
+compute. The
 temporary model was deleted and no endpoint was created. The exact revision
 still requires clean GitHub workflow evidence and protected-environment release
 evidence. The candidate is not the recording release until those gates and one
@@ -31,7 +33,7 @@ timed human rehearsal pass exist.
 | Delivery | Pull-request quality workflow and manually dispatched protected-environment deployment through AWS OIDC |
 | Demo preparation | Explicitly confirmed, synthetic-only bounded reset and seed; fixed non-triggering staged fixtures; real baseline analytics; redacted readiness receipt; one-shot live drop release |
 | Scale data plane | Deterministic six-domain generator, maximum 25,000 records per partition, one-active-run gate, Standard workflow, SQS and DLQ, DynamoDB ledger, governed lake zones, Glue, Athena, and asynchronous Parquet export |
-| Observability | 14-day API, workflow, and centralized application log groups, function-specific streams, X-Ray, 13 deployed alarms, and 2 CloudWatch dashboards |
+| Observability | 14-day API, workflow, and centralized application log groups, function-specific streams, X-Ray, 15 deployed alarms, and 2 CloudWatch dashboards |
 | Database resilience | Source supports demo and HA modes; the accepted Satsyil live revision uses one private encrypted writer and one reader, 14-day backups, and deletion protection |
 | Frontend | Responsive mission shell, mobile drawer, server-backed scoped dashboard filters, tab-scoped evidence selection, Scale receipt Decision Brief, presenter rehearsal guide, accessible interactions, interactive Scale Lab, and static deployment |
 | Replay | One persistent deterministic scenario shared by ingest, catalog, lineage, analytics, dashboard, approvals, export, stream, and evidence |
@@ -39,7 +41,7 @@ timed human rehearsal pass exist.
 | Activity ticker | Ordered database projection is authoritative; recent Kinesis receipts merge by stable ID; missing transport organization scope is corporate-only |
 | Application compute | 19 deployed Lambda functions behind the narrow API, workflow, queue, public-intelligence, and data adapters |
 | Document intelligence and MLOps | Deployed eight-operation document and model contract with a bounded Step Functions workflow, Lambda classifier, optional SageMaker submission seam, accepted success and quarantine runs, 1.0 accuracy and macro F1 training evidence, exact-version Champion promotion, and shifted-data drift evidence |
-| Public SBIR model execution | Package version 2 remained `PendingManualApproval` while one network-isolated eight-record Batch Transform validation completed with eight predictions, input and output digests, a durable receipt digest, 71 observed seconds, $0.002268 estimate-only compute, temporary-model deletion, and zero endpoints |
+| Public SBIR model execution | Package version 2 remained `PendingManualApproval` while one network-isolated eight-record Batch Transform training-cohort smoke run completed with eight predictions, input and output digests, a durable receipt digest, 71 observed seconds, $0.002268 estimate-only compute, temporary-model deletion, and zero endpoints |
 
 ## 2. Required automated gate
 
@@ -116,7 +118,7 @@ The following checks passed against the current Satsyil HA deployment on
 
 | Observed check | Result |
 |---|---|
-| Stack | Deployment completed with 19 functions, 13 alarms, 2 dashboards, and 3 workflows |
+| Stack | Deployment completed with 19 functions, 15 alarms, 2 dashboards, and 3 workflows |
 | Database | Private encrypted Aurora writer and reader available, 14-day backups configured, deletion protection enabled, all four migrations applied, and runtime-role bootstrap granted |
 | Identity | Poweruser, reviewer, and viewer accounts enabled for password-only team access; a separate presenter identity is enrolled with TOTP |
 | Preparation | Redacted receipt reported ready with all 19 of 19 checks passing |

@@ -785,7 +785,14 @@ def _schemas() -> dict[str, Any]:
                 "createdAt": {"type": "string", "format": "date-time"},
                 "updatedAt": {"type": "string", "format": "date-time"},
                 "completedAt": {"type": ["string", "null"], "format": "date-time"},
-                "purpose": {"type": "string", "const": "bounded_public_validation"},
+                "purpose": {
+                    "type": "string",
+                    "enum": ["training_cohort_smoke_scoring", "bounded_public_validation"],
+                    "description": (
+                        "Training-cohort smoke scoring. bounded_public_validation is retained "
+                        "only for compatibility with earlier hash-bound execution receipts."
+                    ),
+                },
                 "executionMode": {"type": "string", "const": "sagemaker_batch_transform"},
                 "model": {
                     "type": "object",
@@ -808,6 +815,8 @@ def _schemas() -> dict[str, Any]:
                         "candidateOnly": {"type": "boolean", "const": True},
                         "trainingJobArn": {"type": "string"},
                         "modelArtifactSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "modelBundleSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "modelArtifactSourceVersionId": {"type": "string"},
                         "modelCardSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                         "imageDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
                     },
@@ -864,6 +873,7 @@ def _schemas() -> dict[str, Any]:
                             "type": "string",
                             "enum": ["PENDING", "DELETED", "DELETE_PENDING", "REFUSED_INVALID_NAME"],
                         },
+                        "reconciliationSchedule": {"type": ["string", "null"]},
                         "stopRequestedAt": {"type": "string", "format": "date-time"},
                         "stopReason": {"type": "string"},
                     },
@@ -929,6 +939,7 @@ def _schemas() -> dict[str, Any]:
                         "candidatePoolVersionId": {"type": ["string", "null"]},
                         "sourceDataset": {"type": "object", "additionalProperties": True},
                         "inputVersionId": {"type": ["string", "null"]},
+                        "executionModelVersionId": {"type": ["string", "null"]},
                         "outputVersionId": {"type": ["string", "null"]},
                         "receiptSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                         "receiptVersionId": {"type": ["string", "null"]},
@@ -2289,7 +2300,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
             ),
             "post": _op(
                 "startPublicModelExecution",
-                "Start one bounded SageMaker public-model validation run",
+                "Start one bounded SageMaker public-model smoke run",
                 "9 · public intelligence",
                 _ref("PublicModelExecutionReceipt"),
                 request_schema=_ref("PublicModelExecutionRequest"),

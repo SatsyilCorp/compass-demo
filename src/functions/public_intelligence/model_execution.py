@@ -1,6 +1,6 @@
-"""Bounded SageMaker execution for the public SBIR transition candidate.
+"""Bounded SageMaker smoke execution for the public SBIR transition candidate.
 
-This module starts one ephemeral SageMaker Batch Transform validation run from
+This module starts one ephemeral SageMaker Batch Transform smoke run from
 an immutable public candidate pool. It never changes Model Registry approval,
 creates no endpoint, and deletes the temporary SageMaker Model after a terminal
 result. Request, input, output, and terminal receipt digests remain in the
@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
@@ -22,11 +23,12 @@ from urllib.parse import urlparse
 CONTRACT = "compass.public-intelligence.model-execution.v1"
 CANDIDATE_POOL_CONTRACT = "compass.public-intelligence.inference-candidates.v1"
 EXECUTION_MODE = "sagemaker_batch_transform"
-PURPOSE = "bounded_public_validation"
+PURPOSE = "training_cohort_smoke_scoring"
 TERMINAL_STATUSES = {"COMPLETED", "FAILED", "STOPPED"}
 MAX_SAMPLE_SIZE_HARD = 25
 MAX_POOL_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 1024 * 1024
+MAX_MODEL_BYTES = 64 * 1024 * 1024
 MAX_RUNTIME_SECONDS_HARD = 1800
 MAX_LIST_RECEIPTS = 10
 EXECUTION_ID_PATTERN = re.compile(r"^sbir-batch-[0-9]{8}T[0-9]{6}-[a-f0-9]{8}$")
@@ -46,6 +48,7 @@ EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 
 _S3_CLIENT: Any = None
 _SAGEMAKER_CLIENT: Any = None
+_SCHEDULER_CLIENT: Any = None
 
 
 class ExecutionError(RuntimeError):
@@ -62,6 +65,10 @@ class ExecutionConflict(ExecutionError):
 
 class ExecutionNotFound(ExecutionError):
     """The requested execution receipt does not exist."""
+
+
+class ReceiptWriteConflict(ExecutionError):
+    """A newer receipt version won a conditional write."""
 
 
 def _s3_client() -> Any:
@@ -84,11 +91,26 @@ def _sagemaker_client() -> Any:
     return _SAGEMAKER_CLIENT
 
 
+def _scheduler_client() -> Any:
+    global _SCHEDULER_CLIENT
+    if _SCHEDULER_CLIENT is None:
+        import boto3
+
+        _SCHEDULER_CLIENT = boto3.client(
+            "scheduler", region_name=os.environ.get("AWS_REGION", "us-east-1")
+        )
+    return _SCHEDULER_CLIENT
+
+
 def _required_env(name: str) -> str:
     value = str(os.environ.get(name) or "").strip()
     if not value:
         raise ExecutionError(f"model execution configuration is missing {name}")
     return value
+
+
+def _execution_enabled() -> bool:
+    return str(os.environ.get("PUBLIC_SBIR_EXECUTION_ENABLED") or "").strip().lower() == "true"
 
 
 def _now() -> datetime:
@@ -187,8 +209,20 @@ def validate_execution_id(value: Any) -> str:
 
 
 def _read_object(key: str, *, max_bytes: int) -> tuple[bytes, str | None]:
+    return _read_object_version(key, max_bytes=max_bytes, version_id=None)
+
+
+def _read_object_version(
+    key: str,
+    *,
+    max_bytes: int,
+    version_id: str | None,
+) -> tuple[bytes, str | None]:
+    request: dict[str, Any] = {"Bucket": _bucket(), "Key": key}
+    if version_id:
+        request["VersionId"] = version_id
     try:
-        response = _s3_client().get_object(Bucket=_bucket(), Key=key)
+        response = _s3_client().get_object(**request)
     except Exception as exc:
         code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
         if code in {"NoSuchKey", "404", "NotFound"}:
@@ -229,6 +263,20 @@ def _put_object(key: str, raw: bytes, *, if_none_match: bool = False) -> str | N
     return str(version) if version else None
 
 
+def _put_model_artifact(key: str, raw: bytes) -> str | None:
+    response = _s3_client().put_object(
+        Bucket=_bucket(),
+        Key=key,
+        Body=raw,
+        ContentType="application/gzip",
+        ServerSideEncryption="aws:kms",
+        SSEKMSKeyId=_kms_key_arn(),
+        IfNoneMatch="*",
+    )
+    version = response.get("VersionId")
+    return str(version) if version else None
+
+
 def _delete_object(key: str) -> None:
     _s3_client().delete_object(Bucket=_bucket(), Key=key)
 
@@ -242,6 +290,38 @@ def _read_json(key: str, *, max_bytes: int) -> tuple[dict[str, Any], bytes, str 
     if not isinstance(value, dict):
         raise ExecutionError("governed model execution evidence must be an object")
     return value, raw, version
+
+
+def _read_json_with_etag(
+    key: str, *, max_bytes: int
+) -> tuple[dict[str, Any], bytes, str | None, str]:
+    try:
+        response = _s3_client().get_object(Bucket=_bucket(), Key=key)
+    except Exception as exc:
+        code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+        if code in {"NoSuchKey", "404", "NotFound"}:
+            raise ExecutionNotFound("model execution receipt was not found") from exc
+        raise ExecutionError("governed model execution evidence is unavailable") from exc
+    content_length = int(response.get("ContentLength") or 0)
+    if content_length and content_length > max_bytes:
+        raise ExecutionError("governed model execution object exceeds its size limit")
+    raw = response["Body"].read(max_bytes + 1)
+    close = getattr(response["Body"], "close", None)
+    if callable(close):
+        close()
+    if len(raw) > max_bytes:
+        raise ExecutionError("governed model execution object exceeds its size limit")
+    try:
+        value = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ExecutionError("governed model execution evidence is invalid JSON") from exc
+    if not isinstance(value, dict):
+        raise ExecutionError("governed model execution evidence must be an object")
+    etag = str(response.get("ETag") or "").strip()
+    if not etag:
+        raise ExecutionError("governed model execution object has no conditional token")
+    version = response.get("VersionId")
+    return value, raw, str(version) if version else None, etag
 
 
 def _pool() -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -305,24 +385,12 @@ def _pool() -> tuple[list[dict[str, Any]], dict[str, Any]]:
 
 
 def _model_package() -> dict[str, Any]:
-    group_arn = _required_env("PUBLIC_SBIR_MODEL_PACKAGE_GROUP_ARN")
-    group_name = group_arn.rsplit("/", 1)[-1]
-    response = _sagemaker_client().list_model_packages(
-        ModelPackageGroupName=group_name,
-        ModelApprovalStatus="PendingManualApproval",
-        SortBy="CreationTime",
-        SortOrder="Descending",
-        MaxResults=10,
-    )
-    summaries = [
-        item
-        for item in response.get("ModelPackageSummaryList") or []
-        if item.get("ModelPackageStatus") == "Completed"
-    ]
-    if not summaries:
-        raise ExecutionError("no completed pending public SBIR candidate is registered")
-    package_arn = str(summaries[0].get("ModelPackageArn") or "")
-    if not package_arn.startswith(group_arn.rsplit("model-package-group/", 1)[0] + "model-package/"):
+    package_arn = _required_env("PUBLIC_SBIR_MODEL_PACKAGE_ARN")
+    expected_group_arn = _required_env("PUBLIC_SBIR_MODEL_PACKAGE_GROUP_ARN")
+    expected_package_prefix = expected_group_arn.replace(
+        "model-package-group/", "model-package/"
+    ) + "/"
+    if not package_arn.startswith(expected_package_prefix):
         raise ExecutionError("public SBIR model package is outside the configured registry")
     detail = _sagemaker_client().describe_model_package(ModelPackageName=package_arn)
     approval = str(detail.get("ModelApprovalStatus") or "")
@@ -334,40 +402,78 @@ def _model_package() -> dict[str, Any]:
     container = containers[0]
     model_data_url = str(container.get("ModelDataUrl") or "")
     parsed = urlparse(model_data_url)
+    model_data_key = parsed.path.lstrip("/")
+    expected_model_data_key = _required_env("PUBLIC_SBIR_MODEL_DATA_KEY")
     if (
         parsed.scheme != "s3"
         or parsed.netloc != _bucket()
-        or not parsed.path.lstrip("/").startswith("mlops/public-sbir-transition/registry/")
+        or model_data_key != expected_model_data_key
     ):
         raise ExecutionError("public SBIR model artifact is outside the governed boundary")
     image = str(container.get("Image") or "")
     image_digest = str(container.get("ImageDigest") or "")
+    expected_image_digest = _required_env("PUBLIC_SBIR_IMAGE_DIGEST")
     environment = dict(container.get("Environment") or {})
-    if not image or not image_digest.startswith("sha256:"):
+    if (
+        not image
+        or not re.fullmatch(r"sha256:[a-f0-9]{64}", expected_image_digest)
+        or image_digest != expected_image_digest
+    ):
         raise ExecutionError("public SBIR inference image is not digest-bound")
     if environment.get("SAGEMAKER_PROGRAM") != "inference.py":
         raise ExecutionError("public SBIR inference program is invalid")
     model_metrics = detail.get("ModelMetrics") or {}
     statistics = ((model_metrics.get("ModelQuality") or {}).get("Statistics") or {})
-    card_digest = str(statistics.get("ContentDigest") or "")
+    card_digest = str(statistics.get("ContentDigest") or "").removeprefix("SHA256:")
+    metadata = detail.get("CustomerMetadataProperties") or {}
+    expected_training_arn = _required_env("PUBLIC_SBIR_TRAINING_JOB_ARN")
+    expected_training_name = expected_training_arn.rsplit("/", 1)[-1]
+    expected_artifact_sha = _required_env("PUBLIC_SBIR_MODEL_ARTIFACT_SHA256")
+    expected_bundle_sha = _required_env("PUBLIC_SBIR_MODEL_BUNDLE_SHA256")
+    expected_card_sha = _required_env("PUBLIC_SBIR_MODEL_CARD_SHA256")
+    if (
+        not SHA256_PATTERN.fullmatch(expected_artifact_sha)
+        or not SHA256_PATTERN.fullmatch(expected_bundle_sha)
+        or not SHA256_PATTERN.fullmatch(expected_card_sha)
+        or card_digest != expected_card_sha
+        or metadata.get("training_job") != expected_training_name
+        or metadata.get("artifact_sha256") != expected_artifact_sha
+        or metadata.get("registry_bundle_sha256") != expected_bundle_sha
+    ):
+        raise ExecutionError("public SBIR package provenance does not match the pinned candidate")
+    expected_version = _required_env("PUBLIC_SBIR_MODEL_DATA_VERSION_ID")
+    model_raw, actual_version = _read_object_version(
+        model_data_key,
+        max_bytes=MAX_MODEL_BYTES,
+        version_id=expected_version,
+    )
+    if actual_version != expected_version or _sha256(model_raw) != expected_bundle_sha:
+        raise ExecutionError("public SBIR model artifact failed exact digest validation")
+    image_repository = image.split("@", 1)[0].rsplit(":", 1)[0]
     return {
         "name": "Public Navy SBIR transition candidate",
         "packageArn": package_arn,
         "packageVersion": int(package_arn.rsplit("/", 1)[-1]),
         "approvalStatus": approval,
         "candidateOnly": True,
-        "trainingJobArn": _required_env("PUBLIC_SBIR_TRAINING_JOB_ARN"),
-        "modelArtifactSha256": _required_env("PUBLIC_SBIR_MODEL_ARTIFACT_SHA256"),
-        "modelCardSha256": card_digest.removeprefix("SHA256:"),
-        "image": image,
+        "trainingJobArn": expected_training_arn,
+        "modelArtifactSha256": expected_artifact_sha,
+        "modelBundleSha256": expected_bundle_sha,
+        "modelArtifactSourceVersionId": actual_version,
+        "modelCardSha256": card_digest,
+        "image": f"{image_repository}@{image_digest}",
         "imageDigest": image_digest,
-        "modelDataUrl": model_data_url,
+        "modelData": model_raw,
         "environment": environment,
     }
 
 
 def _execution_key(execution_id: str, name: str) -> str:
     return f"{_prefix()}/{execution_id}/{name}"
+
+
+def _execution_data_key(execution_id: str, name: str) -> str:
+    return f"{_prefix()}/data/{execution_id}/{name}"
 
 
 def _receipt_key(execution_id: str) -> str:
@@ -392,9 +498,33 @@ def _receipt_for_response(
     return response
 
 
-def _write_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
+def _write_receipt(
+    receipt: dict[str, Any],
+    *,
+    expected_etag: str | None = None,
+    create: bool = False,
+) -> dict[str, Any]:
     raw = _canonical_json(receipt)
-    version = _put_object(_receipt_key(receipt["executionId"]), raw)
+    request: dict[str, Any] = {
+        "Bucket": _bucket(),
+        "Key": _receipt_key(receipt["executionId"]),
+        "Body": raw,
+        "ContentType": "application/json",
+        "ServerSideEncryption": "aws:kms",
+        "SSEKMSKeyId": _kms_key_arn(),
+    }
+    if create:
+        request["IfNoneMatch"] = "*"
+    elif expected_etag:
+        request["IfMatch"] = expected_etag
+    try:
+        response = _s3_client().put_object(**request)
+    except Exception as exc:
+        code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+        if code in {"PreconditionFailed", "ConditionalRequestConflict", "412", "409"}:
+            raise ReceiptWriteConflict("model execution receipt changed concurrently") from exc
+        raise
+    version = response.get("VersionId")
     pointer = {
         "contract": "compass.public-intelligence.model-execution-pointer.v1",
         "executionId": receipt["executionId"],
@@ -404,7 +534,11 @@ def _write_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         "receiptSha256": _sha256(raw),
     }
     _put_object(_history_key(receipt["executionId"]), _canonical_json(pointer))
-    return _receipt_for_response(receipt, raw, version)
+    return _receipt_for_response(
+        receipt,
+        raw,
+        str(version) if version else None,
+    )
 
 
 def _read_receipt(execution_id: str) -> tuple[dict[str, Any], bytes, str | None]:
@@ -414,13 +548,48 @@ def _read_receipt(execution_id: str) -> tuple[dict[str, Any], bytes, str | None]
     return receipt, raw, version
 
 
-def _release_lock(execution_id: str) -> None:
+def _read_receipt_with_etag(
+    execution_id: str,
+) -> tuple[dict[str, Any], bytes, str | None, str]:
+    receipt, raw, version, etag = _read_json_with_etag(
+        _receipt_key(execution_id), max_bytes=MAX_OUTPUT_BYTES
+    )
+    if receipt.get("contract") != CONTRACT or receipt.get("executionId") != execution_id:
+        raise ExecutionError("model execution receipt contract is invalid")
+    return receipt, raw, version, etag
+
+
+def _latest_receipt_response(execution_id: str) -> dict[str, Any]:
+    latest, raw, version = _read_receipt(execution_id)
+    return _receipt_for_response(latest, raw, version)
+
+
+def _write_reconciled_receipt(
+    receipt: dict[str, Any], *, expected_etag: str
+) -> dict[str, Any]:
     try:
-        lock, _, _ = _read_json(_lock_key(), max_bytes=4096)
-    except (ExecutionError, ExecutionNotFound):
-        return
-    if lock.get("executionId") == execution_id:
-        _delete_object(_lock_key())
+        return _write_receipt(receipt, expected_etag=expected_etag)
+    except ReceiptWriteConflict:
+        return _latest_receipt_response(receipt["executionId"])
+
+
+def _release_lock(execution_id: str) -> bool:
+    try:
+        lock, _, _, etag = _read_json_with_etag(_lock_key(), max_bytes=4096)
+    except ExecutionNotFound:
+        return True
+    if lock.get("executionId") != execution_id:
+        return False
+    try:
+        _s3_client().delete_object(Bucket=_bucket(), Key=_lock_key(), IfMatch=etag)
+    except Exception as exc:
+        code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+        if code in {"NoSuchKey", "NotFound", "404"}:
+            return True
+        if code in {"PreconditionFailed", "ConditionalRequestConflict", "412", "409"}:
+            return False
+        raise
+    return True
 
 
 def _acquire_lock(execution_id: str, created_at: str) -> None:
@@ -447,17 +616,24 @@ def _acquire_lock(execution_id: str, created_at: str) -> None:
             try:
                 current_receipt, _, _ = _read_receipt(current_id)
                 if current_receipt.get("status") in TERMINAL_STATUSES:
-                    _release_lock(current_id)
-                    _put_object(_lock_key(), _canonical_json(lock), if_none_match=True)
-                    return
+                    reconciled = get_execution(current_id)
+                    if (
+                        reconciled.get("execution", {}).get(
+                            "temporaryModelCleanupStatus"
+                        )
+                        == "DELETED"
+                    ):
+                        _put_object(
+                            _lock_key(),
+                            _canonical_json(lock),
+                            if_none_match=True,
+                        )
+                        return
                 job_name = current_receipt["execution"]["transformJobName"]
                 detail = _sagemaker_client().describe_transform_job(
                     TransformJobName=job_name
                 )
-                if detail.get("TransformJobStatus") in {
-                    "InProgress",
-                    "Stopping",
-                }:
+                if detail.get("TransformJobStatus") == "InProgress":
                     _sagemaker_client().stop_transform_job(TransformJobName=job_name)
                 elif detail.get("TransformJobStatus") in {
                     "Completed",
@@ -503,18 +679,111 @@ def _delete_model(model_name: str) -> str:
     try:
         _sagemaker_client().delete_model(ModelName=model_name)
         return "DELETED"
-    except Exception:
+    except Exception as exc:
+        code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+        message = str(getattr(exc, "response", {}).get("Error", {}).get("Message", ""))
+        if code in {"ResourceNotFound", "ResourceNotFoundException"} or (
+            code == "ValidationException"
+            and "Could not find model" in message
+            and model_name in message
+        ):
+            return "DELETED"
         return "DELETE_PENDING"
 
 
+def _schedule_name(execution_id: str) -> str:
+    name = (
+        f"{os.environ.get('AWS_LAMBDA_FUNCTION_NAME', 'compass')}"
+        f"-sbir-{execution_id.rsplit('-', 1)[-1]}"
+    )
+    return name[:64]
+
+
+def _schedule_reconciliation(execution_id: str, *, created_at: datetime) -> str:
+    role_arn = _required_env("PUBLIC_SBIR_RECONCILIATION_ROLE_ARN")
+    function_arn = _required_env("PUBLIC_SBIR_RECONCILIATION_FUNCTION_ARN")
+    dead_letter_arn = _required_env("PUBLIC_SBIR_RECONCILIATION_DLQ_ARN")
+    schedule_name = _schedule_name(execution_id)
+    response = _scheduler_client().create_schedule(
+        Name=schedule_name,
+        GroupName="default",
+        ScheduleExpression="rate(1 minute)",
+        ScheduleExpressionTimezone="UTC",
+        StartDate=created_at + timedelta(seconds=300),
+        EndDate=created_at + timedelta(seconds=_max_runtime_seconds() + 86400),
+        FlexibleTimeWindow={"Mode": "OFF"},
+        ActionAfterCompletion="DELETE",
+        Target={
+            "Arn": function_arn,
+            "RoleArn": role_arn,
+            "Input": json.dumps(
+                {
+                    "source": "aws.scheduler",
+                    "detail-type": "Public SBIR Reconciliation",
+                    "executionId": execution_id,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "RetryPolicy": {
+                "MaximumEventAgeInSeconds": 3600,
+                "MaximumRetryAttempts": 5,
+            },
+            "DeadLetterConfig": {"Arn": dead_letter_arn},
+        },
+        Description=f"Bounded cleanup guard for {execution_id}",
+        ClientToken=execution_id,
+    )
+    return str(response.get("ScheduleArn") or schedule_name)
+
+
+def _delete_reconciliation_schedule(execution_id: str) -> None:
+    try:
+        _scheduler_client().delete_schedule(
+            Name=_schedule_name(execution_id),
+            GroupName="default",
+        )
+    except Exception as exc:
+        code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+        if code in {"ResourceNotFoundException", "ResourceNotFound", "404"}:
+            return
+        raise
+
+
+def _is_missing_transform(exc: Exception, transform_name: str) -> bool:
+    error = getattr(exc, "response", {}).get("Error", {})
+    code = str(error.get("Code", ""))
+    message = str(error.get("Message", ""))
+    if code in {"ResourceNotFound", "ResourceNotFoundException"}:
+        return True
+    normalized = message.lower()
+    return (
+        code == "ValidationException"
+        and "could not find" in normalized
+        and transform_name.lower() in normalized
+    )
+
+
 def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> dict[str, Any]:
+    if not _execution_enabled():
+        raise ExecutionError(
+            "public SBIR execution is disabled until pinned model evidence is provisioned"
+        )
     created = _now()
     execution_id = f"sbir-batch-{created.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
     created_at = _timestamp(created)
     model_name = "compass-sbir-" + execution_id.rsplit("-", 1)[-1]
     transform_name = execution_id
-    _acquire_lock(execution_id, created_at)
+    schedule_arn = _schedule_reconciliation(execution_id, created_at=created)
+    try:
+        _acquire_lock(execution_id, created_at)
+    except Exception:
+        _delete_reconciliation_schedule(execution_id)
+        raise
     receipt: dict[str, Any] | None = None
+    receipt_etag: str | None = None
+    transform_submission_attempted = False
+    schedule_created = True
     try:
         candidates, pool_provenance = _pool()
         selected = candidates[:sample_size]
@@ -532,9 +801,15 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
                 }
             )
         input_raw = b"\n".join(input_lines) + b"\n"
-        input_key = _execution_key(execution_id, "input/batch.jsonl")
+        input_key = _execution_data_key(execution_id, "input/batch.jsonl")
         input_version = _put_object(input_key, input_raw)
         input_sha = _sha256(input_raw)
+        execution_model_key = _execution_data_key(execution_id, "model/model.tar.gz")
+        execution_model_version = _put_model_artifact(
+            execution_model_key,
+            model["modelData"],
+        )
+        execution_model_url = f"s3://{_bucket()}/{execution_model_key}"
         receipt = {
             "contract": CONTRACT,
             "version": 1,
@@ -545,7 +820,11 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
             "completedAt": None,
             "purpose": PURPOSE,
             "executionMode": EXECUTION_MODE,
-            "model": {key: value for key, value in model.items() if key not in {"image", "environment", "modelDataUrl"}},
+            "model": {
+                key: value
+                for key, value in model.items()
+                if key not in {"image", "environment", "modelData"}
+            },
             "input": {
                 "recordCount": len(selected),
                 "sha256": input_sha,
@@ -560,6 +839,7 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
                 "maxRuntimeSeconds": _max_runtime_seconds(),
                 "temporaryModelName": model_name,
                 "temporaryModelCleanupStatus": "PENDING",
+                "reconciliationSchedule": schedule_arn,
             },
             "output": None,
             "cost": None,
@@ -570,17 +850,19 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
                 "candidatePoolVersionId": pool_provenance["versionId"],
                 "sourceDataset": pool_provenance["sourceDataset"],
                 "inputVersionId": input_version,
+                "executionModelVersionId": execution_model_version,
                 "outputVersionId": None,
             },
             "humanReviewRequired": True,
-            "disclosure": "Candidate validation only. This run does not approve or deploy the model and does not predict ONR mission success.",
+            "disclosure": "Training-cohort smoke scoring only. This run proves bounded execution, does not provide independent evaluation, does not approve or deploy the model, and does not predict ONR mission success.",
         }
-        _write_receipt(receipt)
+        _write_receipt(receipt, create=True)
+        _, _, _, receipt_etag = _read_receipt_with_etag(execution_id)
         _sagemaker_client().create_model(
             ModelName=model_name,
             PrimaryContainer={
                 "Image": model["image"],
-                "ModelDataUrl": model["modelDataUrl"],
+                "ModelDataUrl": execution_model_url,
                 "Environment": {
                     **model["environment"],
                     # Modern pip otherwise creates an isolated build environment
@@ -596,10 +878,11 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
             Tags=[
                 {"Key": "compass:component", "Value": "public-intelligence"},
                 {"Key": "compass:data-classification", "Value": "public"},
-                {"Key": "compass:approval-state", "Value": "candidate-validation"},
+                {"Key": "compass:approval-state", "Value": "candidate-smoke"},
                 {"Key": "compass:execution-id", "Value": execution_id},
             ],
         )
+        transform_submission_attempted = True
         response = _sagemaker_client().create_transform_job(
             TransformJobName=transform_name,
             ModelName=model_name,
@@ -618,7 +901,7 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
                 "CompressionType": "None",
             },
             TransformOutput={
-                "S3OutputPath": f"s3://{_bucket()}/{_execution_key(execution_id, 'output/')}",
+                "S3OutputPath": f"s3://{_bucket()}/{_execution_data_key(execution_id, 'output/')}",
                 "Accept": "application/json",
                 "AssembleWith": "Line",
                 "KmsKeyId": _kms_key_arn(),
@@ -635,26 +918,45 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
             Tags=[
                 {"Key": "compass:component", "Value": "public-intelligence"},
                 {"Key": "compass:data-classification", "Value": "public"},
-                {"Key": "compass:approval-state", "Value": "candidate-validation"},
+                {"Key": "compass:approval-state", "Value": "candidate-smoke"},
                 {"Key": "compass:execution-id", "Value": execution_id},
             ],
         )
         receipt["execution"]["transformJobArn"] = response["TransformJobArn"]
         receipt["updatedAt"] = _timestamp()
-        return _write_receipt(receipt)
+        try:
+            return _write_receipt(receipt, expected_etag=receipt_etag)
+        except ReceiptWriteConflict:
+            return _latest_receipt_response(execution_id)
     except Exception:
-        _delete_model(model_name)
+        # The API can accept the job and then time out before returning. Once
+        # submission starts, leave the durable schedule to describe the exact
+        # job name and reconcile either outcome before deleting the model.
+        if transform_submission_attempted:
+            raise
+        cleanup_status = _delete_model(model_name)
         if receipt is not None:
             receipt["status"] = "FAILED"
             receipt["updatedAt"] = _timestamp()
             receipt["completedAt"] = receipt["updatedAt"]
-            receipt["execution"]["temporaryModelCleanupStatus"] = "DELETED"
+            receipt["execution"]["temporaryModelCleanupStatus"] = cleanup_status
             receipt["failure"] = {
                 "code": "SUBMISSION_FAILED",
                 "message": "SageMaker rejected the bounded model execution submission.",
             }
-            _write_receipt(receipt)
-        _release_lock(execution_id)
+            try:
+                if receipt_etag is None:
+                    _, _, _, receipt_etag = _read_receipt_with_etag(execution_id)
+                _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+            except ExecutionNotFound:
+                pass
+        if receipt is None or cleanup_status == "DELETED":
+            _release_lock(execution_id)
+            if schedule_created:
+                try:
+                    _delete_reconciliation_schedule(execution_id)
+                except Exception:
+                    pass
         raise
 
 
@@ -672,18 +974,95 @@ def _parse_predictions(raw: bytes, records: list[dict[str, Any]]) -> list[dict[s
         raise ExecutionError("SageMaker prediction count does not match the submitted input")
     result = []
     for record, prediction in zip(records, predictions):
+        probability_value = prediction.get("observed_public_transition_probability")
+        candidate_label = prediction.get("candidate_label")
+        semantics_value = prediction.get("semantics")
+        if (
+            isinstance(probability_value, bool)
+            or not isinstance(probability_value, (int, float))
+            or isinstance(candidate_label, bool)
+            or not isinstance(candidate_label, int)
+            or not isinstance(semantics_value, str)
+        ):
+            raise ExecutionError("SageMaker prediction value contract is invalid")
+        try:
+            probability = float(probability_value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ExecutionError("SageMaker prediction value contract is invalid") from exc
+        semantics = _clean_text(semantics_value, max_chars=160)
+        if (
+            not math.isfinite(probability)
+            or probability < 0
+            or probability > 1
+            or candidate_label not in {0, 1}
+            or not semantics
+            or prediction.get("human_review_required") is not True
+        ):
+            raise ExecutionError("SageMaker prediction value contract is invalid")
         result.append(
             {
                 "recordId": record["recordId"],
-                "observedPublicTransitionProbability": round(
-                    float(prediction["observed_public_transition_probability"]), 8
-                ),
-                "candidateLabel": int(prediction["candidate_label"]),
-                "semantics": _clean_text(prediction.get("semantics"), max_chars=160),
-                "humanReviewRequired": bool(prediction.get("human_review_required", True)),
+                "observedPublicTransitionProbability": round(probability, 8),
+                "candidateLabel": candidate_label,
+                "semantics": semantics,
+                "humanReviewRequired": True,
             }
         )
     return result
+
+
+def reconcile_active_execution(execution_id: str | None = None) -> dict[str, Any]:
+    """Reconcile one run from a scheduled, server-side invocation."""
+
+    if execution_id is not None:
+        execution_id = validate_execution_id(execution_id)
+        try:
+            receipt = get_execution(execution_id)
+        except ExecutionNotFound:
+            _release_lock(execution_id)
+            _delete_reconciliation_schedule(execution_id)
+            return {
+                "contract": "compass.public-intelligence.model-execution-reconcile.v1",
+                "status": "MISSING_SUBMISSION",
+                "executionId": execution_id,
+            }
+        if (
+            receipt.get("status") in TERMINAL_STATUSES
+            and receipt.get("execution", {}).get("temporaryModelCleanupStatus")
+            != "DELETED"
+        ):
+            raise ExecutionError("terminal model cleanup remains pending")
+        if receipt.get("status") in TERMINAL_STATUSES:
+            _delete_reconciliation_schedule(execution_id)
+        return {
+            "contract": "compass.public-intelligence.model-execution-reconcile.v1",
+            "status": receipt["status"],
+            "executionId": execution_id,
+        }
+
+    try:
+        lock, _, _ = _read_json(_lock_key(), max_bytes=4096)
+    except ExecutionNotFound:
+        return {
+            "contract": "compass.public-intelligence.model-execution-reconcile.v1",
+            "status": "IDLE",
+            "executionId": None,
+        }
+    execution_id = validate_execution_id(lock.get("executionId"))
+    receipt = get_execution(execution_id)
+    if (
+        receipt.get("status") in TERMINAL_STATUSES
+        and receipt.get("execution", {}).get("temporaryModelCleanupStatus")
+        != "DELETED"
+    ):
+        raise ExecutionError("terminal model cleanup remains pending")
+    if receipt.get("status") in TERMINAL_STATUSES:
+        _delete_reconciliation_schedule(execution_id)
+    return {
+        "contract": "compass.public-intelligence.model-execution-reconcile.v1",
+        "status": receipt["status"],
+        "executionId": execution_id,
+    }
 
 
 def _duration_seconds(detail: Mapping[str, Any]) -> int | None:
@@ -696,12 +1075,48 @@ def _duration_seconds(detail: Mapping[str, Any]) -> int | None:
 
 def get_execution(execution_id: str) -> dict[str, Any]:
     execution_id = validate_execution_id(execution_id)
-    receipt, raw, version = _read_receipt(execution_id)
+    receipt, raw, version, receipt_etag = _read_receipt_with_etag(execution_id)
     if receipt.get("status") in TERMINAL_STATUSES:
+        if receipt.get("execution", {}).get("temporaryModelCleanupStatus") != "DELETED":
+            cleanup_status = _delete_model(
+                receipt["execution"]["temporaryModelName"]
+            )
+            receipt["execution"]["temporaryModelCleanupStatus"] = cleanup_status
+            receipt["updatedAt"] = _timestamp()
+            if cleanup_status != "DELETED":
+                return _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+            result = _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+            _release_lock(execution_id)
+            return result
+        _release_lock(execution_id)
         return _receipt_for_response(receipt, raw, version)
-    detail = _sagemaker_client().describe_transform_job(
-        TransformJobName=receipt["execution"]["transformJobName"]
-    )
+    transform_name = receipt["execution"]["transformJobName"]
+    try:
+        detail = _sagemaker_client().describe_transform_job(
+            TransformJobName=transform_name
+        )
+    except Exception as exc:
+        created = _parse_timestamp(receipt["createdAt"])
+        elapsed = int((_now() - created).total_seconds())
+        if not _is_missing_transform(exc, transform_name) or elapsed < 120:
+            raise
+        receipt["status"] = "FAILED"
+        receipt["updatedAt"] = _timestamp()
+        receipt["completedAt"] = receipt["updatedAt"]
+        receipt["execution"]["temporaryModelCleanupStatus"] = _delete_model(
+            receipt["execution"]["temporaryModelName"]
+        )
+        receipt["failure"] = {
+            "code": "SUBMISSION_INCOMPLETE",
+            "message": "The durable submission receipt has no matching SageMaker transform job.",
+        }
+        result = _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+        if (
+            result.get("execution", {}).get("temporaryModelCleanupStatus")
+            == "DELETED"
+        ):
+            _release_lock(execution_id)
+        return result
     aws_status = str(detail.get("TransformJobStatus") or "")
     status_map = {
         "InProgress": "IN_PROGRESS",
@@ -717,7 +1132,7 @@ def get_execution(execution_id: str) -> dict[str, Any]:
     now = _now()
     created = _parse_timestamp(receipt["createdAt"])
     elapsed = int((now - created).total_seconds())
-    if status == "IN_PROGRESS" and elapsed > _max_runtime_seconds():
+    if aws_status == "InProgress" and elapsed > _max_runtime_seconds():
         _sagemaker_client().stop_transform_job(
             TransformJobName=receipt["execution"]["transformJobName"]
         )
@@ -725,13 +1140,13 @@ def get_execution(execution_id: str) -> dict[str, Any]:
         receipt["updatedAt"] = _timestamp(now)
         receipt["execution"]["stopRequestedAt"] = receipt["updatedAt"]
         receipt["execution"]["stopReason"] = "bounded runtime exceeded"
-        return _write_receipt(receipt)
+        return _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
 
     receipt["status"] = status
     receipt["updatedAt"] = _timestamp(now)
     if status == "COMPLETED":
         try:
-            output_key = _execution_key(execution_id, "output/batch.jsonl.out")
+            output_key = _execution_data_key(execution_id, "output/batch.jsonl.out")
             output_raw, output_version = _read_object(
                 output_key, max_bytes=MAX_OUTPUT_BYTES
             )
@@ -765,16 +1180,18 @@ def get_execution(execution_id: str) -> dict[str, Any]:
     elif status in {"FAILED", "STOPPED"}:
         receipt["failure"] = {
             "code": f"SAGEMAKER_{status}",
-            "message": f"SageMaker reported a {status.lower()} bounded validation run.",
+            "message": f"SageMaker reported a {status.lower()} bounded smoke run.",
         }
     if status in TERMINAL_STATUSES:
         receipt["completedAt"] = _timestamp(
             detail.get("TransformEndTime") if isinstance(detail.get("TransformEndTime"), datetime) else now
         )
-        receipt["execution"]["temporaryModelCleanupStatus"] = _delete_model(
+        cleanup_status = _delete_model(
             receipt["execution"]["temporaryModelName"]
         )
-        result = _write_receipt(receipt)
-        _release_lock(execution_id)
+        receipt["execution"]["temporaryModelCleanupStatus"] = cleanup_status
+        result = _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+        if cleanup_status == "DELETED":
+            _release_lock(execution_id)
         return result
-    return _write_receipt(receipt)
+    return _write_reconciled_receipt(receipt, expected_etag=receipt_etag)

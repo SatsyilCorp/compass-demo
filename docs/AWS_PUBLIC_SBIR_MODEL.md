@@ -1,6 +1,6 @@
 # AWS public SBIR transition model receipt
 
-Status: trained, registered candidate, executed for bounded validation, not approved, not deployed
+Status: trained, registered candidate, executed for bounded smoke scoring, not approved, not deployed
 
 ## Outcome
 
@@ -11,7 +11,9 @@ KMS-encrypted model artifact. SageMaker Model Registry package version 2 is
 `PendingManualApproval`. There is no model endpoint.
 
 Compass also executed package version 2 through an ephemeral, network-isolated
-SageMaker Batch Transform job on eight PII-minimized public validation records.
+SageMaker Batch Transform job on eight PII-minimized, label-excluded records
+sampled from the public training cohort. This is execution smoke evidence, not
+an independent holdout evaluation.
 Execution `sbir-batch-20260812T150516-2b9b35cd` completed with eight of eight
 responses in 71 observed transform seconds. The temporary SageMaker Model was
 deleted, the single-run lock was released, package approval stayed unchanged,
@@ -35,8 +37,10 @@ commercialization, causation, source-selection merit, or an internal decision.
 | Approval state | `PendingManualApproval` |
 | Endpoint count | 0 |
 | Dataset digest | `0dda670313a1e9d3098b4d4e0b2048a3c7d7b4186de87731afad53f9f77400db` |
-| Model artifact digest | `652665a26f65230c2eb6019c65ca706bdb248414ed71b8d3365a05431045fd0a` |
+| Training-recorded model artifact digest | `652665a26f65230c2eb6019c65ca706bdb248414ed71b8d3365a05431045fd0a` |
+| Model artifact source version | `6ki61OUXqpqujj5uHes3k0Sz2AoryxlB` |
 | Registry bundle digest | `51a3fcc71c46ecb514b2c3866f5153f7771838d07b43fc0807f4a89a5d6b424b` |
+| Model-card digest | `5f2a26edfd17035054d6e056be9bdc41dd2781958825eb10910ab5322d8a5bc4` |
 
 ## Bounded execution evidence
 
@@ -93,8 +97,10 @@ and an explicit endpoint cost gate.
 - Inter-container traffic encryption enabled
 - KMS encryption for input, training volume, output, and registry bundle
 - Exact public dataset and source hashes
+- Exact package ARN, model object version, artifact digest, and image digest
 - CloudWatch training log stream
 - Immutable Model Registry version and human approval gate
+- Per-run EventBridge Scheduler cleanup guard for timeout, cleanup, and lock release
 - No automatic promotion and no endpoint
 
 Four earlier bounded attempts failed while the framework bootstrap, Python

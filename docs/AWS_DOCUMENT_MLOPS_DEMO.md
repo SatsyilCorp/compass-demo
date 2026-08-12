@@ -7,7 +7,7 @@ classifier SageMaker job ran.
 ## Current evidence state
 
 The implementation in this document is deployed in the Satsyil stack at
-revision `public-intel-20260812-full`. The browser can also rehearse it with
+revision `real-inference-20260812`. The browser can also rehearse it with
 deterministic replay. The
 deployed resource inventory is not, by itself, proof that a document traversed
 the live route, Step Functions workflow, Lambda training Adapter, model

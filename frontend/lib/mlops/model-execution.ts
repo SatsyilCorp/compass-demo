@@ -11,7 +11,7 @@ export type ModelExecutionStatus = (typeof MODEL_EXECUTION_STATUSES)[number];
 export type ModelExecutionPrediction = {
   recordId: string;
   observedPublicTransitionProbability: number;
-  candidateLabel: string;
+  candidateLabel: 0 | 1;
   semantics: string;
   humanReviewRequired: boolean;
 };
@@ -23,7 +23,7 @@ export type PublicModelExecutionReceipt = {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
-  purpose: "bounded_public_validation";
+  purpose: "training_cohort_smoke_scoring" | "bounded_public_validation";
   executionMode: "sagemaker_batch_transform";
   model: {
     name: string;
@@ -33,6 +33,10 @@ export type PublicModelExecutionReceipt = {
     candidateOnly: boolean;
     trainingJobArn: string;
     modelArtifactSha256: string;
+    modelBundleSha256: string | null;
+    modelArtifactSourceVersionId: string | null;
+    modelCardSha256: string;
+    imageDigest: string;
   };
   input: {
     recordCount: number;
@@ -44,6 +48,10 @@ export type PublicModelExecutionReceipt = {
     instanceType: string;
     instanceCount: number;
     networkIsolation: boolean;
+    maxRuntimeSeconds: number;
+    temporaryModelName: string;
+    temporaryModelCleanupStatus: "PENDING" | "DELETED" | "DELETE_PENDING" | "REFUSED_INVALID_NAME";
+    reconciliationSchedule: string | null;
   };
   output: {
     predictionCount: number;
@@ -58,6 +66,7 @@ export type PublicModelExecutionReceipt = {
   provenance: {
     receiptSha256: string;
     inputVersionId: string | null;
+    executionModelVersionId: string | null;
     outputVersionId: string | null;
   } | null;
   humanReviewRequired: true;
@@ -105,16 +114,16 @@ function parsePrediction(value: unknown): ModelExecutionPrediction | null {
   if (!isObject(value)) return null;
   const recordId = stringValue(value.recordId);
   const probability = finiteNumber(value.observedPublicTransitionProbability);
-  const candidateLabel = identifierValue(value.candidateLabel);
+  const candidateLabel = value.candidateLabel;
   const semantics = stringValue(value.semantics);
   if (
     !recordId ||
     probability === null ||
     probability < 0 ||
     probability > 1 ||
-    !candidateLabel ||
+    (candidateLabel !== 0 && candidateLabel !== 1) ||
     !semantics ||
-    typeof value.humanReviewRequired !== "boolean"
+    value.humanReviewRequired !== true
   ) {
     return null;
   }
@@ -147,12 +156,22 @@ export function parsePublicModelExecutionReceipt(
   const approvalStatus = stringValue(model.approvalStatus);
   const trainingJobArn = stringValue(model.trainingJobArn);
   const modelArtifactSha256 = stringValue(model.modelArtifactSha256);
+  const modelBundleSha256 = nullableString(model.modelBundleSha256 ?? null);
+  const modelArtifactSourceVersionId = nullableString(model.modelArtifactSourceVersionId ?? null);
+  const modelCardSha256 = stringValue(model.modelCardSha256);
+  const imageDigest = stringValue(model.imageDigest);
   const recordCount = nonNegativeInteger(input.recordCount);
   const inputSha256 = stringValue(input.sha256);
   const transformJobArn = nullableString(execution.transformJobArn);
   const transformJobName = nullableString(execution.transformJobName);
   const instanceType = stringValue(execution.instanceType);
   const instanceCount = nonNegativeInteger(execution.instanceCount);
+  const maxRuntimeSeconds = nonNegativeInteger(execution.maxRuntimeSeconds);
+  const temporaryModelName = stringValue(execution.temporaryModelName);
+  const cleanupStatus = stringValue(execution.temporaryModelCleanupStatus);
+  const reconciliationSchedule = nullableString(
+    execution.reconciliationSchedule ?? null,
+  );
 
   if (
     value.contract !== "compass.public-intelligence.model-execution.v1" ||
@@ -162,16 +181,25 @@ export function parsePublicModelExecutionReceipt(
     !createdAt ||
     !updatedAt ||
     completedAt === undefined ||
-    value.purpose !== "bounded_public_validation" ||
+    !["training_cohort_smoke_scoring", "bounded_public_validation"].includes(
+      String(value.purpose),
+    ) ||
     value.executionMode !== "sagemaker_batch_transform" ||
     !modelName ||
     !packageArn ||
     !packageVersion ||
-    !approvalStatus ||
-    typeof model.candidateOnly !== "boolean" ||
+    approvalStatus !== "PendingManualApproval" ||
+    model.candidateOnly !== true ||
     !trainingJobArn ||
     !modelArtifactSha256 ||
     !SHA256_PATTERN.test(modelArtifactSha256) ||
+    modelBundleSha256 === undefined ||
+    (modelBundleSha256 !== null && !SHA256_PATTERN.test(modelBundleSha256)) ||
+    modelArtifactSourceVersionId === undefined ||
+    !modelCardSha256 ||
+    !SHA256_PATTERN.test(modelCardSha256) ||
+    !imageDigest ||
+    !/^sha256:[a-f0-9]{64}$/.test(imageDigest) ||
     recordCount === null ||
     recordCount < 1 ||
     recordCount > 25 ||
@@ -179,10 +207,16 @@ export function parsePublicModelExecutionReceipt(
     !SHA256_PATTERN.test(inputSha256) ||
     transformJobArn === undefined ||
     transformJobName === undefined ||
-    !instanceType ||
-    instanceCount === null ||
-    instanceCount < 1 ||
-    typeof execution.networkIsolation !== "boolean" ||
+    instanceType !== "ml.m5.large" ||
+    instanceCount !== 1 ||
+    execution.networkIsolation !== true ||
+    maxRuntimeSeconds === null ||
+    maxRuntimeSeconds < 1 ||
+    maxRuntimeSeconds > 1800 ||
+    !temporaryModelName ||
+    !cleanupStatus ||
+    !["PENDING", "DELETED", "DELETE_PENDING", "REFUSED_INVALID_NAME"].includes(cleanupStatus) ||
+    reconciliationSchedule === undefined ||
     value.humanReviewRequired !== true ||
     !stringValue(value.disclosure)
   ) {
@@ -232,17 +266,22 @@ export function parsePublicModelExecutionReceipt(
     if (!isObject(value.provenance)) return null;
     const receiptSha256 = stringValue(value.provenance.receiptSha256);
     const inputVersionId = nullableString(value.provenance.inputVersionId);
+    const executionModelVersionId = nullableString(
+      value.provenance.executionModelVersionId ?? null,
+    );
     const outputVersionId = nullableString(value.provenance.outputVersionId);
     if (
       !receiptSha256 ||
       !SHA256_PATTERN.test(receiptSha256) ||
       inputVersionId === undefined ||
+      executionModelVersionId === undefined ||
       outputVersionId === undefined
     ) return null;
-    provenance = { receiptSha256, inputVersionId, outputVersionId };
+    provenance = { receiptSha256, inputVersionId, executionModelVersionId, outputVersionId };
   }
 
   if (status === "COMPLETED" && (!output || !cost || !provenance)) return null;
+  if (status === "COMPLETED" && cleanupStatus !== "DELETED") return null;
   if (status === "COMPLETED" && completedAt === null) return null;
   if (status !== "COMPLETED" && (output !== null || cost !== null)) return null;
   if (status !== "COMPLETED" && completedAt !== null && status !== "FAILED" && status !== "STOPPED") return null;
@@ -262,7 +301,7 @@ export function parsePublicModelExecutionReceipt(
     createdAt,
     updatedAt,
     completedAt,
-    purpose: value.purpose,
+    purpose: value.purpose as PublicModelExecutionReceipt["purpose"],
     executionMode: value.executionMode,
     model: {
       name: modelName,
@@ -272,6 +311,10 @@ export function parsePublicModelExecutionReceipt(
       candidateOnly: model.candidateOnly,
       trainingJobArn,
       modelArtifactSha256,
+      modelBundleSha256,
+      modelArtifactSourceVersionId,
+      modelCardSha256,
+      imageDigest,
     },
     input: { recordCount, sha256: inputSha256 },
     execution: {
@@ -280,6 +323,10 @@ export function parsePublicModelExecutionReceipt(
       instanceType,
       instanceCount,
       networkIsolation: execution.networkIsolation,
+      maxRuntimeSeconds,
+      temporaryModelName,
+      temporaryModelCleanupStatus: cleanupStatus as PublicModelExecutionReceipt["execution"]["temporaryModelCleanupStatus"],
+      reconciliationSchedule,
     },
     output,
     cost,

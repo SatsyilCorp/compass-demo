@@ -6,19 +6,18 @@ recording environment. Commands assume the repository root and
 
 ## Accepted Satsyil evidence snapshot
 
-The earlier 25-operation HA revision was deployed and live-verified on
-2026-08-11. This snapshot is historical release evidence, not a substitute for
-acceptance of the current 33-operation `local-fe56c61` deployment, the final
-exact-commit workflow record, or human rehearsal:
+The current 38-operation HA revision was deployed and live-verified on
+2026-08-12. This snapshot is release evidence, not a substitute for the final
+exact-commit workflow record or human rehearsal:
 
-- 25 protected API operations across 23 URL paths
-- 17 functions, 11 alarms, and 2 dashboards
+- 38 protected API operations across 35 URL paths
+- 19 Lambda functions, 15 alarms, and 2 dashboards
 - private encrypted Aurora writer and reader, 14-day backups, and deletion
   protection
 - poweruser, reviewer, and viewer personas ready with password plus TOTP
 - bounded preparation ready with 19 of 19 checks passing
-- CORS passing on all 25 protected operations
-- all nine screens verified through a real Cognito session with no
+- CORS passing on all 38 protected operations
+- the presenter screens verified through a real Cognito session with no
   `Failed to fetch` response or browser command error
 - 1K, 10K, 100K, and 1M live Scale Runs completed with ready Parquet exports
 
@@ -161,7 +160,7 @@ again:
 WebCallbackUrl=https://<CloudFrontDomain>/login/
 WebLogoutUrl=https://<CloudFrontDomain>/login/
 WebOrigin=https://<CloudFrontDomain>
-DeployRevision=<12-character recording commit>
+DeployRevision=<40-character recording commit SHA>
 DatabaseResilienceMode=demo
 ExportMaxRows=250
 ```
@@ -358,7 +357,7 @@ Complete every row after deployment and before the timed rehearsal.
 | Approval consumption | Exact approved request succeeds once; second use is denied |
 | Server audit | System Inspector displays sanitized approval and export receipts |
 | OpenAPI | Protected OpenAPI 3.1 panel loads |
-| Observability | Eleven alarms exist and both dashboards receive current metrics |
+| Observability | Fifteen alarms exist and both dashboards receive current metrics |
 | Preparation receipt | Redacted receipt says ready, fixture hashes match, and all three live drop keys are absent |
 | Scale Lab authorization | `/admin/scale/` and all eight Scale Run operations allow only the corporate poweruser |
 | Scale Run receipts | Completed acceptance evidence reconciles records and includes Run Manifest, Quality, Intelligence, Performance, and Cost Receipts |
@@ -480,13 +479,13 @@ corresponding acceptance receipt and independently verifying browser identity.
 
 ### 15.1 Choose the database cost posture
 
-The [cost model](COST_MODEL.md) forecasts fixed platform cost at $119.90 per
-730-hour month for `demo` and $163.70 for `ha`. The `ha` forecast adds one
-Aurora reader. Both figures are planning estimates and exclude
+The [cost model](COST_MODEL.md) forecasts the fixed Scale-enabled platform at
+$126.40 per 730-hour month for `demo` and $170.20 for `ha`. The `ha` forecast
+adds one Aurora reader. Both figures are planning estimates and exclude
 usage-sensitive storage, transfer, API traffic, Lambda, Bedrock, tax, support,
 discounts, and free tier. `scripts/deploy_satsyil.sh` defaults to `ha`; select
 `demo` deliberately when the lower fixed cost and single-writer limitation are
-appropriate. The Satsyil deployment used `ha`; $163.70 is still a monthly
+appropriate. The Satsyil deployment used `ha`; $170.20 is still a monthly
 forecast, not observed billing.
 
 ### 15.2 Deploy the Scale Adapter path
@@ -508,14 +507,16 @@ DATABASE_MODE=ha \
 This is a local named-IAM deployment path, not the GitHub OIDC deployment. The
 script removes ambient credential overrides, passes the literal profile to
 every AWS and SAM operation, and fails unless STS resolves to the expected
-account. It also verifies Docker and, for a fresh stack, available VPC and
-Elastic IP quota. It stages migrations, runs SAM lint, builds Linux ARM
-packages in a container, deploys the stack, migrates the database, builds the
-authenticated frontend, publishes it, and waits for the CloudFront
-invalidation. A fresh stack uses two passes to bind its generated CloudFront
-domain to the exact Cognito callback and origin values. An existing stack uses
-one pass with its current output, and any ambiguous stack lookup or non-updateable
-stack state stops before deployment.
+account. It requires a clean Git tree, derives the exact 40-character SHA at
+`HEAD`, rejects a mismatched `DEPLOY_REVISION`, and confirms that migration and
+RMF staging do not change committed artifacts. It also verifies Docker and, for
+a fresh stack, available VPC and Elastic IP quota. It stages migrations, runs
+SAM lint, builds Linux ARM packages in a container, deploys the stack, migrates
+the database, builds the authenticated frontend, publishes it, and waits for
+the CloudFront invalidation. A fresh stack uses two passes to bind its generated
+CloudFront domain to the exact Cognito callback and origin values. An existing
+stack uses one pass with its current output, and any ambiguous stack lookup or
+non-updateable stack state stops before deployment.
 
 The default Scale Run controls are:
 

@@ -13,7 +13,7 @@ monthly cost of keeping the AWS platform deployed. It applies no free tier,
 credits, Savings Plans, private discounts, tax treatment, or support plan.
 
 The inventory and document-workload estimates below price the current
-`public-intel-20260812-full` deployment, which has 13 alarms and 2 dashboards
+source-target deployment, which has 15 alarms and 2 dashboards
 when Scale is enabled. One authentic public SBIR training job completed, but
 Cost Explorer or Cost and Usage Report evidence has not yet reconciled the
 bill. The values remain planning estimates rather than observed billing.
@@ -27,10 +27,11 @@ bill. The values remain planning estimates rather than observed billing.
 | One live 10K Scale Run | $0.01915314 |
 | One live demo with one document intake and one 10K Scale Run | Up to $0.025 |
 | One optional SageMaker training job, `ml.m5.large`, 30-minute hard limit | $0.0575 compute, plus storage and requests |
-| Completed eight-record SageMaker Batch Transform validation | $0.002268 estimate-only compute for 71 observed seconds |
+| Completed eight-record SageMaker Batch Transform training-cohort smoke run | $0.002268 estimate-only compute for 71 observed seconds |
+| Per submitted Batch Transform cleanup guard and retained execution data | Budget up to $0.01 for the bounded schedule, reconciliation requests, dead-letter safety path, and seven-day input, copied-model, and output retention, excluding the transform compute above |
 | Current public-intelligence live-object storage | About $0.0068/month at 294,668,909 bytes across the evidence and SBIR model prefixes |
-| Low-use month, one writer, Scale enabled, four live demos | About $126.42 |
-| Low-use month, writer plus reader, Scale enabled, four live demos | About $170.22 |
+| Low-use month, one writer, Scale enabled, four live demos | About $126.62 |
+| Low-use month, writer plus reader, Scale enabled, four live demos | About $170.42 |
 
 The live demo estimates are workload additions. They do not stop the fixed
 monthly platform charges. Browser replay does not call live compute, so its
@@ -43,8 +44,8 @@ its hourly and monthly charges.
 - The default database mode has one Aurora Serverless v2 writer at a minimum
   of 0.5 ACU. HA adds one reader with the same minimum.
 - The Kinesis ticker stream remains deployed in on-demand mode.
-- Scale enabled means thirteen standard CloudWatch alarms and two dashboards.
-  Scale disabled means six alarms and one dashboard.
+- Scale enabled means fifteen standard CloudWatch alarms and two dashboards.
+  Scale disabled means eight alarms and one dashboard.
 - WAF planning includes one web ACL and three billed rule-equivalents for the
   rate rule and managed rule group configuration.
 - One low-use month contains four live demos and 5 GB-month of S3 Standard
@@ -71,29 +72,29 @@ service pricing pages on 2026-08-11.
 | Customer-managed KMS key | 1 key-month | $1.00/key-month | $1.00 |
 | Secrets Manager | 1 secret-month | $0.40/secret-month | $0.40 |
 | WAF | 1 ACL and 3 modeled rule-equivalents | $5.00/ACL-month and $1.00/rule-month | $8.00 |
-| CloudWatch, Scale disabled | 6 alarms and 1 dashboard | $0.10/alarm-month and $3.00/dashboard-month | $3.60 |
-| CloudWatch, Scale enabled | 13 alarms and 2 dashboards | $0.10/alarm-month and $3.00/dashboard-month | $7.30 |
+| CloudWatch, Scale disabled | 8 alarms and 1 dashboard | $0.10/alarm-month and $3.00/dashboard-month | $3.80 |
+| CloudWatch, Scale enabled | 15 alarms and 2 dashboards | $0.10/alarm-month and $3.00/dashboard-month | $7.50 |
 
 | Deployment posture | Fixed monthly estimate |
 |---|---:|
-| One writer, Scale disabled | $122.50 |
-| One writer, Scale enabled | $126.20 |
-| Writer plus reader, Scale disabled | $166.30 |
-| Writer plus reader, Scale enabled | $170.00 |
+| One writer, Scale disabled | $122.70 |
+| One writer, Scale enabled | $126.40 |
+| Writer plus reader, Scale disabled | $166.50 |
+| Writer plus reader, Scale enabled | $170.20 |
 
 The HA calculation adds `365 ACU-hours * $0.12 = $43.80` for the reader.
 
 The low-use total for the normal live demonstration posture is:
 
 ```text
-one writer, Scale enabled       $126.200
+one writer, Scale enabled       $126.400
 four live demos, $0.025 each       0.100
 5 GB-month S3 Standard              0.115
                                       -----
-low-use month                    $126.415, rounded to $126.42
+low-use month                    $126.615, rounded to $126.62
 ```
 
-For HA, replace the first line with $170.00, giving $170.22 after rounding.
+For HA, replace the first line with $170.20, giving $170.42 after rounding.
 These are planning floors, not maximum invoices.
 
 ## Live demonstration calculations
@@ -159,6 +160,17 @@ attempt after 726 observed seconds, modeled at $0.02319. The corrected retry
 completed eight predictions in 71 observed seconds, modeled at $0.002268. The
 combined rate-based inference estimate is $0.025458, excluding storage,
 requests, logs, and tax. These are estimate-only values, not reconciled billing.
+
+Every submitted transform also creates one per-run EventBridge Scheduler
+cleanup guard. It starts after five minutes, invokes reconciliation once per
+minute, self-deletes after terminal cleanup, and has a bounded 24-hour safety
+window for transient cleanup failures. Exhausted retries enter an encrypted
+dead-letter queue with a CloudWatch alarm. Input, the exact
+write-once model copy, and output use a seven-day lifecycle; noncurrent versions
+expire after one day. A conservative $0.01 planning allowance per submission
+covers the bounded schedule, Lambda, S3, KMS, and retained execution objects,
+excluding Batch Transform compute, logs, and tax. This is an allowance, not
+observed billing.
 
 ### Public evidence and cited intelligence
 

@@ -66,7 +66,7 @@ The template provisions:
 - An Express Step Functions intake workflow
 - A private S3 web bucket, CloudFront OAC, path rewrite function, and WAF
 - Explicit 14-day API and centralized Lambda log groups
-- Four service alarms and one CloudWatch operations dashboard
+- Eight service alarms and one CloudWatch operations dashboard
 - Optional account-level GuardDuty, Security Hub, and Macie resources
 
 When `ScaleFeatureEnabled=true`, the same template adds three Lambda functions,
@@ -74,8 +74,9 @@ one Standard Step Functions workflow, one DynamoDB run and partition ledger,
 one encrypted Scale Run S3 lake, worker and Export Job SQS queues with dead
 letter queues, six Glue tables, one bounded Athena workgroup, scale-specific
 alarms, and scale dashboard widgets. The enabled stack therefore has nineteen
-functions. These resources are conditional and their presence in source does
-not establish that a live deployment or measured Scale Run exists.
+functions, fifteen alarms, and two dashboards. These resources are conditional
+and their presence in source does not establish that a live deployment or
+measured Scale Run exists.
 
 The sixteen core functions are authorizer, intake, quality gate, catalog,
 analytics, dashboard, summarize, RAG chat, approvals, license, export, evidence,
@@ -162,13 +163,20 @@ verified index. Unsupported questions produce an explicit refusal. The full
 source snapshots never pass through the browser.
 
 The same isolated function exposes a cost-bounded public model execution
-Adapter. It selects only from a digest-bound, PII-minimized validation pool,
-loads the exact pending SageMaker package, and creates one network-isolated
-Batch Transform job on one `ml.m5.large` instance. An S3 lock limits execution
-to one active run. Versioned KMS-encrypted input, output, history pointers, and
-terminal receipts preserve provenance across browser refreshes. The temporary
-SageMaker Model is removed after reconciliation, and no endpoint or approval
-change is allowed by the interface.
+Adapter. It selects only from a digest-bound, PII-minimized smoke pool,
+verifies one exact Model Registry package, reads one exact S3 object version,
+checks the registry bundle bytes against the pinned bundle SHA-256 value, and executes a
+per-run versioned, write-once copy with a digest-qualified image. It then
+creates one network-isolated Batch Transform job on one `ml.m5.large` instance.
+An S3 lock limits execution to one active run. Versioned KMS-encrypted input,
+output, history pointers, and terminal receipts preserve provenance across
+browser refreshes. The protected receipt endpoint and a per-run EventBridge
+Scheduler cleanup guard both reconcile active work, enforce the bounded runtime,
+validate every prediction, remove the temporary SageMaker Model after a terminal
+result, and release the lock. The guard begins after five minutes, runs once per
+minute, self-deletes after terminal cleanup, and keeps a bounded 24-hour retry
+window with a dead-letter alarm. No endpoint or approval change is allowed by
+the interface.
 
 ```mermaid
 flowchart LR

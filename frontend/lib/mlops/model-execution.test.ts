@@ -15,7 +15,7 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
     createdAt: "2026-08-12T15:00:00Z",
     updatedAt: "2026-08-12T15:01:00Z",
     completedAt: status === "COMPLETED" ? "2026-08-12T15:01:00Z" : null,
-    purpose: "bounded_public_validation",
+    purpose: "training_cohort_smoke_scoring",
     executionMode: "sagemaker_batch_transform",
     model: {
       name: "compass-demo-public-sbir-transition",
@@ -25,6 +25,10 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
       candidateOnly: true,
       trainingJobArn: "arn:aws:sagemaker:us-east-1:111122223333:training-job/example",
       modelArtifactSha256: "a".repeat(64),
+      modelBundleSha256: "e".repeat(64),
+      modelArtifactSourceVersionId: "model-v2",
+      modelCardSha256: "f".repeat(64),
+      imageDigest: `sha256:${"1".repeat(64)}`,
     },
     input: { recordCount: 8, sha256: "b".repeat(64) },
     execution: {
@@ -33,6 +37,10 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
       instanceType: "ml.m5.large",
       instanceCount: 1,
       networkIsolation: true,
+      maxRuntimeSeconds: 1800,
+      temporaryModelName: "compass-sbir-example",
+      temporaryModelCleanupStatus: status === "COMPLETED" ? "DELETED" : "PENDING",
+      reconciliationSchedule: "arn:aws:scheduler:us-east-1:111122223333:schedule/default/example",
     },
     output: status === "COMPLETED" ? {
       predictionCount: 8,
@@ -40,7 +48,7 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
       predictions: Array.from({ length: 8 }, (_, index) => ({
         recordId: `sbir-${index + 1}`,
         observedPublicTransitionProbability: 0.64,
-        candidateLabel: "transition_proxy_positive",
+        candidateLabel: 1,
         semantics: "Public transition proxy only",
         humanReviewRequired: true,
       })),
@@ -53,6 +61,7 @@ function receipt(status: "SUBMITTED" | "IN_PROGRESS" | "COMPLETED") {
     provenance: status === "COMPLETED" ? {
       receiptSha256: "d".repeat(64),
       inputVersionId: "input-v1",
+      executionModelVersionId: "execution-model-v1",
       outputVersionId: "output-v1",
     } : null,
     humanReviewRequired: true,
@@ -73,6 +82,20 @@ test("parses submitted and completed backend execution receipts without filling 
   assert.equal(completed?.cost?.estimateOnly, true);
 });
 
+test("keeps earlier hash-bound smoke receipts readable after provenance hardening", () => {
+  const legacy = receipt("COMPLETED");
+  legacy.purpose = "bounded_public_validation";
+  Reflect.deleteProperty(legacy.model, "modelBundleSha256");
+  Reflect.deleteProperty(legacy.model, "modelArtifactSourceVersionId");
+  Reflect.deleteProperty(legacy.provenance!, "executionModelVersionId");
+  Reflect.deleteProperty(legacy.execution, "reconciliationSchedule");
+
+  const parsed = parsePublicModelExecutionReceipt(legacy);
+  assert.equal(parsed?.purpose, "bounded_public_validation");
+  assert.equal(parsed?.model.modelBundleSha256, null);
+  assert.equal(parsed?.provenance?.executionModelVersionId, null);
+});
+
 test("rejects a registry record or incomplete object as execution evidence", () => {
   assert.equal(parsePublicModelExecutionReceipt({
     modelPackageArn: "arn:aws:sagemaker:example",
@@ -89,13 +112,26 @@ test("terminal status helper polls only active executions", () => {
   assert.equal(isTerminalModelExecutionStatus("STOPPED"), true);
 });
 
-test("normalizes numeric package versions and labels from the SageMaker receipt", () => {
+test("normalizes numeric package versions and keeps exact binary labels", () => {
   const value = receipt("COMPLETED");
   value.model.packageVersion = 2 as unknown as string;
-  value.output!.predictions[0]!.candidateLabel = 1 as unknown as string;
   const parsed = parsePublicModelExecutionReceipt(value);
   assert.equal(parsed?.model.packageVersion, "2");
-  assert.equal(parsed?.output?.predictions[0]?.candidateLabel, "1");
+  assert.equal(parsed?.output?.predictions[0]?.candidateLabel, 1);
+});
+
+test("rejects completed evidence that weakens security or cleanup constants", () => {
+  const unsafe = receipt("COMPLETED");
+  unsafe.execution.networkIsolation = false;
+  assert.equal(parsePublicModelExecutionReceipt(unsafe), null);
+
+  const pendingCleanup = receipt("COMPLETED");
+  pendingCleanup.execution.temporaryModelCleanupStatus = "DELETE_PENDING";
+  assert.equal(parsePublicModelExecutionReceipt(pendingCleanup), null);
+
+  const noReview = receipt("COMPLETED");
+  noReview.output!.predictions[0]!.humanReviewRequired = false;
+  assert.equal(parsePublicModelExecutionReceipt(noReview), null);
 });
 
 test("parses the durable execution history without accepting partial rows", () => {

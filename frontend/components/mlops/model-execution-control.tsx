@@ -189,10 +189,10 @@ export function ModelExecutionControl() {
           <div className="max-w-3xl">
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full border border-gold-light/30 bg-gold-light/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-gold-light">Real execution path</span>
-              <span className="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-white/75">Bounded public validation</span>
+              <span className="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-white/75">Bounded smoke scoring</span>
             </div>
             <h2 id="model-execution-title" className="mt-3 text-xl font-bold">Execute the registered candidate</h2>
-            <p className="mt-2 text-xs leading-5 text-white/70">Start a protected SageMaker Batch Transform run over a bounded public holdout, then follow its observed backend state through a hash-bound output and cost receipt. This creates no endpoint and makes no automatic approval decision.</p>
+            <p className="mt-2 text-xs leading-5 text-white/70">Start a protected SageMaker Batch Transform smoke run over label-excluded records sampled from the public training cohort, then follow its observed backend state through a hash-bound output and cost receipt. This is execution proof, not independent model evaluation. It creates no endpoint and makes no automatic approval decision.</p>
           </div>
           <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[10px] leading-4 ${liveReady ? "border-success/30 bg-success/10 text-emerald-100" : "border-warn/30 bg-warn/10 text-amber-100"}`}>
             {liveReady ? <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /> : <LockKeyhole className="mt-0.5 size-4 shrink-0" aria-hidden />}
@@ -205,10 +205,10 @@ export function ModelExecutionControl() {
         <div className="border-b border-border p-5 xl:border-b-0 xl:border-r">
           <p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Execution input</p>
           <h3 className="mt-1 text-base font-bold text-text-strong">Select a bounded sample</h3>
-          <p className="mt-2 text-[11px] leading-5 text-text-muted">Only 1 to 25 records are accepted. Inputs are copied from the approved public validation set and sealed before execution.</p>
+          <p className="mt-2 text-[11px] leading-5 text-text-muted">Only 1 to 25 records are accepted. Inputs are copied from a PII-minimized, label-excluded training-cohort sample and sealed before execution.</p>
 
           <fieldset className="mt-4">
-            <legend className="sr-only">Public validation sample size</legend>
+            <legend className="sr-only">Public smoke-scoring sample size</legend>
             <div className="grid grid-cols-4 gap-2">
               {SAMPLE_SIZES.map((size) => (
                 <label key={size} className={`grid min-h-11 cursor-pointer place-items-center rounded-md border text-xs font-bold ${sampleSize === size ? "border-gov-primary bg-gov-primary text-white" : "border-border bg-white text-text-muted hover:bg-surface-2"}`}>
@@ -327,7 +327,14 @@ function ExecutionReceipt({ receipt, polling, lastCheckedAt, onRecheck }: { rece
         <EvidenceBlock title="Execution provenance" icon={Fingerprint} rows={[
           ["Transform job ARN", receipt.execution.transformJobArn ?? "Not assigned yet"],
           ["Input SHA-256", receipt.input.sha256],
-          ["Model SHA-256", receipt.model.modelArtifactSha256],
+          ["Training-recorded artifact SHA-256", receipt.model.modelArtifactSha256],
+          ["Runtime-verified bundle SHA-256", receipt.model.modelBundleSha256 ?? "Legacy receipt did not retain this field"],
+          ["Model card SHA-256", receipt.model.modelCardSha256],
+          ["Inference image digest", receipt.model.imageDigest],
+          ["Pinned model object version", receipt.model.modelArtifactSourceVersionId ?? "Legacy receipt did not retain this field"],
+          ["Per-run model object version", receipt.provenance?.executionModelVersionId ?? "Legacy receipt did not retain this field"],
+          ["Temporary model cleanup", receipt.execution.temporaryModelCleanupStatus],
+          ["Reconciliation guard", receipt.execution.reconciliationSchedule ?? "Legacy receipt did not retain this field"],
           ["Output SHA-256", receipt.output?.sha256 ?? "Not available until completion"],
           ["Receipt SHA-256", receipt.provenance?.receiptSha256 ?? "Not available until completion"],
         ]} />
@@ -380,7 +387,7 @@ function EvidenceBlock({ title, icon: Icon, rows }: { title: string; icon: typeo
 
 function PredictionTable({ receipt }: { receipt: PublicModelExecutionReceipt }) {
   const predictions = receipt.output?.predictions ?? [];
-  return <section className="mt-4 overflow-hidden rounded-lg border border-border"><div className="border-b border-border bg-surface-2 px-4 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Observed candidate predictions</p><p className="mt-1 text-[10px] text-text-muted">Public transition proxy probabilities only. Every row remains review required.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-left"><thead className="bg-white text-[9px] font-bold uppercase tracking-wide text-text-subtle"><tr><th className="px-4 py-3">Record</th><th className="px-4 py-3">Public transition probability</th><th className="px-4 py-3">Candidate label</th><th className="px-4 py-3">Review</th></tr></thead><tbody>{predictions.map((prediction) => <tr key={prediction.recordId} className="border-t border-border bg-white text-xs"><td className="px-4 py-3 font-mono text-[10px] text-gov-primary">{prediction.recordId}</td><td className="px-4 py-3 font-bold text-text-strong">{Math.round(prediction.observedPublicTransitionProbability * 100)}%</td><td className="px-4 py-3"><p className="font-bold text-text-strong">{prediction.candidateLabel.replaceAll("_", " ")}</p><p className="mt-1 text-[9px] text-text-muted">{prediction.semantics}</p></td><td className="px-4 py-3"><span className="rounded-full border border-warn/30 bg-warn-soft px-2 py-1 text-[9px] font-bold uppercase text-warn">{prediction.humanReviewRequired ? "Required" : "Not flagged"}</span></td></tr>)}</tbody></table></div></section>;
+  return <section className="mt-4 overflow-hidden rounded-lg border border-border"><div className="border-b border-border bg-surface-2 px-4 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Observed candidate predictions</p><p className="mt-1 text-[10px] text-text-muted">Public transition proxy probabilities only. Every row remains review required.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-left"><thead className="bg-white text-[9px] font-bold uppercase tracking-wide text-text-subtle"><tr><th className="px-4 py-3">Record</th><th className="px-4 py-3">Public transition probability</th><th className="px-4 py-3">Candidate label</th><th className="px-4 py-3">Review</th></tr></thead><tbody>{predictions.map((prediction) => <tr key={prediction.recordId} className="border-t border-border bg-white text-xs"><td className="px-4 py-3 font-mono text-[10px] text-gov-primary">{prediction.recordId}</td><td className="px-4 py-3 font-bold text-text-strong">{Math.round(prediction.observedPublicTransitionProbability * 100)}%</td><td className="px-4 py-3"><p className="font-bold text-text-strong">{prediction.candidateLabel === 1 ? "Positive proxy signal" : "No positive proxy signal"}</p><p className="mt-1 text-[9px] text-text-muted">{prediction.semantics}</p></td><td className="px-4 py-3"><span className="rounded-full border border-warn/30 bg-warn-soft px-2 py-1 text-[9px] font-bold uppercase text-warn">Required</span></td></tr>)}</tbody></table></div></section>;
 }
 
 function formatDate(value: string): string {
