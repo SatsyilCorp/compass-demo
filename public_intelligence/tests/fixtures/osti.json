@@ -1,0 +1,24 @@
+[
+  {
+    "osti_id": "3398572",
+    "title": "Data-driven discovery for conjugated polymer assembly",
+    "publication_date": "2026-07-16T00:00:00Z",
+    "entry_date": "2026-08-03T15:08:40Z",
+    "doi": "10.1021/acs.chemmater.6c00358",
+    "description": "Publisher abstract text that is intentionally omitted.",
+    "product_type": "Journal Article",
+    "article_type": "Accepted Manuscript",
+    "journal_name": "Chemistry of Materials",
+    "journal_volume": "38",
+    "journal_issue": "14",
+    "publisher": "American Chemical Society",
+    "language": "English",
+    "country_publication": "United States",
+    "nondoe_contract_number": "N00014-22-1-2202",
+    "authors": ["Researcher, Riley (ORCID:0000-0001-2345-6789)"],
+    "sponsor_orgs": ["Office of Naval Research"],
+    "research_orgs": ["Naval Materials Institute"],
+    "subjects": ["conjugated polymers", "machine learning"],
+    "links": [{"rel": "citation", "href": "https://www.osti.gov/biblio/3398572"}]
+  }
+]

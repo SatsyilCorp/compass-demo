@@ -28,6 +28,7 @@ import {
 import {
   DOCUMENT_MEDIA_TYPES,
   buildLocalReceipt,
+  liveDocumentStageIndex,
   mediaTypeForFile,
   previewTextForBytes,
   sha256Hex,
@@ -36,10 +37,22 @@ import {
 } from "@/lib/documents/document-intake";
 import { saveDocumentEvidence } from "@/lib/documents/document-evidence-store";
 
-const ACCEPT = ".pdf,.txt,.md,.csv,.json,.jsonl,.xlsx";
+const ACCEPT = ".pdf,.docx,.txt,.md,.csv,.json,.jsonl,.xlsx,.xml";
 const TERMINAL = new Set(["completed", "curated", "quarantined", "failed"]);
 
-type WorkState = "idle" | "reading" | "running" | "complete" | "failed";
+const SAMPLE_DOCUMENTS = [
+  { fileName: "onr-public-opportunity.json", label: "Public ONR opportunity", contentType: DOCUMENT_MEDIA_TYPES.json, boundary: "public" },
+  { fileName: "technical-report.txt", label: "Technical report", contentType: DOCUMENT_MEDIA_TYPES.txt, boundary: "synthetic-demo" },
+  { fileName: "grant-abstract.json", label: "Grant abstract", contentType: DOCUMENT_MEDIA_TYPES.json, boundary: "synthetic-demo" },
+  { fileName: "financial-execution.csv", label: "Financial CSV", contentType: DOCUMENT_MEDIA_TYPES.csv, boundary: "synthetic-demo" },
+  { fileName: "patent-summary.md", label: "Patent summary", contentType: DOCUMENT_MEDIA_TYPES.md, boundary: "synthetic-demo" },
+  { fileName: "investment-brief.txt", label: "Investment brief", contentType: DOCUMENT_MEDIA_TYPES.txt, boundary: "synthetic-demo" },
+  { fileName: "publication-summary.json", label: "Publication summary", contentType: DOCUMENT_MEDIA_TYPES.json, boundary: "synthetic-demo" },
+  { fileName: "quarantine-short.txt", label: "Quarantine case", contentType: DOCUMENT_MEDIA_TYPES.txt, boundary: "synthetic-demo" },
+] as const;
+
+type WorkState = "idle" | "reading" | "running" | "complete" | "quarantined" | "failed";
+type InputBoundary = "synthetic-demo" | "public";
 
 export function DocumentDropZone() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,6 +63,8 @@ export function DocumentDropZone() {
   const [activeStage, setActiveStage] = useState(-1);
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sampleLoading, setSampleLoading] = useState<string | null>(null);
+  const [boundary, setBoundary] = useState<InputBoundary>("synthetic-demo");
 
   const reset = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
@@ -83,12 +98,11 @@ export function DocumentDropZone() {
     try {
       const run = await getDocumentRunApi(runId);
       setLiveStatus(`${run.status} | ${run.stage}`);
+      setActiveStage(liveDocumentStageIndex(run.stage, run.status));
       if (TERMINAL.has(run.status)) {
-        setActiveStage(run.status === "quarantined" ? 5 : 7);
-        setState(run.status === "failed" ? "failed" : "complete");
+        setState(run.status === "failed" ? "failed" : run.status === "quarantined" ? "quarantined" : "complete");
         return;
       }
-      setActiveStage(Math.min(7, Math.max(2, attempt + 2)));
       if (attempt < 24) pollRef.current = setTimeout(() => void pollLiveRun(runId, attempt + 1), 1_500);
       else {
         setState("failed");
@@ -103,7 +117,7 @@ export function DocumentDropZone() {
     }
   }, []);
 
-  const processFile = useCallback(async (file: File) => {
+  const processFile = useCallback(async (file: File, requestedBoundary: InputBoundary = boundary) => {
     reset();
     const validation = validateDocument(file);
     if (validation) {
@@ -138,7 +152,10 @@ export function DocumentDropZone() {
         filename: file.name,
         content_type: mediaType,
         size_bytes: file.size,
-        synthetic_only: true,
+        synthetic_only: requestedBoundary === "synthetic-demo",
+        data_classification: requestedBoundary,
+        contains_cui: false,
+        pii_minimized: requestedBoundary === "public",
       });
       setLiveStatus(`${plan.status} | ${plan.stage}`);
       setActiveStage(1);
@@ -149,12 +166,29 @@ export function DocumentDropZone() {
       setState("failed");
       setError(cause instanceof Error ? cause.message : "Document intake failed before a terminal receipt was created.");
     }
-  }, [animateReplay, pollLiveRun, reset]);
+  }, [animateReplay, boundary, pollLiveRun, reset]);
+
+  const loadSample = useCallback(async (sample: (typeof SAMPLE_DOCUMENTS)[number]) => {
+    setSampleLoading(sample.fileName);
+    setError(null);
+    try {
+      const response = await fetch(`/demo-documents/${sample.fileName}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Prepared sample could not be loaded (${response.status}).`);
+      const bytes = await response.arrayBuffer();
+      setBoundary(sample.boundary);
+      await processFile(new File([bytes], sample.fileName, { type: sample.contentType }), sample.boundary);
+    } catch (cause) {
+      setState("failed");
+      setError(cause instanceof Error ? cause.message : "The prepared sample could not be loaded.");
+    } finally {
+      setSampleLoading(null);
+    }
+  }, [processFile]);
 
   const choose = () => inputRef.current?.click();
   const onFiles = (files: FileList | null) => {
     const selected = files?.item(0);
-    if (selected) void processFile(selected);
+    if (selected) void processFile(selected, boundary);
   };
 
   return (
@@ -167,8 +201,16 @@ export function DocumentDropZone() {
               {USE_MOCK ? "Bounded browser replay" : "Live AWS event path"}
             </span>
           </div>
-          <h2 id="document-intake-title" className="mt-3 text-xl font-bold text-text-strong">Drop a real synthetic document</h2>
-          <p className="mt-2 text-xs leading-5 text-text-muted">Select a sanitized file from your computer. Compass validates the file, computes its hash, lands the original, infers its shape, applies quality rules, classifies it, and publishes governed evidence.</p>
+          <h2 id="document-intake-title" className="mt-3 text-xl font-bold text-text-strong">Drop a governed document</h2>
+          <p className="mt-2 text-xs leading-5 text-text-muted">Select a synthetic file or a PII-minimized public file from your computer. Compass validates the boundary, computes its hash, lands the original, infers its shape, applies quality rules, classifies it, and publishes governed evidence.</p>
+
+          <div className="mt-4 grid grid-cols-2 gap-2" aria-label="Document data boundary">
+            {(["synthetic-demo", "public"] as const).map((value) => (
+              <button key={value} type="button" onClick={() => setBoundary(value)} className={`min-h-11 rounded-md border px-3 text-xs font-bold ${boundary === value ? "border-gov-primary bg-gov-primary text-white" : "border-border bg-white text-text-muted hover:bg-surface-2"}`}>
+                {value === "public" ? "Public, PII-minimized" : "Synthetic demo"}
+              </button>
+            ))}
+          </div>
 
           <input
             ref={inputRef}
@@ -189,9 +231,36 @@ export function DocumentDropZone() {
           >
             <span className="grid size-12 place-items-center rounded-xl bg-gov-primary text-white shadow-soft"><UploadCloud className="size-6" aria-hidden /></span>
             <span className="mt-4 text-sm font-bold text-text-strong">Drop one file here or browse</span>
-            <span className="mt-1 text-[10.5px] leading-5 text-text-muted">PDF, TXT, Markdown, CSV, JSON, JSONL, or XLSX | 25 MiB maximum</span>
-            <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-success"><ShieldCheck className="size-3" aria-hidden /> Synthetic or sanitized data only</span>
+            <span className="mt-1 text-[10.5px] leading-5 text-text-muted">PDF, DOCX, TXT, Markdown, CSV, JSON, JSONL, XLSX, or XML | 15 MiB maximum</span>
+            <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-success"><ShieldCheck className="size-3" aria-hidden /> No CUI, no direct PII</span>
           </button>
+
+          <div className="mt-4 rounded-lg border border-border bg-white p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Prepared synthetic samples</p>
+                <p className="mt-1 text-[10px] leading-4 text-text-muted">Select the PII-minimized public ONR record or a synthetic sample to send real bytes through the same path.</p>
+              </div>
+              <FileText className="size-4 shrink-0 text-gov-primary" aria-hidden />
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {SAMPLE_DOCUMENTS.map((sample) => {
+                const loading = sampleLoading === sample.fileName;
+                return (
+                  <button
+                    key={sample.fileName}
+                    type="button"
+                    onClick={() => void loadSample(sample)}
+                    disabled={sampleLoading !== null || state === "reading" || state === "running"}
+                    className="inline-flex min-h-10 items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-3 text-left text-[10px] font-bold text-text-muted hover:border-gov-primary hover:bg-gov-primary-lighter hover:text-gov-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span>{sample.label}</span>
+                    {loading ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <ArrowRight className="size-3.5" aria-hidden />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {error ? <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft p-3 text-xs leading-5 text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}</div> : null}
           {receipt ? <ReceiptSummary receipt={receipt} liveStatus={liveStatus} /> : null}
@@ -207,10 +276,11 @@ export function DocumentDropZone() {
             {(receipt?.stages ?? PLACEHOLDER_STAGES).map((stage, index) => {
               const Icon = STAGE_ICONS[index] ?? FileSearch;
               const done = receipt && (index < activeStage || (state === "complete" && index === activeStage));
-              const active = receipt && index === activeStage && state !== "complete";
+              const quarantined = receipt && index === activeStage && state === "quarantined";
+              const active = receipt && index === activeStage && state !== "complete" && state !== "quarantined" && state !== "failed";
               return (
-                <div key={stage.id} className={`relative flex gap-3 rounded-lg border p-3 transition-all ${active ? "border-gov-primary bg-white shadow-soft" : done ? "border-success/25 bg-success-soft/45" : "border-border bg-white/60"}`}>
-                  <span className={`grid size-9 shrink-0 place-items-center rounded-md ${done ? "bg-success text-white" : active ? "bg-gov-primary text-white" : "bg-surface-3 text-text-subtle"}`}>{done ? <CheckCircle2 className="size-4" aria-hidden /> : active ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}</span>
+                <div key={stage.id} className={`relative flex gap-3 rounded-lg border p-3 transition-all ${quarantined ? "border-warn/35 bg-warn-soft" : active ? "border-gov-primary bg-white shadow-soft" : done ? "border-success/25 bg-success-soft/45" : "border-border bg-white/60"}`}>
+                  <span className={`grid size-9 shrink-0 place-items-center rounded-md ${quarantined ? "bg-warn text-white" : done ? "bg-success text-white" : active ? "bg-gov-primary text-white" : "bg-surface-3 text-text-subtle"}`}>{quarantined ? <AlertTriangle className="size-4" aria-hidden /> : done ? <CheckCircle2 className="size-4" aria-hidden /> : active ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}</span>
                   <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-text-strong">{index + 1}. {stage.label}</p><span className="text-[9px] font-bold uppercase tracking-wide text-text-subtle">{stage.system}</span></div><p className="mt-1 text-[10px] leading-4 text-text-muted">{stage.detail}</p></div>
                   {index < 7 ? <ArrowRight className="absolute -bottom-2.5 left-[27px] z-10 size-3 text-border-strong" aria-hidden /> : null}
                 </div>
@@ -247,6 +317,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function StatePill({ state }: { state: WorkState }) {
   if (state === "complete") return <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-[9px] font-bold uppercase text-success"><CheckCircle2 className="size-3" aria-hidden /> Complete</span>;
+  if (state === "quarantined") return <span className="inline-flex items-center gap-1 rounded-full border border-warn/35 bg-warn-soft px-2.5 py-1 text-[9px] font-bold uppercase text-warn"><AlertTriangle className="size-3" aria-hidden /> Quarantined</span>;
   if (state === "failed") return <span className="rounded-full border border-danger/30 bg-danger-soft px-2.5 py-1 text-[9px] font-bold uppercase text-danger">Attention</span>;
   if (state === "reading" || state === "running") return <span className="inline-flex items-center gap-1 rounded-full border border-info/30 bg-info-soft px-2.5 py-1 text-[9px] font-bold uppercase text-info"><Loader2 className="size-3 animate-spin" aria-hidden /> Processing</span>;
   return <span className="rounded-full border border-border bg-white px-2.5 py-1 text-[9px] font-bold uppercase text-text-subtle">Ready</span>;

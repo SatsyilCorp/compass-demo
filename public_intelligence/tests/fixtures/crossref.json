@@ -1,0 +1,36 @@
+{
+  "status": "ok",
+  "message": {
+    "next-cursor": "next-page-token",
+    "items": [
+      {
+        "DOI": "10.5555/naval.001",
+        "title": ["Autonomous maritime sensing"],
+        "abstract": "A reproducible sensing study. Contact author@example.org for details.",
+        "published-online": {"date-parts": [[2025, 6, 12]]},
+        "publisher": "Open Research Publisher",
+        "type": "journal-article",
+        "subject": ["Ocean Engineering", "Robotics"],
+        "URL": "https://doi.org/10.5555/naval.001",
+        "ISSN": ["1234-5678"],
+        "references-count": 18,
+        "is-referenced-by-count": 7,
+        "author": [
+          {
+            "given": "Jane",
+            "family": "Researcher",
+            "affiliation": [{"name": "Naval Research University"}]
+          }
+        ],
+        "funder": [
+          {
+            "name": "Office of Naval Research",
+            "DOI": "10.13039/100000006",
+            "award": ["N00014-25-1-0001"]
+          }
+        ],
+        "license": [{"URL": "https://creativecommons.org/licenses/by/4.0/"}]
+      }
+    ]
+  }
+}

@@ -8,15 +8,16 @@ Actions workflows.
 
 Compass is one AWS SAM stack in `us-east-1` plus a statically exported Next.js
 application. The web application is public at the CloudFront edge, but every
-application API route requires a Cognito token. Data-touching functions and
-Aurora are in private subnets.
+application API route requires a Cognito token. Relational portfolio functions
+and Aurora are in private subnets. The public-intelligence function is isolated
+from that database path and reads only its dedicated KMS-encrypted S3 prefix.
 
 ```mermaid
 flowchart LR
   U["User browser"]
   CF["CloudFront and WAF\nPrivate S3 origin through OAC"]
   COG["Cognito hosted UI\npassword-only team access, TOTP presenter, OIDC"]
-  API["HTTP API\n25 JWT-protected operations when Scale Run is enabled"]
+  API["HTTP API\n35 JWT-protected operations"]
 
   subgraph VPC["Private application boundary across two AZs"]
     L["Application Lambdas\nShared identity, HTTP, DB, AI, and audit layer"]
@@ -29,6 +30,8 @@ flowchart LR
   SFN["Express Step Functions\nFetch, validate, gate, persist or quarantine"]
   KIN["Kinesis activity stream"]
   BR["Amazon Bedrock"]
+  PI["Public intelligence Lambda\nManifest verification and cited retrieval"]
+  PUB[("KMS-encrypted public evidence\nImmutable source snapshots and serving index")]
   CW["CloudWatch logs, alarms, dashboard, and X-Ray"]
 
   U -->|"HTTPS"| CF
@@ -38,6 +41,9 @@ flowchart LR
   RAW --> EB --> SFN --> L
   L <--> KIN
   L --> BR
+  API --> PI
+  PUB --> PI
+  PI --> BR
   API --> CW
   L --> CW
   SFN --> CW
@@ -54,7 +60,7 @@ The template provisions:
 - Cognito with password-only team accounts, a dedicated TOTP presenter,
   admin-created users, and poweruser and viewer groups
 - An HTTP API with the JWT authorizer as its default
-- Fourteen Lambda functions and one shared Lambda layer
+- Sixteen core Lambda functions and one shared Lambda layer
 - A KMS-encrypted raw S3 bucket with EventBridge notifications
 - An on-demand Kinesis stream
 - An Express Step Functions intake workflow
@@ -67,13 +73,14 @@ When `ScaleFeatureEnabled=true`, the same template adds three Lambda functions,
 one Standard Step Functions workflow, one DynamoDB run and partition ledger,
 one encrypted Scale Run S3 lake, worker and Export Job SQS queues with dead
 letter queues, six Glue tables, one bounded Athena workgroup, scale-specific
-alarms, and scale dashboard widgets. The enabled stack therefore has seventeen
+alarms, and scale dashboard widgets. The enabled stack therefore has nineteen
 functions. These resources are conditional and their presence in source does
 not establish that a live deployment or measured Scale Run exists.
 
-The fourteen functions are authorizer, intake, quality gate, catalog,
+The sixteen core functions are authorizer, intake, quality gate, catalog,
 analytics, dashboard, summarize, RAG chat, approvals, license, export, evidence,
-RMF artifact, and migrator.
+RMF artifact, migrator, document ML, and public intelligence. The three scale
+functions are scale control, scale worker, and scale export.
 
 ## 3. Record life cycle
 
@@ -132,7 +139,7 @@ Forward migrations 003 and 004 provide five database safeguards:
 
 ## 5. API and CORS boundary
 
-The 33 method-and-path operations across 31 URL paths are listed in
+The 35 method-and-path operations across 33 URL paths are listed in
 `docs/CONTRACTS.md`. The default JWT authorizer protects every operation,
 including the eight conditional Scale Run operations, OpenAPI document, and
 System Inspector. Scale Run operations apply an additional corporate
@@ -145,6 +152,14 @@ development is explicitly listed. No wildcard origin is returned.
 ## 6. Evidence architecture
 
 The mission UI separates product decisions from system proof and scale proof.
+
+The public evidence plane is also separate from the synthetic portfolio. Its
+source collectors create minimized canonical records and immutable sidecar
+manifests. The accepted S3 serving manifest binds a compact index by SHA-256.
+`GET /public-intelligence/snapshot` verifies both objects before returning any
+record, and `POST /public-intelligence/explain` retrieves only from that
+verified index. Unsupported questions produce an explicit refusal. The full
+source snapshots never pass through the browser.
 
 ```mermaid
 flowchart LR

@@ -1,17 +1,20 @@
 # AWS document intelligence, MLOps, and DevSecOps demo
 
 This implementation covers the meeting's AWS-native requests without claiming
-that the synthetic demonstrator is accredited or that an unsubmitted
-SageMaker job ran.
+that the synthetic demonstrator is accredited or that an unsubmitted document
+classifier SageMaker job ran.
 
 ## Current evidence state
 
-The implementation in this document is deployed in the `local-fe56c61`
-Satsyil stack. The browser can also rehearse it with deterministic replay. The
+The implementation in this document is deployed in the Satsyil stack at
+revision `public-intel-20260812-full`. The browser can also rehearse it with
+deterministic replay. The
 deployed resource inventory is not, by itself, proof that a document traversed
 the live route, Step Functions workflow, Lambda training Adapter, model
 promotion, and drift path. Retain the replay label until a new authenticated
-end-to-end receipt is captured. No SageMaker training job has been submitted.
+end-to-end receipt is captured. No document-classifier SageMaker training job
+has been submitted. The separate public Navy SBIR transition candidate has a
+completed SageMaker training receipt documented in `AWS_PUBLIC_SBIR_MODEL.md`.
 
 ## Requirement mapping
 

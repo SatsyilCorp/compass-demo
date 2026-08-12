@@ -1,0 +1,35 @@
+{
+  "errorcode": 0,
+  "msg": "Webservice Succeeds",
+  "data": {
+    "hitCount": 2,
+    "startRecord": 0,
+    "oppHits": [
+      {
+        "id": "350001",
+        "number": "N00014-25-S-F001",
+        "title": "Maritime autonomy research opportunity",
+        "agencyCode": "DOD-ONR",
+        "agency": "Office of Naval Research",
+        "openDate": "01/15/2025",
+        "closeDate": "04/15/2025",
+        "oppStatus": "archived",
+        "docType": "synopsis",
+        "cfdaList": ["12.300"]
+      },
+      {
+        "id": "350002",
+        "number": "N00014-26-S-F002",
+        "title": "Resilient sensing research opportunity",
+        "agencyCode": "DOD-ONR",
+        "agency": "Office of Naval Research",
+        "openDate": "03/01/2026",
+        "closeDate": "06/01/2026",
+        "oppStatus": "posted",
+        "docType": "synopsis",
+        "cfdaList": ["12.300"]
+      }
+    ],
+    "errorMsgs": []
+  }
+}

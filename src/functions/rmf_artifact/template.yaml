@@ -9,7 +9,8 @@ Description: >
   shared CommonLayer, an Express intake state machine fired by S3 -> EventBridge,
   an on-demand Kinesis ticker stream, a private S3 + CloudFront web tier behind
   a CLOUDFRONT-scope WAF, and a customer-managed KMS key over data at rest.
-  All data is synthetic (mock ONR portfolio) - no real CUI/PII.
+  The core portfolio uses synthetic data. The isolated public-intelligence
+  adapter can serve checksummed, PII-minimized public evidence. No CUI is used.
   NOTE: the WAF WebACL is Scope CLOUDFRONT, so this stack MUST deploy in
   us-east-1 (pinned in samconfig.toml).
 
@@ -182,6 +183,16 @@ Parameters:
     Default: ""
     Description: Optional approved ECR training image URI used only in sagemaker mode.
 
+  ExistingPublicFundingModelPackageGroupArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:(aws|aws-us-gov):sagemaker:[a-z0-9-]+:[0-9]{12}:model-package-group/[A-Za-z0-9][A-Za-z0-9._-]{0,62}$"
+    Description: >
+      Optional ARN of an existing public-funding Model Package Group that is
+      managed outside this stack. Leave empty on a fresh deployment so this
+      stack creates and owns the group. Supplying an ARN references it without
+      importing, modifying, or deleting that external resource.
+
 # -----------------------------------------------------------------------------
 # Conditions
 # -----------------------------------------------------------------------------
@@ -197,6 +208,7 @@ Conditions:
   HasCognitoDomainPrefix: !Not [!Equals [!Ref CognitoDomainPrefix, ""]]
   EnableDatabaseHa: !Equals [!Ref DatabaseResilienceMode, ha]
   EnableScaleFeature: !Equals [!Ref ScaleFeatureEnabled, "true"]
+  CreatePublicFundingModelPackageGroup: !Equals [!Ref ExistingPublicFundingModelPackageGroupArn, ""]
 
 # -----------------------------------------------------------------------------
 # Globals - every Lambda: python3.11 on arm64, X-Ray on, DB contract env vars
@@ -806,6 +818,30 @@ Resources:
         - { Key: compass:component, Value: document-ml }
         - { Key: compass:synthetic-only, Value: "true" }
 
+  PublicFundingModelPackageGroup:
+    Type: AWS::SageMaker::ModelPackageGroup
+    Condition: CreatePublicFundingModelPackageGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ModelPackageGroupName: !Sub "${AWS::StackName}-public-funding-forecast"
+      ModelPackageGroupDescription: Governed candidates trained from PII-minimized public funding evidence.
+      Tags:
+        - { Key: compass:component, Value: public-intelligence }
+        - { Key: compass:data-classification, Value: public }
+
+  PublicSbirTransitionModelPackageGroup:
+    Type: AWS::SageMaker::ModelPackageGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ModelPackageGroupName: !Sub "${AWS::StackName}-public-sbir-transition"
+      ModelPackageGroupDescription: Governed candidates trained from PII-minimized public Navy SBIR evidence.
+      Tags:
+        - { Key: compass:component, Value: public-intelligence }
+        - { Key: compass:data-classification, Value: public }
+        - { Key: compass:model-kind, Value: sbir-transition }
+
   DocumentSageMakerExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -823,23 +859,32 @@ Resources:
             Statement:
               - Sid: TrainingArtifactList
                 Effect: Allow
-                Action: [s3:ListBucket, s3:GetBucketLocation]
+                Action: s3:ListBucket
                 Resource: !GetAtt RawBucket.Arn
                 Condition:
                   StringLike:
                     s3:prefix: [mlops/*]
+              - Sid: TrainingArtifactBucketLocation
+                Effect: Allow
+                Action: s3:GetBucketLocation
+                Resource: !GetAtt RawBucket.Arn
               - Sid: TrainingArtifactObjects
                 Effect: Allow
                 Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload]
                 Resource: !Sub "${RawBucket.Arn}/mlops/*"
               - Sid: TrainingArtifactKms
                 Effect: Allow
-                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey, kms:DescribeKey]
                 Resource: !GetAtt AppKey.Arn
-              - Sid: TrainingLogs
+              - Sid: TrainingTelemetry
                 Effect: Allow
-                Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*"
+                Action:
+                  - cloudwatch:PutMetricData
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource: "*"
       Tags:
         - { Key: compass:component, Value: document-ml }
 
@@ -1803,6 +1848,62 @@ Resources:
             ApiId: !Ref HttpApi
             Method: POST
             Path: /chat
+
+  # --- public_intelligence: verified public-evidence snapshot plus grounded
+  #     explanations. This function is outside the synthetic portfolio VPC and
+  #     database path. It reads only the dedicated S3 prefix, verifies the
+  #     manifest and index digests, and makes at most one bounded Bedrock call.
+  PublicIntelligenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-public-intelligence"
+      CodeUri: src/functions/public_intelligence/
+      Handler: app.handler
+      MemorySize: 768
+      Timeout: 45
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          PUBLIC_INTELLIGENCE_BUCKET: !If
+            - EnableScaleFeature
+            - !Ref ScaleDataLakeBucket
+            - !Ref RawBucket
+          PUBLIC_INTELLIGENCE_PREFIX: public-intelligence/
+          PUBLIC_INTELLIGENCE_MANIFEST_KEY: public-intelligence/current/manifest.json
+          PUBLIC_INTELLIGENCE_MAX_INDEX_BYTES: "1572864"
+          PUBLIC_INTELLIGENCE_READ_ROLES: poweruser,viewer
+          PUBLIC_INTELLIGENCE_EXPLAIN_ROLES: poweruser,viewer
+      Policies:
+        - Statement:
+            - Sid: ReadVerifiedPublicEvidence
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !If
+                - EnableScaleFeature
+                - !Sub "${ScaleDataLakeBucket.Arn}/public-intelligence/*"
+                - !Sub "${RawBucket.Arn}/public-intelligence/*"
+            - Sid: DecryptPublicEvidence
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: !GetAtt AppKey.Arn
+            - Sid: GenerateGroundedPublicExplanation
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0"
+      Events:
+        GetPublicIntelligenceSnapshot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /public-intelligence/snapshot
+        ExplainPublicIntelligence:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /public-intelligence/explain
 
   # Approvals: shared pending inbox plus request and decision actions.
   ApprovalsFunction:
@@ -3276,6 +3377,15 @@ Outputs:
   DocumentModelPackageGroupName:
     Description: SageMaker Model Registry group reserved for approved document model packages.
     Value: !Ref DocumentModelPackageGroup
+  PublicFundingModelPackageGroupName:
+    Description: SageMaker Model Registry group ARN for public funding forecast candidates.
+    Value: !If
+      - CreatePublicFundingModelPackageGroup
+      - !Ref PublicFundingModelPackageGroup
+      - !Ref ExistingPublicFundingModelPackageGroupArn
+  PublicSbirTransitionModelPackageGroupName:
+    Description: SageMaker Model Registry group ARN for public SBIR transition candidates.
+    Value: !Ref PublicSbirTransitionModelPackageGroup
   DocumentMlFunctionName:
     Description: Protected document and MLOps control function.
     Value: !Ref DocumentMlFunction

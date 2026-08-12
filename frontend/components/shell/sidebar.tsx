@@ -33,6 +33,7 @@ const ICONS: Record<string, LucideIcon> = {
   "radio-tower": RadioTower,
   workflow: Workflow,
   "clipboard-check": ClipboardCheck,
+  radar: Network,
 };
 
 type SidebarProps = {

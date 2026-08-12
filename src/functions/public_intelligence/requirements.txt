@@ -1,0 +1,1 @@
+# boto3 is supplied by the Lambda runtime. Shared Compass helpers come from CommonLayer.

@@ -17,20 +17,23 @@ dashboard, approval, export, and system evidence views.
 ## Current live boundary
 
 The current Satsyil stack at `https://compass.aws.satsyil.com/` is deployed at
-`local-fe56c61`. It has 33 protected operations across 31 URL paths, 18 Lambda
+`public-intel-20260812-full`. It has 35 protected operations across 33 URL paths, 19 Lambda
 functions, 13 alarms, 2 dashboards, and 3 state machines. The stack is in HA
 mode, Scale is enabled through 1,000,000 records, and document MLOps uses the
 bounded Lambda `demo` Adapter.
 
-The earlier 25-operation revision retains dated acceptance evidence for HA,
-ingestion, governance, analytics, dashboard, export, and all four Scale Run
-profiles. The document routes and workflow are now deployed resources, but a
-new authenticated document end-to-end acceptance receipt is still required
-before calling a displayed document run live execution evidence. No SageMaker
-training job has been submitted.
+The earlier revision retains dated acceptance evidence for HA, ingestion,
+governance, analytics, dashboard, export, document success and quarantine, and
+all four Scale Run profiles. A public-intelligence path now serves 177,503
+records across 12 source families through a 1,098-record bounded index. An
+authentic 11,287-row public Navy SBIR transition model completed a
+network-isolated SageMaker job and is registered as `PendingManualApproval`.
+No SageMaker endpoint exists.
 
-All demonstrated data is synthetic. There is no CUI, PII, or real award data in
-the seed set. See `seed/SYNTHETIC-DATA-MANIFEST.md` for the per-file statement.
+Scale and document seed data remain synthetic and contain no CUI or direct PII.
+Public intelligence is a separate, provenance-bound public corpus with direct
+PII minimized. See `seed/SYNTHETIC-DATA-MANIFEST.md` and
+`docs/PUBLIC_ONR_INTELLIGENCE.md`.
 
 ## What evaluators can see
 
@@ -221,7 +224,7 @@ cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e
 
 | Path | Purpose |
 |---|---|
-| `template.yaml` | Reproducible AWS environment, 33 protected API operations, document MLOps, optional Scale Run resources, observability, and resilience modes |
+| `template.yaml` | Reproducible AWS environment, 35 protected API operations, document MLOps, optional Scale Run resources, observability, and resilience modes |
 | `db/migrations/` | Versioned schema, RLS and CLS, explicit runtime grants, append-only audit, and opaque approval verifier storage |
 | `src/common/` | Shared database, identity, HTTP, CORS, Bedrock, audit, deterministic workload, and price-backed cost contracts |
 | `src/functions/` | Application handlers, System Inspector, Scale Control, Scale Worker, Scale Export, migrator, and RMF generator |
@@ -245,5 +248,8 @@ cd frontend && pnpm typecheck && pnpm test:scenario && pnpm build && pnpm test:e
 | `docs/SECURITY.md` | Enforced controls, System Inspector disclosure boundary, and honest limitations |
 | `docs/RUNBOOK.md` | Deploy, migrate, seed, verify, rehearse, record, and tear down |
 | `docs/BUILD_REPORT.md` | Current candidate evidence and release gates |
+| `docs/OPPORTUNITY_REQUIREMENTS_BOUNDARY.md` | Authoritative workload targets, PWS mapping, and public or restricted data boundaries |
+| `docs/PUBLIC_ONR_INTELLIGENCE.md` | Public source contracts, provenance, model boundaries, and gated sources |
+| `docs/AWS_PUBLIC_SBIR_MODEL.md` | Authentic SageMaker training, evaluation, registry, security, and cost receipt |
 | `docs/DEMO_SCRIPT.md` | A 39-minute evidence-first recording run |
 | `volume_iv/` | Evaluator-ready shells with external inputs clearly marked |

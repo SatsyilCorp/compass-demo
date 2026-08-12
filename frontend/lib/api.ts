@@ -52,6 +52,15 @@ import type {
   ScaleRun,
   ScaleRunsResponse,
 } from "@/lib/scale/types";
+import {
+  parsePublicIntelligenceExplanationResponse,
+  parsePublicIntelligenceSnapshotResponse,
+} from "@/lib/public-intelligence/live";
+import type {
+  PublicIntelligenceExplainRequest,
+  PublicIntelligenceExplanationResponse,
+  PublicIntelligenceSnapshotResponse,
+} from "@/lib/public-intelligence/types";
 
 export const USE_MOCK =
   typeof process !== "undefined" && process.env.NEXT_PUBLIC_USE_MOCK !== "false";
@@ -363,7 +372,10 @@ export type DocumentUploadRequest = {
   filename: string;
   content_type: string;
   size_bytes: number;
-  synthetic_only: true;
+  synthetic_only: boolean;
+  data_classification: "synthetic-demo" | "public";
+  contains_cui: false;
+  pii_minimized: boolean;
 };
 
 export type DocumentUploadResponse = {
@@ -450,4 +462,32 @@ export function postModelDriftApi(documents?: string[]): Promise<Record<string, 
 
 export function getModelOpsEvidenceApi(): Promise<Record<string, unknown>> {
   return fetchJson<Record<string, unknown>>("/ml/ops/evidence", { cache: "no-store" });
+}
+
+// Public intelligence is intentionally backed only by the protected live API.
+// The page owns its bundled last-known fallback so it can state the evidence
+// mode clearly instead of presenting fallback data as a live cloud response.
+export async function getPublicIntelligenceSnapshotApi(): Promise<PublicIntelligenceSnapshotResponse> {
+  const response = await fetchJson<unknown>("/public-intelligence/snapshot", {
+    cache: "no-store",
+  });
+  const parsed = parsePublicIntelligenceSnapshotResponse(response);
+  if (!parsed) {
+    throw new ApiError(502, null, "public_intelligence_snapshot_contract_invalid");
+  }
+  return parsed;
+}
+
+export async function postPublicIntelligenceExplainApi(
+  request: PublicIntelligenceExplainRequest,
+): Promise<PublicIntelligenceExplanationResponse> {
+  const response = await fetchJson<unknown>("/public-intelligence/explain", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  const parsed = parsePublicIntelligenceExplanationResponse(response);
+  if (!parsed) {
+    throw new ApiError(502, null, "public_intelligence_explanation_contract_invalid");
+  }
+  return parsed;
 }

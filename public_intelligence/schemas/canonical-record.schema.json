@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.satsyil.com/compass/public-intelligence/canonical-record-1.0.json",
+  "title": "Compass Public Intelligence Canonical Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_id",
+    "source_record_id",
+    "record_type",
+    "title",
+    "abstract",
+    "published_date",
+    "start_date",
+    "end_date",
+    "organizations",
+    "topics",
+    "links",
+    "identifiers",
+    "geography",
+    "funding_amount",
+    "funding_currency",
+    "attributes",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source_id": {"type": "string", "minLength": 1},
+    "source_record_id": {"type": "string", "minLength": 1},
+    "record_type": {
+      "enum": [
+        "award",
+        "publication",
+        "dataset",
+        "solicitation",
+        "regulatory_notice",
+        "organization",
+        "patent",
+        "web_page"
+      ]
+    },
+    "title": {"type": "string", "minLength": 1},
+    "abstract": {"type": ["string", "null"]},
+    "published_date": {"type": ["string", "null"]},
+    "start_date": {"type": ["string", "null"]},
+    "end_date": {"type": ["string", "null"]},
+    "organizations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "topics": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "links": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "identifiers": {"type": "object"},
+    "geography": {"type": "object"},
+    "funding_amount": {
+      "type": ["string", "null"],
+      "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "funding_currency": {"type": ["string", "null"]},
+    "attributes": {"type": "object"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_url",
+        "retrieved_at",
+        "snapshot_id",
+        "source_payload_sha256",
+        "record_sha256"
+      ],
+      "properties": {
+        "source_url": {"type": "string", "minLength": 1},
+        "retrieved_at": {"type": "string", "format": "date-time"},
+        "snapshot_id": {"type": "string", "minLength": 1},
+        "source_payload_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "record_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

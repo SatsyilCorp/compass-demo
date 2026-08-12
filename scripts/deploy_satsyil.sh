@@ -36,6 +36,7 @@ DEPLOY_REVISION="${DEPLOY_REVISION:-local-$(git rev-parse --short HEAD 2>/dev/nu
 WEB_CUSTOM_DOMAIN_NAME="${WEB_CUSTOM_DOMAIN_NAME:-}"
 WEB_CERTIFICATE_ARN="${WEB_CERTIFICATE_ARN:-}"
 WEB_HOSTED_ZONE_ID="${WEB_HOSTED_ZONE_ID:-}"
+EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN="${EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN:-}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
@@ -87,6 +88,7 @@ if [ "$caller_account" != "$SATSYIL_EXPECTED_ACCOUNT_ID" ]; then
   echo "ERROR: the satsyil profile resolved to an unexpected AWS account; refusing deployment" >&2
   exit 1
 fi
+SATSYIL_ACCOUNT_ID="$caller_account"
 unset caller_account SATSYIL_EXPECTED_ACCOUNT_ID
 
 stack_exists=false
@@ -115,6 +117,41 @@ else
   exit 1
 fi
 unset stack_probe
+
+if [ "$stack_exists" = true ] \
+    && [ -z "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+  existing_public_group_parameter="$(aws_satsyil cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query 'Stacks[0].Parameters[?ParameterKey==`ExistingPublicFundingModelPackageGroupArn`].ParameterValue | [0]' \
+    --output text)"
+  if [ "$existing_public_group_parameter" != "None" ]; then
+    EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN="$existing_public_group_parameter"
+  fi
+  unset existing_public_group_parameter
+fi
+
+if [ -n "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+  expected_public_group_prefix="arn:aws:sagemaker:$AWS_REGION:$SATSYIL_ACCOUNT_ID:model-package-group/"
+  case "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" in
+    "$expected_public_group_prefix"*)
+      ;;
+    *)
+      echo "ERROR: external public-funding Model Package Group must be in the target Satsyil account and region" >&2
+      exit 1
+      ;;
+  esac
+  public_group_name="${EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN##*/}"
+  resolved_public_group_arn="$(aws_satsyil sagemaker describe-model-package-group \
+    --model-package-group-name "$public_group_name" \
+    --query ModelPackageGroupArn \
+    --output text)"
+  if [ "$resolved_public_group_arn" != "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+    echo "ERROR: external public-funding Model Package Group ARN did not resolve exactly" >&2
+    exit 1
+  fi
+  unset expected_public_group_prefix public_group_name resolved_public_group_arn
+fi
+unset SATSYIL_ACCOUNT_ID
 
 if [ "$stack_exists" = false ]; then
   vpc_count="$(aws_satsyil ec2 describe-vpcs --query 'length(Vpcs)' --output text)"
@@ -171,6 +208,11 @@ deploy_pass() {
   local web_parameters=(
     "DeployRevision=$DEPLOY_REVISION"
   )
+  if [ -n "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+    web_parameters+=(
+      "ExistingPublicFundingModelPackageGroupArn=$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN"
+    )
+  fi
   if [ -n "$WEB_CUSTOM_DOMAIN_NAME" ]; then
     web_parameters+=(
       "WebCustomDomainName=$WEB_CUSTOM_DOMAIN_NAME"

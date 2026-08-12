@@ -37,6 +37,10 @@ Compass is a governed science and technology portfolio intelligence product. It 
 - **Model Version**: An immutable registered candidate produced by a Model Run and governed through validation, approval, deployment, and retirement states.
 - **Drift Receipt**: A deterministic comparison between a deployed Model Version baseline and an observed document window, including feature drift, prediction drift, threshold, disposition, and retraining recommendation.
 - **Delivery Receipt**: Commit-bound evidence that source, tests, security checks, infrastructure plans, deployment gates, and environment promotion completed or failed without hiding any stage.
+- **Public Evidence Snapshot**: One immutable, provenance-bound collection from public award, opportunity, research, budget, patent, or dataset sources, with a declared retrieval cutoff and PII-minimization receipt.
+- **Evidence Class**: One of `observed`, `derived`, or `predicted`, displayed with every public portfolio claim.
+- **Entity Link Receipt**: The source records, normalized comparison keys, match tier, confidence, cutoff, and reviewer state for one cross-source relationship.
+- **Outcome Proxy**: A public, measurable indicator such as Phase II transition, follow-on obligation, or award-linked publication that must never be described as confirmed internal project success.
 
 ## Users and decisions
 
@@ -66,6 +70,11 @@ Compass is a governed science and technology portfolio intelligence product. It 
 17. Document classification uses only the six labels in the Document Taxonomy.
 18. Demo-adapter evidence never claims that a SageMaker job, registry package, or online endpoint exists.
 19. A Model Version cannot become the champion without an explicit Deployment Receipt.
+20. Public evidence and synthetic scale records remain separate Evidence Sets.
+21. Every public intelligence value is labeled observed, derived, or predicted.
+22. A similarity-only entity match cannot publish without analyst review.
+23. Missing future outcome evidence is censored or unknown, never automatically negative.
+24. An Outcome Proxy cannot be presented as ONR internal mission success.
 
 ## Architecture language
 

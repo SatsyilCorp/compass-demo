@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>40100101</PMID>
+      <Article>
+        <ArticleTitle>Autonomous sensing for contested maritime environments</ArticleTitle>
+        <Abstract><AbstractText>Copyrighted abstract text that must not be retained.</AbstractText></Abstract>
+        <AuthorList><Author><LastName>Example</LastName><ForeName>Alex</ForeName></Author></AuthorList>
+        <Language>eng</Language>
+        <Journal>
+          <Title>Journal of Naval Science</Title>
+          <JournalIssue><PubDate><Year>2025</Year><Month>Jun</Month><Day>03</Day></PubDate></JournalIssue>
+        </Journal>
+        <GrantList>
+          <Grant><GrantID>N00014-24-1-0001</GrantID><Agency>ONR</Agency><Country>United States</Country></Grant>
+        </GrantList>
+        <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
+      </Article>
+      <MeshHeadingList><MeshHeading><DescriptorName>Autonomous Systems</DescriptorName></MeshHeading></MeshHeadingList>
+      <KeywordList><Keyword>maritime sensing</Keyword></KeywordList>
+    </MedlineCitation>
+    <PubmedData><ArticleIdList><ArticleId IdType="pubmed">40100101</ArticleId><ArticleId IdType="doi">10.5555/naval.40100101</ArticleId><ArticleId IdType="pmc">PMC40100101</ArticleId></ArticleIdList></PubmedData>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>40100102</PMID>
+      <Article>
+        <ArticleTitle>Resilient undersea communications</ArticleTitle>
+        <Language>eng</Language>
+        <Journal><Title>Ocean Engineering Reports</Title><JournalIssue><PubDate><MedlineDate>2024 Winter</MedlineDate></PubDate></JournalIssue></Journal>
+        <GrantList><Grant><GrantID>N00014-23-1-0002</GrantID><Agency>Office of Naval Research</Agency><Country>United States</Country></Grant></GrantList>
+      </Article>
+    </MedlineCitation>
+    <PubmedData><ArticleIdList><ArticleId IdType="pubmed">40100102</ArticleId></ArticleIdList></PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>

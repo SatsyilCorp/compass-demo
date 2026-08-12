@@ -30,14 +30,23 @@ test("requirements trace covers every selected PWS section and delivery state", 
   assert.equal(counts.demonstrated + counts.partial + counts.roadmap, REQUIREMENTS.length);
 });
 
-test("production authorization and full MLOps remain honest roadmap items", () => {
+test("production authorization remains roadmap while MLOps evidence stays partial", () => {
   const accreditation = REQUIREMENTS.find((item) => item.id === "fedramp-il5-ato");
   const mlops = REQUIREMENTS.find((item) => item.id === "mlops");
   const compliance = REQUIREMENTS.find((item) => item.id === "compliance-stig-vulnerability");
 
   assert.equal(accreditation?.status, "roadmap");
-  assert.equal(mlops?.status, "roadmap");
+  assert.equal(mlops?.status, "partial");
   assert.equal(compliance?.status, "roadmap");
   assert.match(accreditation?.gap ?? "", /not FedRAMP High authorized/i);
   assert.match(mlops?.gap ?? "", /not demonstrated/i);
+});
+
+test("source acquisition requirement maps to the explicit evidence boundary", () => {
+  const acquisition = REQUIREMENTS.find((item) => item.id === "diverse-st-sources");
+
+  assert.equal(acquisition?.demoPath, "/intelligence/");
+  assert.equal(acquisition?.demoLabel, "Source ledger");
+  assert.match(acquisition?.capability ?? "", /177,503.*12 public source families/i);
+  assert.match(acquisition?.gap ?? "", /Advana, Pulse.*protected opportunity documents/i);
 });

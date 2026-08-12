@@ -52,8 +52,8 @@ const REPLAY_ACTIONS: {
   },
   {
     profile: "legacy",
-    label: "Legacy batch",
-    title: "Replay a legacy CSV that is normalized and passes with warnings",
+    label: "Legacy JSON",
+    title: "Replay a legacy JSON export that is normalized and passes with warnings",
     icon: UploadCloud,
     tone: "border-gold/50 bg-gold-soft text-gold-ink hover:border-gold",
   },
@@ -174,7 +174,16 @@ export default function IngestPage() {
         }
       />
 
-      <DocumentDropZone />
+      <RoleGate
+        allow={["poweruser"]}
+        fallback={
+          <p className="mt-5 rounded-lg border border-border bg-surface-2 px-4 py-4 text-sm text-text-muted">
+            Live document upload requires the corporate poweruser role. This scoped session can review existing run evidence without creating a new intake run.
+          </p>
+        }
+      >
+        <DocumentDropZone />
+      </RoleGate>
 
       {USE_MOCK ? (
         <section

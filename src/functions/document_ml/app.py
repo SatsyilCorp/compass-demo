@@ -34,6 +34,7 @@ ALLOWED_CONTENT_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/x-ndjson",
     "application/xml",
     "text/csv",
     "text/markdown",
@@ -90,6 +91,22 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
     if not 0 < size_bytes <= MAX_UPLOAD_BYTES:
         raise ValueError(f"size_bytes must be between 1 and {MAX_UPLOAD_BYTES}")
 
+    synthetic_only = bool(body.get("synthetic_only", True))
+    data_classification = str(
+        body.get("data_classification")
+        or ("synthetic-demo" if synthetic_only else "public")
+    ).strip().lower()
+    if data_classification not in {"synthetic-demo", "public"}:
+        raise ValueError("data_classification must be synthetic-demo or public")
+    if data_classification == "public":
+        if body.get("contains_cui") is not False:
+            raise ValueError("public uploads must explicitly declare contains_cui=false")
+        if body.get("pii_minimized") is not True:
+            raise ValueError("public uploads must explicitly declare pii_minimized=true")
+        synthetic_only = False
+    elif not synthetic_only:
+        raise ValueError("synthetic-demo uploads must declare synthetic_only=true")
+
     upload_id = uuid.uuid4().hex
     run_id = f"doc-{upload_id}"
     key = f"{UPLOAD_PREFIX}{run_id}/{filename}"
@@ -107,7 +124,12 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
         "created_at": now,
         "updated_at": now,
         "source": _logical_uri(key),
-        "synthetic_only": bool(body.get("synthetic_only", True)),
+        "synthetic_only": synthetic_only,
+        "data_boundary": {
+            "classification": data_classification,
+            "contains_cui": False,
+            "pii_minimized": data_classification == "public",
+        },
     }
     _repo().put_record("run", run_id, record)
     upload_url = _repo().presign_upload(key, content_type, expires_in=900)

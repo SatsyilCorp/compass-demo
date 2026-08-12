@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 API_TITLE = "Compass | S&T Portfolio Intelligence API"
-API_VERSION = "1.4.0"
+API_VERSION = "1.5.0"
 
 # Strings reused across operations.
 _ERR = {"$ref": "#/components/responses/Error"}
@@ -514,6 +514,204 @@ def _schemas() -> dict[str, Any]:
                     "description": "Bedrock model id, in-boundary only (amazon.nova-lite-v1:0)",
                 },
             },
+        },
+        "PublicEvidenceRecord": {
+            "type": "object",
+            "required": [
+                "record_id",
+                "source_id",
+                "title",
+                "summary",
+                "source_url",
+                "evidence_class",
+                "model_run_id",
+                "uncertainty",
+                "snapshot_id",
+                "record_sha256",
+            ],
+            "properties": {
+                "record_id": {"type": "string"},
+                "source_id": {"type": "string"},
+                "title": {"type": "string"},
+                "summary": {"type": "string"},
+                "source_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": [
+                        "observed",
+                        "derived",
+                        "predicted",
+                        "public_observed",
+                        "public_derived",
+                        "public_predicted",
+                    ],
+                },
+                "model_run_id": {"type": ["string", "null"]},
+                "uncertainty": {
+                    "type": ["object", "array", "string", "number", "null"],
+                },
+                "snapshot_id": {"type": "string"},
+                "record_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "PublicIntelligenceSnapshot": {
+            "type": "object",
+            "required": [
+                "contract",
+                "snapshot_id",
+                "snapshot_version",
+                "generated_at",
+                "as_of_at",
+                "evidence_class",
+                "provenance",
+                "identity_scope",
+                "snapshot",
+                "sources",
+                "models",
+                "record_count",
+                "records",
+                "disclosure",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.snapshot-response.v1",
+                },
+                "snapshot_id": {"type": "string"},
+                "snapshot_version": {"type": "integer", "const": 1},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "as_of_at": {"type": "string", "format": "date-time"},
+                "evidence_class": {"type": "string"},
+                "provenance": {
+                    "type": "object",
+                    "required": [
+                        "manifest_sha256",
+                        "index_sha256",
+                        "manifest_object_version",
+                        "index_object_version",
+                    ],
+                    "properties": {
+                        "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "index_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "manifest_object_version": {"type": ["string", "null"]},
+                        "index_object_version": {"type": ["string", "null"]},
+                    },
+                    "additionalProperties": False,
+                },
+                "identity_scope": {"type": "object", "additionalProperties": {"type": "string"}},
+                "snapshot": {"type": "object", "additionalProperties": True},
+                "sources": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "models": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "record_count": {"type": "integer", "minimum": 0, "maximum": 5000},
+                "records": {"type": "array", "items": _ref("PublicEvidenceRecord")},
+                "disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "PublicExplainRequest": {
+            "type": "object",
+            "required": ["question"],
+            "properties": {
+                "question": {"type": "string", "minLength": 1, "maxLength": 1200},
+                "record_ids": {
+                    "type": "array",
+                    "maxItems": 12,
+                    "items": {"type": "string", "minLength": 1, "maxLength": 240},
+                },
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 6, "default": 5},
+            },
+            "additionalProperties": False,
+        },
+        "PublicEvidenceCitation": {
+            "type": "object",
+            "required": [
+                "record_id",
+                "source_id",
+                "title",
+                "source_url",
+                "evidence_class",
+                "model_run_id",
+                "uncertainty",
+                "snapshot_id",
+                "record_sha256",
+                "citation_token",
+            ],
+            "properties": {
+                "record_id": {"type": "string"},
+                "source_id": {"type": "string"},
+                "title": {"type": "string"},
+                "source_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+                "evidence_class": {"type": "string"},
+                "model_run_id": {"type": ["string", "null"]},
+                "uncertainty": {
+                    "type": ["object", "array", "string", "number", "null"],
+                },
+                "snapshot_id": {"type": "string"},
+                "record_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$",
+                },
+                "citation_token": {"type": "string", "pattern": "^\\[SRC:"},
+            },
+            "additionalProperties": False,
+        },
+        "PublicExplanation": {
+            "type": "object",
+            "required": [
+                "contract",
+                "answer",
+                "grounded",
+                "refused",
+                "refusal_code",
+                "citations",
+                "evidence_class",
+                "model_run_id",
+                "model_run_ids",
+                "explanation_run_id",
+                "uncertainty",
+                "generation",
+                "snapshot_id",
+                "identity_scope",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.explanation.v1",
+                },
+                "answer": {"type": "string"},
+                "grounded": {"type": "boolean"},
+                "refused": {"type": "boolean"},
+                "refusal_code": {
+                    "type": ["string", "null"],
+                    "enum": ["INSUFFICIENT_CITABLE_EVIDENCE", None],
+                },
+                "citations": {"type": "array", "items": _ref("PublicEvidenceCitation")},
+                "evidence_class": {"type": "string"},
+                "model_run_id": {"type": ["string", "null"]},
+                "model_run_ids": {"type": "array", "items": {"type": "string"}},
+                "explanation_run_id": {"type": "string"},
+                "uncertainty": {"type": "object", "additionalProperties": True},
+                "generation": {
+                    "type": "object",
+                    "required": ["provider", "model_id", "usage"],
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "enum": ["amazon-bedrock", "deterministic", "none"],
+                        },
+                        "model_id": {"type": ["string", "null"]},
+                        "usage": {"type": ["object", "null"], "additionalProperties": True},
+                    },
+                    "additionalProperties": False,
+                },
+                "snapshot_id": {"type": "string"},
+                "identity_scope": {"type": "object", "additionalProperties": {"type": "string"}},
+            },
+            "additionalProperties": False,
         },
         "Anomaly": {
             "type": "object",
@@ -1286,7 +1484,15 @@ def _schemas() -> dict[str, Any]:
         },
         "DocumentUploadRequest": {
             "type": "object",
-            "required": ["filename", "content_type", "size_bytes"],
+            "required": [
+                "filename",
+                "content_type",
+                "size_bytes",
+                "synthetic_only",
+                "data_classification",
+                "contains_cui",
+                "pii_minimized",
+            ],
             "properties": {
                 "filename": {"type": "string", "minLength": 1, "maxLength": 120},
                 "content_type": {"type": "string"},
@@ -1296,6 +1502,12 @@ def _schemas() -> dict[str, Any]:
                     "maximum": 15728640,
                 },
                 "synthetic_only": {"type": "boolean", "default": True},
+                "data_classification": {
+                    "type": "string",
+                    "enum": ["synthetic-demo", "public"],
+                },
+                "contains_cui": {"type": "boolean", "const": False},
+                "pii_minimized": {"type": "boolean"},
             },
             "additionalProperties": False,
         },
@@ -1325,6 +1537,19 @@ def _schemas() -> dict[str, Any]:
                 "updated_at": {"type": "string", "format": "date-time"},
                 "source": {"type": "string", "pattern": "^document-lake://"},
                 "synthetic_only": {"type": "boolean"},
+                "data_boundary": {
+                    "type": "object",
+                    "required": ["classification", "contains_cui", "pii_minimized"],
+                    "properties": {
+                        "classification": {
+                            "type": "string",
+                            "enum": ["synthetic-demo", "public"],
+                        },
+                        "contains_cui": {"type": "boolean", "const": False},
+                        "pii_minimized": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
                 "upload": {
                     "type": "object",
                     "required": [
@@ -1767,6 +1992,36 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "Bedrock in-boundary (amazon.nova-lite-v1:0).",
             )
         },
+        "/public-intelligence/snapshot": {
+            "get": _op(
+                "getPublicIntelligenceSnapshot",
+                "Verified public ONR-related evidence snapshot",
+                "9 · public intelligence",
+                _ref("PublicIntelligenceSnapshot"),
+                description=(
+                    "Reads a PII-minimized public-evidence index only after its versioned "
+                    "S3 manifest, boundary declaration, source URLs, and SHA-256 digest "
+                    "validate. It is isolated from the synthetic portfolio database."
+                ),
+                extra_responses={"503": _ERR},
+            )
+        },
+        "/public-intelligence/explain": {
+            "post": _op(
+                "explainPublicIntelligence",
+                "Cited explanation from verified public evidence",
+                "9 · public intelligence",
+                _ref("PublicExplanation"),
+                request_schema=_ref("PublicExplainRequest"),
+                description=(
+                    "Runs bounded retrieval over the verified public index and makes at "
+                    "most one 500-token Bedrock call. Every returned citation contains "
+                    "a record identifier and HTTPS source URL. No supporting record "
+                    "produces an explicit refusal without a model call."
+                ),
+                extra_responses={"400": _ERR, "503": _ERR},
+            )
+        },
         "/anomalies": {
             "get": _op(
                 "getAnomalies",
@@ -2173,13 +2428,15 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
         "info": {
             "title": API_TITLE,
             "version": API_VERSION,
-            "summary": "Portfolio intelligence over a synthetic ONR S&T grants portfolio.",
+            "summary": "Governed portfolio intelligence over synthetic and public evidence planes.",
             "description": (
                 "Every route is behind a Cognito JWT authorizer (deny-by-default). "
                 "Data access is governed in PostgreSQL, not in application code: "
                 "row-level security keys on `compass.org_unit`, set per transaction from "
                 "the caller's claim, and column-level security revokes `amount_usd` from "
-                "the runtime role. All data is synthetic. No real CUI or PII is used."
+                "the runtime role. The core portfolio uses synthetic data. Separate public "
+                "intelligence routes serve checksummed, PII-minimized public evidence only. "
+                "No CUI is accepted by either plane."
             ),
             "contact": {"name": "Compass demo"},
             "license": {
@@ -2213,6 +2470,10 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
             {
                 "name": "8 · scale lab",
                 "description": "Cost-gated synthetic workload rehearsal and evidence",
+            },
+            {
+                "name": "9 · public intelligence",
+                "description": "Verified public evidence and cited explanations",
             },
             {
                 "name": "system evidence",

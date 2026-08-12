@@ -11,7 +11,10 @@ moves from raw landing through normalization, quality control, curation,
 catalog and lineage, analytics, decision support, and governed release.
 
 All seed and replay records are synthetic. The strings `CUI-Mock` and
-`Public-Mock` are demonstration labels, not real security markings.
+`Public-Mock` are demonstration labels, not real security markings. The
+separate public-intelligence interface reads PII-minimized public records from
+a checksummed S3 evidence index. It never merges those records into the
+synthetic portfolio or accepts CUI.
 
 ## 2. Database contract
 
@@ -55,7 +58,7 @@ Core relations:
 
 ## 3. Identity and HTTP contract
 
-All 33 method-and-path operations across 31 URL paths use the Cognito JWT
+All 35 method-and-path operations across 33 URL paths use the Cognito JWT
 authorizer by default when the Scale Run feature is enabled. No application
 operation is intentionally public. The eight Scale Run operations also require
 the corporate poweruser persona.
@@ -118,6 +121,35 @@ viewer.
 | 31 | POST | `/ml/models/{version}/deploy` | Promote an approved model version to champion | 5 |
 | 32 | POST | `/ml/drift/evaluate` | Produce label-distribution and vocabulary-drift evidence | 5 |
 | 33 | GET | `/ml/ops/evidence` | Read sanitized training, registry, deployment, and drift evidence | 5 and cross-cutting |
+| 34 | GET | `/public-intelligence/snapshot` | Read a versioned, checksummed public-evidence snapshot | 5 and cross-cutting |
+| 35 | POST | `/public-intelligence/explain` | Produce a bounded cited explanation or an explicit evidence refusal | 5 and 6 |
+
+The document upload request accepts either `synthetic-demo` input or a
+PII-minimized `public` document. A public upload must explicitly declare
+`contains_cui=false` and `pii_minimized=true`; any other classification is
+rejected before a presigned upload is issued. This is an admission assertion,
+not automated content accreditation, so quality and sensitive-pattern checks
+still run after landing.
+
+### Public intelligence contract
+
+The public-intelligence Lambda is isolated from the synthetic portfolio
+database. It reads only `public-intelligence/*` in the configured KMS-encrypted
+data bucket. The current manifest points to an immutable index under
+`public-intelligence/snapshots/<snapshot-id>/` and carries the exact index
+SHA-256 digest. The read fails closed unless the manifest declares public
+classification, no CUI, PII minimization, a supported version, and one HTTPS
+source URL per record.
+
+`POST /public-intelligence/explain` accepts a question of at most 1,200
+characters, up to 12 explicit record identifiers, and a retrieval limit of no
+more than six. Retrieval uses only the verified local evidence index. The
+handler makes at most one Bedrock request with a fixed 500-token output cap.
+Every citation includes the record identifier, source URL, evidence class,
+snapshot, record digest, model run identifier when one exists, and reported
+uncertainty. No supporting record produces
+`INSUFFICIENT_CITABLE_EVIDENCE` without calling a model. A Bedrock outage
+returns a conservative deterministic answer with the same citations.
 
 ### Scale Run contract
 

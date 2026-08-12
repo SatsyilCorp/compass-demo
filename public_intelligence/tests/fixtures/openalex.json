@@ -1,0 +1,43 @@
+{
+  "meta": {"count": 1, "next_cursor": "next-openalex-token"},
+  "results": [
+    {
+      "id": "https://openalex.org/W1234567890",
+      "doi": "https://doi.org/10.5555/openalex.001",
+      "display_name": "Resilient autonomy for contested environments",
+      "publication_date": "2025-09-20",
+      "type": "article",
+      "cited_by_count": 12,
+      "awards": [
+        {
+          "funder_award_id": "N00014-25-1-0001",
+          "funder_id": "https://openalex.org/F4320337345",
+          "funder_display_name": "Office of Naval Research"
+        }
+      ],
+      "abstract_inverted_index": {
+        "Resilient": [0],
+        "autonomy": [1],
+        "supports": [2],
+        "missions": [3]
+      },
+      "authorships": [
+        {
+          "author": {"display_name": "A Public Scholar", "id": "https://openalex.org/A1"},
+          "institutions": [{"display_name": "Maritime Technology Institute"}]
+        }
+      ],
+      "topics": [{"display_name": "Autonomous Systems"}],
+      "concepts": [{"display_name": "Robotics"}],
+      "ids": {
+        "openalex": "https://openalex.org/W1234567890",
+        "doi": "https://doi.org/10.5555/openalex.001"
+      },
+      "primary_location": {
+        "landing_page_url": "https://example.org/work/1",
+        "pdf_url": null
+      },
+      "open_access": {"is_oa": true, "oa_status": "gold"}
+    }
+  ]
+}

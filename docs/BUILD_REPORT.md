@@ -1,15 +1,17 @@
 # Compass candidate verification report
 
-**Report date:** 2026-08-11
+**Report date:** 2026-08-12
 **Purpose:** evaluator orientation and recording release gate
 
 This report distinguishes deployed resources from accepted execution evidence.
-The current Satsyil stack is deployed with 33 protected
-operations, 18 Lambda functions, 13 alarms, 2 dashboards, and 3 state machines.
+The current Satsyil stack is deployed with 35 protected
+operations, 19 Lambda functions, 13 alarms, 2 dashboards, and 3 state machines.
 The HA stack, identity preparation, fixed baseline, four Scale Runs, governed
 exports, interactive browser path, document success and quarantine paths,
 model training, Champion promotion, and drift evaluation have accepted live
-receipts. No SageMaker training job or endpoint was started. The working tree is
+receipts. The authentic public SBIR candidate completed a 109-second SageMaker
+training job and entered Model Registry as `PendingManualApproval`. No endpoint
+was created. The working tree is
 not yet an exact committed revision
 with GitHub workflow evidence. The candidate is not the recording release until
 the applicable evidence and one timed human rehearsal pass exist.
@@ -157,10 +159,13 @@ records and a continuous human rehearsal between 38 and 40 minutes.
 
 ## 7. Scale posture
 
-Exhibit B provides a target baseline of approximately 500 to 1,000 users, 100
-to 200 concurrent users, 10 to 20 sources, 1 to 20 TB, three ingestion
-velocities, 5 to 10 applications, 20 to 30 dashboards, and 10 to 20 production
-models.
+Exhibit B provides target baselines of 500 to 1,000 total users, 200 to 300
+power users, 10 to 20 sources, 1 to 20 TB managed data, at least 1 TB of annual
+growth, daily incremental and full refresh patterns, modular parameterized
+infrastructure-as-code pipelines, and 50 to 75 Tier 1 and Tier 2 tickets per
+month. QASP targets include 99 percent uptime during core hours and 95 percent
+ticket service-level attainment, with cloud-log inspection, FinOps, and
+Responsible AI review. See `docs/OPPORTUNITY_REQUIREMENTS_BOUNDARY.md`.
 
 The demonstration now includes bounded measured evidence through 1,000,000
 synthetic records, 41 partitions, a ready 989,852-row Parquet export, and
@@ -168,10 +173,11 @@ full-corpus deterministic intelligence over 200,000 grants. Aurora Serverless
 scaling, stateless Lambda handlers, event-driven intake, on-demand Kinesis,
 static web delivery, and replaceable adapters also provide design evidence.
 
-This is not evidence for the Exhibit B user or concurrency ranges, sustained
-load, unlimited load, 1 to 20 TB, the stated application, dashboard, or model
-counts, Government data, or an accredited environment. Those claims require
-separate tests in the target landing zone.
+This is not evidence for the Exhibit B total-user or power-user ranges,
+sustained load, unlimited load, 1 to 20 TB, annual growth, daily refresh service
+levels, monthly ticket volume, Government data, QASP attainment, or an
+accredited environment. Those claims require separate tests and operational
+records in the target landing zone.
 
 ## 8. Recording constraints
 

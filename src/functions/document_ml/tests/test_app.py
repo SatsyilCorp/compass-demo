@@ -134,6 +134,71 @@ def test_browser_upload_contract_and_poweruser_gate(monkeypatch):
     assert denied["statusCode"] == 403
 
 
+def test_browser_jsonl_media_type_is_accepted(monkeypatch):
+    fake = FakeRepository()
+    monkeypatch.setattr(app, "_REPOSITORY", fake)
+
+    response = app.handler(
+        api_event(
+            "POST",
+            "/documents/uploads",
+            {
+                "filename": "research-records.jsonl",
+                "content_type": "application/x-ndjson",
+                "size_bytes": 120,
+            },
+        )
+    )
+
+    assert response["statusCode"] == 201
+    assert json.loads(response["body"])["content_type"] == "application/x-ndjson"
+
+
+def test_public_upload_requires_explicit_public_boundary(monkeypatch):
+    fake = FakeRepository()
+    monkeypatch.setattr(app, "_REPOSITORY", fake)
+
+    denied = app.handler(
+        api_event(
+            "POST",
+            "/documents/uploads",
+            {
+                "filename": "public-opportunity.json",
+                "content_type": "application/json",
+                "size_bytes": 120,
+                "synthetic_only": False,
+                "data_classification": "public",
+                "contains_cui": False,
+            },
+        )
+    )
+    assert denied["statusCode"] == 400
+
+    accepted = app.handler(
+        api_event(
+            "POST",
+            "/documents/uploads",
+            {
+                "filename": "public-opportunity.json",
+                "content_type": "application/json",
+                "size_bytes": 120,
+                "synthetic_only": False,
+                "data_classification": "public",
+                "contains_cui": False,
+                "pii_minimized": True,
+            },
+        )
+    )
+    payload = json.loads(accepted["body"])
+    assert accepted["statusCode"] == 201
+    assert payload["synthetic_only"] is False
+    assert payload["data_boundary"] == {
+        "classification": "public",
+        "contains_cui": False,
+        "pii_minimized": True,
+    }
+
+
 def test_drop_runs_bronze_quality_silver_gold_and_exposes_lineage(monkeypatch):
     fake = FakeRepository()
     monkeypatch.setattr(app, "_REPOSITORY", fake)
