@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the Next.js static export against a deployed Compass stack.
 #
-# Reads ApiBaseUrl, CognitoDomain, UserPoolId, WebClientId, CloudFrontDomain
+# Reads ApiBaseUrl, CognitoDomain, UserPoolId, WebClientId, CloudFrontDomain,
+# and the optional CustomDomainUrl
 # from the CFN stack outputs and exports them as the NEXT_PUBLIC_* vars read
 # by frontend/lib/api.ts and frontend/lib/auth/{providers.tsx,use-app-auth.ts}
 # (see frontend/.env.example / docs/RUNBOOK.md §7). Live mode only - this
@@ -35,7 +36,20 @@ COGNITO_DOMAIN_HOST="$(outputs CognitoDomain)"
 USER_POOL_ID="$(outputs UserPoolId)"
 WEB_CLIENT_ID="$(outputs WebClientId)"
 CLOUDFRONT_DOMAIN="$(outputs CloudFrontDomain)"
-PUBLIC_WEB_DOMAIN="${WEB_CUSTOM_DOMAIN_NAME:-$CLOUDFRONT_DOMAIN}"
+CUSTOM_DOMAIN_URL="$(outputs CustomDomainUrl)"
+if [ -n "${WEB_CUSTOM_DOMAIN_NAME:-}" ]; then
+  PUBLIC_WEB_ORIGIN="https://${WEB_CUSTOM_DOMAIN_NAME}"
+elif [ -n "$CUSTOM_DOMAIN_URL" ] && [ "$CUSTOM_DOMAIN_URL" != "None" ]; then
+  case "$CUSTOM_DOMAIN_URL" in
+    https://*) PUBLIC_WEB_ORIGIN="${CUSTOM_DOMAIN_URL%/}" ;;
+    *)
+      echo "ERROR: stack output CustomDomainUrl must use HTTPS" >&2
+      exit 1
+      ;;
+  esac
+else
+  PUBLIC_WEB_ORIGIN="https://${CLOUDFRONT_DOMAIN}"
+fi
 
 for name_val in "ApiBaseUrl:$API_BASE_URL" "CognitoDomain:$COGNITO_DOMAIN_HOST" \
     "UserPoolId:$USER_POOL_ID" "WebClientId:$WEB_CLIENT_ID" "CloudFrontDomain:$CLOUDFRONT_DOMAIN"; do
@@ -53,8 +67,8 @@ export NEXT_PUBLIC_API_BASE_URL="$API_BASE_URL"
 export NEXT_PUBLIC_COGNITO_AUTHORITY="https://cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}"
 export NEXT_PUBLIC_COGNITO_DOMAIN="https://${COGNITO_DOMAIN_HOST}"
 export NEXT_PUBLIC_COGNITO_CLIENT_ID="$WEB_CLIENT_ID"
-export NEXT_PUBLIC_COGNITO_REDIRECT_URI="https://${PUBLIC_WEB_DOMAIN}/login/"
-export NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI="https://${PUBLIC_WEB_DOMAIN}/login/"
+export NEXT_PUBLIC_COGNITO_REDIRECT_URI="${PUBLIC_WEB_ORIGIN}/login/"
+export NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI="${PUBLIC_WEB_ORIGIN}/login/"
 
 echo "==> Frontend env:"
 echo "  NEXT_PUBLIC_USE_MOCK=$NEXT_PUBLIC_USE_MOCK"
