@@ -11,10 +11,11 @@ exports, interactive browser path, document success and quarantine paths,
 model training, Champion promotion, and drift evaluation have accepted live
 receipts. The authentic public SBIR candidate completed a 109-second SageMaker
 training job and entered Model Registry as `PendingManualApproval`. No endpoint
-was created. The working tree is
-not yet an exact committed revision
-with GitHub workflow evidence. The candidate is not the recording release until
-the applicable evidence and one timed human rehearsal pass exist.
+was created. The candidate has a committed branch and draft pull request with
+green quality and security workflow evidence. The exact revision has not yet
+been released through the protected GitHub deployment environment. The
+candidate is not the recording release until that gate and one timed human
+rehearsal pass exist.
 
 ## 1. Current implementation by source inspection
 
@@ -35,7 +36,7 @@ the applicable evidence and one timed human rehearsal pass exist.
 | Replay | One persistent deterministic scenario shared by ingest, catalog, lineage, analytics, dashboard, approvals, export, stream, and evidence |
 | Lineage | Query-based `/catalog/lineage/?batch=<id>` route supports batches created after static frontend build |
 | Activity ticker | Ordered database projection is authoritative; recent Kinesis receipts merge by stable ID; missing transport organization scope is corporate-only |
-| Application compute | 18 deployed Lambda functions behind the narrow API, workflow, queue, and data adapters |
+| Application compute | 19 deployed Lambda functions behind the narrow API, workflow, queue, public-intelligence, and data adapters |
 | Document intelligence and MLOps | Deployed eight-operation document and model contract with a bounded Step Functions workflow, Lambda classifier, optional SageMaker submission seam, accepted success and quarantine runs, 1.0 accuracy and macro F1 training evidence, exact-version Champion promotion, and shifted-data drift evidence |
 
 ## 2. Required automated gate
@@ -113,7 +114,7 @@ The following checks passed against the current Satsyil HA deployment on
 
 | Observed check | Result |
 |---|---|
-| Stack | Deployment completed with 18 functions, 13 alarms, 2 dashboards, and 3 workflows |
+| Stack | Deployment completed with 19 functions, 13 alarms, 2 dashboards, and 3 workflows |
 | Database | Private encrypted Aurora writer and reader available, 14-day backups configured, deletion protection enabled, all four migrations applied, and runtime-role bootstrap granted |
 | Identity | Poweruser, reviewer, and viewer accounts enabled for password-only team access; a separate presenter identity is enrolled with TOTP |
 | Preparation | Redacted receipt reported ready with all 19 of 19 checks passing |
@@ -123,7 +124,7 @@ The following checks passed against the current Satsyil HA deployment on
 | MLOps | Model `doc-nb-f828a29acd1e` reached 1.0 accuracy, 1.0 macro F1, and 6 of 6 classes; Champion promotion and shifted drift with PSI 11.51, 91 percent OOV, and `retrain-and-review` passed |
 | Public protection | CSP, Permissions Policy, HSTS, and WAF were present on the live boundary |
 | Scale data plane | 1K, 10K, 100K, and 1M runs completed, reconciled, and produced ready governed Parquet exports |
-| Local automation | 229 backend tests, 42 frontend scenarios, lint, typecheck, a 31-page production build, SAM validation, git whitespace checks, and the repository no-em-dash policy passed |
+| Local automation | 265 aggregate offline contract and function tests, 45 public-collector tests, 19 public-model and submission tests, 55 frontend scenarios, lint, typecheck, a 32-route production build, SAM validation, git whitespace checks, and the repository no-em-dash policy passed |
 
 The direct acceptance path invoked the deployed Scale Control Lambda through
 AWS IAM with a staged `/prod` event. It exercised the production route handler
