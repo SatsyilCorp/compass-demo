@@ -249,6 +249,20 @@ def test_custom_domain_is_managed_by_cloudformation_and_deploy_entrypoint() -> N
     assert "must be supplied together" in deploy_text
 
 
+def test_public_sbir_preflight_uses_the_full_model_package_arn() -> None:
+    deploy_text = (
+        REPOSITORY_ROOT / "scripts" / "deploy_satsyil.sh"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        'public_sbir_package_arn="arn:aws:sagemaker:$AWS_REGION:'
+        '$SATSYIL_ACCOUNT_ID:model-package/${STACK_NAME}-public-sbir-transition/2"'
+        in deploy_text
+    )
+    assert '--model-package-name "$public_sbir_package_arn"' in deploy_text
+    assert '--model-package-name "${STACK_NAME}-public-sbir-transition/2"' not in deploy_text
+
+
 def test_lambda_cors_includes_the_configured_custom_domain() -> None:
     template_paths = (
         REPOSITORY_ROOT / "template.yaml",

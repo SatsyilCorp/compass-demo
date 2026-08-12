@@ -179,8 +179,6 @@ if [ -n "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
   fi
   unset expected_public_group_prefix public_group_name resolved_public_group_arn
 fi
-unset SATSYIL_ACCOUNT_ID
-
 if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" = "true" ]; then
   if [ "$stack_exists" != "true" ]; then
     echo "ERROR: public SBIR execution can be enabled only after its pinned evidence is provisioned" >&2
@@ -190,8 +188,9 @@ if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" = "true" ]; then
     --stack-name "$STACK_NAME" \
     --query 'Stacks[0].Outputs[?OutputKey==`RawBucketName`].OutputValue | [0]' \
     --output text)"
+  public_sbir_package_arn="arn:aws:sagemaker:$AWS_REGION:$SATSYIL_ACCOUNT_ID:model-package/${STACK_NAME}-public-sbir-transition/2"
   public_sbir_package="$(aws_satsyil sagemaker describe-model-package \
-    --model-package-name "${STACK_NAME}-public-sbir-transition/2" \
+    --model-package-name "$public_sbir_package_arn" \
     --query '[ModelPackageStatus,ModelApprovalStatus] | join(`:`, @)' \
     --output text)"
   if [ "$public_sbir_package" != "Completed:PendingManualApproval" ]; then
@@ -220,8 +219,9 @@ if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" = "true" ]; then
     --bucket "$public_sbir_bucket" \
     --key mlops/public-sbir-transition/validation/candidates-20260812.json \
     >/dev/null
-  unset public_sbir_bucket public_sbir_package public_sbir_training public_sbir_version
+  unset public_sbir_bucket public_sbir_package_arn public_sbir_package public_sbir_training public_sbir_version
 fi
+unset SATSYIL_ACCOUNT_ID
 
 if [ "$stack_exists" = false ]; then
   vpc_count="$(aws_satsyil ec2 describe-vpcs --query 'length(Vpcs)' --output text)"
