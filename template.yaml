@@ -228,9 +228,15 @@ Globals:
         BEDROCK_EMBED_MODEL: amazon.titan-embed-text-v2:0
         DEPLOY_REV: !Ref DeployRevision
         CORS_ALLOW_ORIGINS: !If
-          - HasWebOrigin
-          - !Sub "http://localhost:3000,http://127.0.0.1:3000,${WebOrigin}"
-          - "http://localhost:3000,http://127.0.0.1:3000"
+          - HasWebCustomDomain
+          - !If
+            - HasWebOrigin
+            - !Sub "http://localhost:3000,http://127.0.0.1:3000,${WebOrigin},https://${WebCustomDomainName}"
+            - !Sub "http://localhost:3000,http://127.0.0.1:3000,https://${WebCustomDomainName}"
+          - !If
+            - HasWebOrigin
+            - !Sub "http://localhost:3000,http://127.0.0.1:3000,${WebOrigin}"
+            - "http://localhost:3000,http://127.0.0.1:3000"
 
 Resources:
 

@@ -149,3 +149,27 @@ def test_custom_domain_is_managed_by_cloudformation_and_deploy_entrypoint() -> N
     assert '"WebCertificateArn=$WEB_CERTIFICATE_ARN"' in deploy_text
     assert '"WebHostedZoneId=$WEB_HOSTED_ZONE_ID"' in deploy_text
     assert "must be supplied together" in deploy_text
+
+
+def test_lambda_cors_includes_the_configured_custom_domain() -> None:
+    template_paths = (
+        REPOSITORY_ROOT / "template.yaml",
+        REPOSITORY_ROOT / "src" / "functions" / "rmf_artifact" / "template.yaml",
+    )
+    for template_path in template_paths:
+        template_text = template_path.read_text(encoding="utf-8")
+        lambda_cors_block = template_text.split(
+            "        CORS_ALLOW_ORIGINS:", 1
+        )[1].split("\n\nResources:", 1)[0]
+
+        assert "HasWebOrigin" in lambda_cors_block, template_path
+        assert "HasWebCustomDomain" in lambda_cors_block, template_path
+        assert "${WebOrigin}" in lambda_cors_block, template_path
+        assert "https://${WebCustomDomainName}" in lambda_cors_block, template_path
+        for expected_allowlist in (
+            "http://localhost:3000,http://127.0.0.1:3000",
+            "http://localhost:3000,http://127.0.0.1:3000,${WebOrigin}",
+            "http://localhost:3000,http://127.0.0.1:3000,https://${WebCustomDomainName}",
+            "http://localhost:3000,http://127.0.0.1:3000,${WebOrigin},https://${WebCustomDomainName}",
+        ):
+            assert expected_allowlist in lambda_cors_block, template_path
