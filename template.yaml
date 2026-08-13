@@ -3703,7 +3703,8 @@ Resources:
               img-src 'self' data:; font-src 'self' data:;
               connect-src 'self' https://*.amazoncognito.com
               https://cognito-idp.us-east-1.amazonaws.com
-              https://*.execute-api.us-east-1.amazonaws.com;
+              https://*.execute-api.us-east-1.amazonaws.com
+              https://*.s3.amazonaws.com;
               manifest-src 'self'; worker-src 'self' blob:; upgrade-insecure-requests
             Override: true
           ContentTypeOptions:

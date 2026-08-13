@@ -3,6 +3,7 @@ import { ArrowUpRight, GitBranch } from "lucide-react";
 import type { CatalogEntry } from "@/lib/types";
 import { ScoreChip, scoreTone } from "./score-chip";
 import { formatDateTime, formatInt, freshnessTone, humanizeRule, timeAgo } from "./format";
+import { catalogLineageHref } from "./lineage-route";
 
 const FRESHNESS_CLASSES: Record<string, string> = {
   success: "text-success",
@@ -122,7 +123,7 @@ export function QualityPanel({ entry }: { entry: CatalogEntry }) {
         </p>
 
         <Link
-          href={`/catalog/${encodeURIComponent(entry.id)}/`}
+          href={catalogLineageHref(entry.id)}
           className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-gov-primary/30 bg-accent-soft px-3 py-1.5 text-xs font-semibold text-gov-primary transition-colors hover:bg-gov-primary hover:text-white"
         >
           <GitBranch className="size-3.5" aria-hidden />

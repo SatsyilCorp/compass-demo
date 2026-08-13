@@ -128,13 +128,21 @@ def test_acquisition_persists_hashes_deltas_and_stream_event(monkeypatch):
 
 def test_second_identical_snapshot_reports_unchanged(monkeypatch):
     table, _s3, stream = configure(monkeypatch, source_response())
+    signals = []
+    monkeypatch.setattr(
+        app.operational_evidence,
+        "record_signal",
+        lambda **kwargs: signals.append(kwargs) or "sig-safe",
+    )
     first = app.run_acquisition()
+    signals.clear()
     second = app.run_acquisition()
     assert first["added_records"] == 1
     assert second["added_records"] == 0
     assert second["changed_records"] == 0
     assert second["unchanged_records"] == 1
     assert len(stream.records) == 1
+    assert signals == []
 
 
 def test_bounded_page_absence_is_not_reported_as_source_deletion(monkeypatch):

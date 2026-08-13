@@ -11,8 +11,8 @@ import type { CatalogResponse } from "@/lib/types";
 /**
  * Element 4 - Data catalog. GET /catalog: every curated dataset (grain =
  * ingest batch), its quality/health score, and metadata. Each row expands
- * into the score formula + rule breakdown; "View" opens the lineage graph
- * at /catalog/[id]/.
+ * into the score formula + rule breakdown; "View" opens the static lineage
+ * page with the live batch identifier in its query string.
  */
 export default function CatalogPage() {
   const [data, setData] = useState<CatalogResponse | null>(null);

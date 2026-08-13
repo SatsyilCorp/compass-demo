@@ -73,6 +73,7 @@ import {
   type PublicModelExecutionList,
   type PublicModelExecutionReceipt,
 } from "@/lib/mlops/model-execution";
+import { BearerTokenGate } from "@/lib/auth/bearer-token-gate";
 
 export const USE_MOCK =
   typeof process !== "undefined" && process.env.NEXT_PUBLIC_USE_MOCK !== "false";
@@ -85,11 +86,14 @@ const API_BASE_URL =
 // ---------------------------------------------------------------------------
 type AuthContext = { bearerToken: string | null; role: Role | null; orgUnit: string | null };
 const authRef: AuthContext = { bearerToken: null, role: null, orgUnit: null };
+const bearerTokenGate = new BearerTokenGate();
+const AUTH_HYDRATION_WAIT_MS = 1_000;
 
 export function setAuthContext(ctx: AuthContext): void {
   authRef.bearerToken = ctx.bearerToken;
   authRef.role = ctx.role;
   authRef.orgUnit = ctx.orgUnit;
+  bearerTokenGate.publish(ctx.bearerToken);
 }
 
 // ---------------------------------------------------------------------------
@@ -107,13 +111,23 @@ export class ApiError extends Error {
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
+  const bearerToken = authRef.bearerToken ?? await bearerTokenGate.wait(AUTH_HYDRATION_WAIT_MS);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((init?.headers as Record<string, string>) ?? {}),
   };
-  if (authRef.bearerToken) headers["Authorization"] = `Bearer ${authRef.bearerToken}`;
+  if (bearerToken) headers["Authorization"] = `Bearer ${bearerToken}`;
 
-  const res = await fetch(url, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch {
+    throw new ApiError(
+      0,
+      null,
+      "The live Compass service could not be reached. Refresh and retry.",
+    );
+  }
   if (!res.ok) {
     let body: unknown = null;
     try {
@@ -431,7 +445,7 @@ export function postDocumentUploadApi(request: DocumentUploadRequest): Promise<D
   });
 }
 
-export function putDocumentBytesApi(
+export async function putDocumentBytesApi(
   upload: DocumentUploadResponse["upload"],
   bytes: ArrayBuffer,
 ): Promise<void> {
@@ -441,12 +455,26 @@ export function putDocumentBytesApi(
     "file",
     new Blob([bytes], { type: upload.fields["Content-Type"] ?? "application/octet-stream" }),
   );
-  return fetch(upload.url, {
-    method: upload.method,
-    body: form,
-  }).then((response) => {
-    if (!response.ok) throw new ApiError(response.status, null, "document_upload_failed");
-  });
+  let response: Response;
+  try {
+    response = await fetch(upload.url, {
+      method: upload.method,
+      body: form,
+    });
+  } catch {
+    throw new ApiError(
+      0,
+      null,
+      "The browser could not reach the governed S3 intake boundary. Refresh and retry. No source bytes were accepted.",
+    );
+  }
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      null,
+      `The governed S3 intake boundary rejected the upload (${response.status}).`,
+    );
+  }
 }
 
 export function getDocumentRunsApi(): Promise<{ runs: DocumentRunRecord[] }> {

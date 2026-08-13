@@ -31,7 +31,7 @@ import type {
   OperationsSignalDelivery,
   OperationsSignalsResponse,
 } from "@/lib/types";
-import { applySignalAcknowledgement } from "./model";
+import { applySignalAcknowledgement, buildSignalInbox } from "./model";
 
 const POLL_MS = 10_000;
 
@@ -132,21 +132,23 @@ export function NotificationCenter() {
     }
   };
 
-  const unread = data?.unread_count ?? 0;
+  const inbox = data ? buildSignalInbox(data) : null;
+  const unread = inbox?.actionableUnread ?? 0;
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={unread > 0 ? `Open notifications, ${unread} unread` : "Open notifications"}
+        aria-label={unread > 0 ? `Open operations signals, ${unread} need attention` : "Open operations signals"}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="relative grid size-11 shrink-0 place-items-center rounded-md border border-border bg-surface text-text-muted transition-colors hover:bg-surface-2 hover:text-text-strong"
+        className="relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 text-text-muted transition-colors hover:bg-surface-2 hover:text-text-strong"
       >
         {unread > 0 ? <BellRing className="size-4.5" aria-hidden /> : <Bell className="size-4.5" aria-hidden />}
+        <span className="hidden text-xs font-bold sm:inline">Signals</span>
         {unread > 0 ? (
-          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-danger px-1 font-mono text-[9px] font-bold text-white">
+          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-danger px-1 font-mono text-[9px] font-bold text-white sm:static sm:border-0">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
@@ -190,7 +192,7 @@ export function NotificationCenter() {
                 </button>
               </div>
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
-                <p className="font-mono text-[10px] text-white/65">{unread} unread | {data?.signals.length ?? 0} retained</p>
+                <p className="font-mono text-[10px] text-white/65">{unread} need attention | {inbox?.activityTotal ?? 0} activity</p>
                 <button
                   type="button"
                   onClick={() => void load(false)}
@@ -213,17 +215,57 @@ export function NotificationCenter() {
                 <div className="grid min-h-48 place-items-center text-center text-text-muted">
                   <div><Loader2 className="mx-auto size-6 animate-spin text-gov-primary" aria-hidden /><p className="mt-3 text-xs">Loading retained signals</p></div>
                 </div>
-              ) : data && data.signals.length > 0 ? (
-                <div className="space-y-3">
-                  {data.signals.map((signal) => (
-                    <SignalCard
-                      key={signal.event_id}
-                      signal={signal}
-                      pending={acknowledging.has(signal.event_id)}
-                      onAcknowledge={acknowledge}
-                      onNavigate={() => setOpen(false)}
-                    />
-                  ))}
+              ) : data && inbox && data.signals.length > 0 ? (
+                <div className="space-y-6">
+                  <section aria-labelledby="signals-attention-heading">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h3 id="signals-attention-heading" className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Needs attention</h3>
+                      <span className="rounded-full border border-danger/20 bg-danger-soft px-2 py-1 font-mono text-[8px] font-bold text-danger">{unread} open</span>
+                    </div>
+                    {inbox.attention.length > 0 ? (
+                      <div className="space-y-3">
+                        {inbox.attention.map((signal) => (
+                          <SignalCard
+                            key={signal.event_id}
+                            signal={signal}
+                            pending={acknowledging.has(signal.event_id)}
+                            onAcknowledge={acknowledge}
+                            onNavigate={() => setOpen(false)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-success/25 bg-success-soft p-4 text-xs text-success">
+                        <div className="flex items-center gap-2 font-bold"><CheckCircle2 className="size-4" aria-hidden /> No open signals need action</div>
+                        <p className="mt-1 pl-6 text-[10px] leading-4">Routine workflow receipts remain available below.</p>
+                      </div>
+                    )}
+                  </section>
+
+                  {inbox.activity.length > 0 ? (
+                    <section aria-labelledby="signals-activity-heading">
+                      <div className="mb-3 flex items-center justify-between gap-3 border-t border-border pt-5">
+                        <div>
+                          <h3 id="signals-activity-heading" className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">Recent activity</h3>
+                          <p className="mt-1 text-[9px] text-text-subtle">Repeated routine events are grouped. The newest evidence link remains available.</p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-border bg-white px-2 py-1 font-mono text-[8px] font-bold text-text-muted">{inbox.activityTotal} events</span>
+                      </div>
+                      <div className="space-y-3">
+                        {inbox.activity.map((group) => (
+                          <SignalCard
+                            key={group.signal.event_id}
+                            signal={group.signal}
+                            pending={false}
+                            onAcknowledge={acknowledge}
+                            onNavigate={() => setOpen(false)}
+                            occurrenceCount={group.occurrenceCount}
+                            activityOnly
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-border bg-white p-8 text-center">
@@ -254,11 +296,15 @@ function SignalCard({
   pending,
   onAcknowledge,
   onNavigate,
+  occurrenceCount = 1,
+  activityOnly = false,
 }: {
   signal: OperationsSignal;
   pending: boolean;
   onAcknowledge: (eventId: string) => Promise<void>;
   onNavigate: () => void;
+  occurrenceCount?: number;
+  activityOnly?: boolean;
 }) {
   const meta = SEVERITY[signal.severity];
   const Icon = meta.icon;
@@ -273,7 +319,8 @@ function SignalCard({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[9px] font-bold uppercase tracking-wide text-text-subtle">{meta.label}</span>
-              <span className={`rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase ${open ? "border-gov-primary/20 bg-white text-gov-primary" : "border-success/25 bg-success-soft text-success"}`}>{signal.status}</span>
+              <span className={`rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase ${open ? "border-gov-primary/20 bg-white text-gov-primary" : "border-success/25 bg-success-soft text-success"}`}>{activityOnly && open ? "activity" : signal.status}</span>
+              {occurrenceCount > 1 ? <span className="rounded-full border border-info/20 bg-info-soft px-2 py-0.5 text-[8px] font-bold uppercase text-info">{occurrenceCount} similar</span> : null}
             </div>
             <h3 className="mt-1 text-xs font-bold leading-5 text-text-strong">{signal.title}</h3>
             <p className="mt-1 text-[10.5px] leading-5 text-text-muted">{signal.message}</p>
@@ -294,7 +341,7 @@ function SignalCard({
             Open evidence <ExternalLink className="size-3" aria-hidden />
           </Link>
         ) : <span className="flex-1" />}
-        {open ? (
+        {open && !activityOnly ? (
           <button
             type="button"
             onClick={() => void onAcknowledge(signal.event_id)}
@@ -304,9 +351,9 @@ function SignalCard({
             {pending ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Check className="size-3" aria-hidden />}
             Acknowledge
           </button>
-        ) : (
+        ) : signal.status === "acknowledged" ? (
           <span className="ml-auto text-[9px] text-text-subtle">Acknowledged {signal.acknowledged_at ? formatTimestamp(signal.acknowledged_at) : ""}</span>
-        )}
+        ) : <span className="ml-auto text-[9px] text-text-subtle">Activity only</span>}
       </div>
     </article>
   );

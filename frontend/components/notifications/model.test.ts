@@ -6,9 +6,17 @@ import type {
   OperationsSignalAcknowledgeResponse,
   OperationsSignalsResponse,
 } from "../../lib/types";
-import { applySignalAcknowledgement, unreadSignalCount } from "./model";
+import {
+  applySignalAcknowledgement,
+  buildSignalInbox,
+  unreadSignalCount,
+} from "./model";
 
-function signal(eventId: string, status: OperationsSignal["status"]): OperationsSignal {
+function signal(
+  eventId: string,
+  status: OperationsSignal["status"],
+  overrides: Partial<OperationsSignal> = {},
+): OperationsSignal {
   return {
     event_id: eventId,
     signal_type: "test",
@@ -25,6 +33,7 @@ function signal(eventId: string, status: OperationsSignal["status"]): Operations
     deliveries: [],
     acknowledged_at: null,
     acknowledged_by: null,
+    ...overrides,
   };
 }
 
@@ -39,8 +48,57 @@ function response(): OperationsSignalsResponse {
   };
 }
 
-test("unread badge is derived from retained open signals", () => {
-  assert.equal(unreadSignalCount(response()), 2);
+test("unread badge counts only open signals that need operator attention", () => {
+  const value = response();
+  value.signals = [
+    signal("routine", "open"),
+    signal("warning", "open", { severity: "warning" }),
+    signal("delivery", "open", {
+      deliveries: [{
+        channel: "sns",
+        state: "failed",
+        attempted_at: "2026-08-12T21:00:00.000Z",
+        delivered_at: null,
+        detail: "Publish failed.",
+      }],
+    }),
+    signal("resolved", "resolved", { severity: "critical" }),
+  ];
+  assert.equal(unreadSignalCount(value), 2);
+});
+
+test("routine activity is grouped without hiding its latest evidence", () => {
+  const value = response();
+  value.signals = [
+    signal("routine-new", "open", {
+      signal_type: "public_acquisition",
+      title: "USAspending acquisition completed",
+      message: "Accepted 100 bounded public records with 0 added and 0 changed records.",
+      occurred_at: "2026-08-12T21:05:00.000Z",
+      href: "/admin/lineage/?run=new",
+    }),
+    signal("routine-old", "open", {
+      signal_type: "public_acquisition",
+      title: "USAspending acquisition completed",
+      message: "Accepted 100 bounded public records with 0 added and 0 changed records.",
+      occurred_at: "2026-08-12T21:00:00.000Z",
+      href: "/admin/lineage/?run=old",
+    }),
+    signal("drift", "open", {
+      signal_type: "model_drift",
+      severity: "warning",
+      title: "Model drift threshold crossed",
+      occurred_at: "2026-08-12T21:03:00.000Z",
+    }),
+  ];
+
+  const inbox = buildSignalInbox(value);
+  assert.equal(inbox.actionableUnread, 1);
+  assert.deepEqual(inbox.attention.map((item) => item.event_id), ["drift"]);
+  assert.equal(inbox.activity.length, 1);
+  assert.equal(inbox.activity[0].occurrenceCount, 2);
+  assert.equal(inbox.activity[0].signal.event_id, "routine-new");
+  assert.equal(inbox.activity[0].signal.href, "/admin/lineage/?run=new");
 });
 
 test("acknowledgement updates only the matching signal and recalculates unread count", () => {
@@ -53,7 +111,7 @@ test("acknowledgement updates only the matching signal and recalculates unread c
     acknowledged_by: "reviewer@compass.demo",
   };
   const next = applySignalAcknowledgement(response(), receipt);
-  assert.equal(next.unread_count, 1);
+  assert.equal(next.unread_count, 0);
   assert.equal(next.signals[0].status, "acknowledged");
   assert.equal(next.signals[0].acknowledged_by, "reviewer@compass.demo");
   assert.equal(next.signals[1].status, "open");

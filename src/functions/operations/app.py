@@ -84,6 +84,22 @@ def _valid_identifier(value: str, *, prefix: str = "") -> bool:
     ) and ".." not in value
 
 
+def _needs_attention(item: Mapping[str, Any]) -> bool:
+    if str(item.get("status") or "").lower() != "open":
+        return False
+    if str(item.get("severity") or "").lower() in {
+        "critical",
+        "high",
+        "medium",
+        "warning",
+    }:
+        return True
+    delivery = item.get("delivery")
+    return isinstance(delivery, Mapping) and str(
+        delivery.get("status") or ""
+    ).lower() == "failed"
+
+
 def list_signals(limit: int = 50) -> Dict[str, Any]:
     signals = _query_index("SIGNAL", limit=limit)
     return {
@@ -91,9 +107,7 @@ def list_signals(limit: int = 50) -> Dict[str, Any]:
         "mode": "live",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "signals": signals,
-        "unacknowledged": sum(
-            1 for item in signals if item.get("status") != "acknowledged"
-        ),
+        "unacknowledged": sum(1 for item in signals if _needs_attention(item)),
         "delivery_disclosure": (
             "In-app evidence is authoritative. SNS means the event was published to "
             "the protected topic; email requires a separately confirmed subscription."

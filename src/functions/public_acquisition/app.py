@@ -468,23 +468,24 @@ def run_acquisition(*, actor: str = "compass-public-acquisition") -> Dict[str, A
                 "evidence_class": "public-observed",
             },
         )
-        operational_evidence.record_signal(
-            category="public-acquisition",
-            severity="info",
-            title="USAspending acquisition completed",
-            message=(
-                f"Accepted {len(records)} bounded public records with {len(added)} added "
-                f"and {len(changed)} changed records."
-            ),
-            run_id=run_id,
-            evidence_uri=canonical_uri,
-            detail={
-                "record_count": len(records),
-                "added_records": len(added),
-                "changed_records": len(changed),
-                "unchanged_records": len(unchanged),
-            },
-        )
+        if added or changed:
+            operational_evidence.record_signal(
+                category="public-acquisition",
+                severity="info",
+                title="USAspending acquisition completed",
+                message=(
+                    f"Accepted {len(records)} bounded public records with {len(added)} added "
+                    f"and {len(changed)} changed records."
+                ),
+                run_id=run_id,
+                evidence_uri=canonical_uri,
+                detail={
+                    "record_count": len(records),
+                    "added_records": len(added),
+                    "changed_records": len(changed),
+                    "unchanged_records": len(unchanged),
+                },
+            )
         threshold = int(os.environ.get("PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD", "10"))
         if len(added) + len(changed) >= max(1, threshold):
             operational_evidence.record_signal(

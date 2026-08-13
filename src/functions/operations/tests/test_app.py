@@ -131,6 +131,25 @@ def test_signal_acknowledgement_is_protected(monkeypatch):
     assert denied["statusCode"] == 403
 
 
+def test_signal_count_excludes_routine_and_resolved_activity(monkeypatch):
+    signals = [
+        {"event_id": "routine", "severity": "info", "status": "open"},
+        {"event_id": "warning", "severity": "high", "status": "open"},
+        {"event_id": "resolved", "severity": "critical", "status": "resolved"},
+        {
+            "event_id": "delivery",
+            "severity": "info",
+            "status": "open",
+            "delivery": {"channel": "sns", "status": "failed"},
+        },
+    ]
+    monkeypatch.setattr(app, "_query_index", lambda _kind, limit: signals[:limit])
+
+    result = app.list_signals(50)
+
+    assert result["unacknowledged"] == 2
+
+
 def test_summary_preserves_last_accepted_snapshot_after_failed_attempt(monkeypatch):
     table = Table()
     table.acquisitions = [
