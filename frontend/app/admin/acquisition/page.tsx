@@ -8,9 +8,9 @@ export default function AcquisitionOperationsPage() {
   return (
     <AppShell requireRole={["poweruser"]}>
       <PageHeader
-        kicker="Element 3 of 7 | Real multi-source DataOps"
-        title="Live source operations"
-        lead="Watch independent public-source connectors acquire, retain, govern, classify, link, and publish decision evidence. The display updates every second while each official source follows its responsible request cadence."
+        kicker="Element 3 of 7 | Multi-source DataOps"
+        title="Multi-source ingestion operations"
+        lead="Choose live public APIs or a clearly labeled synthetic replay. See every source record advance through acquisition, retention, governance, change detection, ML classification, evidence linking, and decision support once per second."
         icon={<RadioTower className="size-5" aria-hidden />}
       />
       <AcquisitionOperationsDashboard />
