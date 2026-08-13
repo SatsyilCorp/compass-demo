@@ -62,16 +62,16 @@ test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
 
-test("accelerated synthetic stream exposes bounded one-second receipts", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop-chromium", "accelerated stream workflow runs once on desktop");
+test("continuous synthetic ingestion advances until the operator stops it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium", "continuous stream workflow runs once on desktop");
 
   await page.goto("/dashboard/");
-  await expect(page.getByText("Accelerated synthetic stream", { exact: true })).toBeVisible();
+  await expect(page.getByText("Continuous synthetic ingestion", { exact: true })).toBeVisible();
   await page.getByLabel("Synthetic stream cadence").selectOption("1");
-  await page.getByRole("button", { name: "Start 15s stream" }).click();
+  await page.getByRole("button", { name: "Start continuous stream" }).click();
 
   await expect(page.getByText("Live now", { exact: true })).toBeVisible();
-  await expect(page.getByText(/1\/15 receipts \| 1s cadence/)).toBeVisible({ timeout: 4_000 });
+  await expect(page.getByText(/1 receipts \| 1s cadence/)).toBeVisible({ timeout: 4_000 });
   await expect(page.getByText(/Latest receipt 1:/)).toBeVisible();
 
   await page.getByRole("button", { name: "Stop stream" }).click();

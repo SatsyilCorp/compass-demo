@@ -186,7 +186,7 @@ export const BRIEFING_VIEWS: BriefingView[] = [
     eyebrow: "Source to decision",
     title: "Every accepted record keeps its origin and every rejected record keeps its reason",
     summary: "File uploads and public-source snapshots enter through distinct gates, then converge only after validation into versioned Bronze, Silver, and Gold evidence.",
-    truth: "The current design retains object, quality, workflow, model, and release evidence. Scheduled external acquisition is shown as configured until a recurring pull is observed live.",
+    truth: "The current design retains object, quality, workflow, model, and release evidence. The fast continuous source is synthetic and operator controlled. Scheduled external acquisition stays configured until a recurring official pull is observed live.",
     lanes: [
       {
         id: "lineage-file",
@@ -205,6 +205,23 @@ export const BRIEFING_VIEWS: BriefingView[] = [
           connector("S3 object-created event", "object version and ingest receipt"),
           connector("Workflow task token", "rule-level quality receipt"),
           connector("SQL and governed API", "lineage and release receipts"),
+        ],
+      },
+      {
+        id: "lineage-continuous",
+        label: "Continuous demonstration source",
+        boundary: "Operator-controlled synthetic source",
+        tone: "evidence",
+        nodes: [
+          node("continuous-operator", "Start continuous stream", "One-second or two-second cadence", "A corporate poweruser starts one durable session that remains active until Stop.", "Running now"),
+          node("continuous-session", "Durable session receipt", "DynamoDB control state", "The receipt records the session, cumulative sequence, latest run, and current workflow chunk.", "Running now"),
+          node("continuous-rotation", "Workflow rotation", "Step Functions Standard", "A new execution takes over every 250 pulses without ending the visible session.", "Running now"),
+          node("continuous-drop", "Synthetic S3 pulse", "Immutable envelope and SHA-256", "Every pulse enters the same EventBridge, quality, lineage, catalog, and decision path as an authorized structured drop.", "Running now"),
+        ],
+        connectors: [
+          connector("Protected API command", "actor and session receipt"),
+          connector("Conditional state transition", "sequence and workflow chunk"),
+          connector("S3 object-created event", "run and source digest"),
         ],
       },
       {
@@ -247,6 +264,7 @@ export const BRIEFING_VIEWS: BriefingView[] = [
       "Quarantine is a terminal governed state, not a hidden deletion path.",
       "Physical S3 keys and sensitive fields stay out of browser projections.",
       "Replay starts from the immutable source and creates a new correlated execution receipt.",
+      "The one-second or two-second demonstration feed is synthetic and does not claim that USAspending publishes at that cadence.",
     ],
   },
   {

@@ -127,16 +127,19 @@ export type StreamRecentResponse = { records: StreamRecord[] };
 // Accelerated synthetic demo stream
 // ---------------------------------------------------------------------------
 export type LiveDemoStreamStatus = "idle" | "running" | "completed" | "stopped" | "failed";
+export type LiveDemoStreamMode = "continuous" | "bounded";
 
 export type LiveDemoStreamSession = {
   session_id: string | null;
   status: LiveDemoStreamStatus;
+  stream_mode: LiveDemoStreamMode;
   cadence_seconds: 1 | 2;
-  total_events: number;
+  total_events: number | null;
   emitted_events: number;
   started_at: string | null;
   updated_at: string | null;
   completed_at: string | null;
+  execution_chunk_number: number;
 };
 
 export type LiveDemoStreamEvent = {
@@ -151,15 +154,21 @@ export type LiveDemoStreamResponse = {
   contract: "compass.demo-stream.v1";
   mode: "live" | "replay";
   generated_at: string;
-  stream_kind?: "accelerated-synthetic";
+  stream_kind?: "continuous-synthetic" | "accelerated-synthetic";
   session: LiveDemoStreamSession;
   latest_event: LiveDemoStreamEvent | null;
+  safeguards?: {
+    operator_stop_required: boolean;
+    workflow_chunk_events: number;
+    raw_retention_days: number;
+    estimated_events_per_hour: number;
+  };
   disclosure: string;
 };
 
 export type LiveDemoStreamStartRequest = {
   cadence_seconds: 1 | 2;
-  total_events: number;
+  stream_mode: "continuous";
 };
 
 export type LiveDemoStreamStopRequest = {

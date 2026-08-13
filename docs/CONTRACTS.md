@@ -94,9 +94,9 @@ viewer.
 | 4 | POST | `/ingest/simulate` | Poweruser trigger for a sanitized drop | 3 |
 | 5 | GET | `/ingest/status` | Batch, rule, quality, and disposition status | 3 |
 | 6 | GET | `/stream/recent` | Ordered governed activity projection with merged recent Kinesis transport receipts | 3 |
-| 6a | GET | `/demo-stream` | Current bounded accelerated synthetic stream session and latest receipt | 3 |
-| 6b | POST | `/demo-stream/start` | Start 1 to 60 synthetic S3 drops at a one-second or two-second cadence | 3 |
-| 6c | POST | `/demo-stream/stop` | Stop the current bounded accelerated synthetic stream | 3 |
+| 6a | GET | `/demo-stream` | Current operator-controlled continuous stream session and latest receipt | 3 |
+| 6b | POST | `/demo-stream/start` | Start synthetic S3 drops every one or two seconds until Stop | 3 |
+| 6c | POST | `/demo-stream/stop` | Stop the current continuous synthetic stream | 3 |
 | 7 | POST | `/analytics/run` | Execute a governed topic-model run | 5 |
 | 8 | GET | `/analytics/{run_id}` | Topics, trends, metrics, and recommendation | 5 |
 | 9 | GET | `/dashboard` | Persona-scoped KPIs and chart series | 6 |

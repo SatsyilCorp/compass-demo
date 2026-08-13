@@ -334,9 +334,10 @@ def _schemas() -> dict[str, Any]:
         },
         "DemoStreamStartRequest": {
             "type": "object",
-            "required": ["cadence_seconds", "total_events"],
+            "required": ["cadence_seconds", "stream_mode"],
             "properties": {
                 "cadence_seconds": {"type": "integer", "enum": [1, 2]},
+                "stream_mode": {"type": "string", "enum": ["continuous", "bounded"]},
                 "total_events": {"type": "integer", "minimum": 1, "maximum": 60},
             },
         },
@@ -357,19 +358,36 @@ def _schemas() -> dict[str, Any]:
         },
         "DemoStreamSession": {
             "type": "object",
-            "required": ["status", "cadence_seconds", "total_events", "emitted_events"],
+            "required": ["status", "stream_mode", "cadence_seconds", "total_events", "emitted_events"],
             "properties": {
                 "session_id": {"type": ["string", "null"]},
                 "status": {
                     "type": "string",
                     "enum": ["idle", "running", "completed", "stopped", "failed"],
                 },
+                "stream_mode": {"type": "string", "enum": ["continuous", "bounded"]},
                 "cadence_seconds": {"type": "integer", "enum": [1, 2]},
-                "total_events": {"type": "integer", "minimum": 0, "maximum": 60},
-                "emitted_events": {"type": "integer", "minimum": 0, "maximum": 60},
+                "total_events": {"type": ["integer", "null"], "minimum": 0, "maximum": 60},
+                "emitted_events": {"type": "integer", "minimum": 0},
                 "started_at": {"type": ["string", "null"], "format": "date-time"},
                 "updated_at": {"type": ["string", "null"], "format": "date-time"},
                 "completed_at": {"type": ["string", "null"], "format": "date-time"},
+                "execution_chunk_number": {"type": "integer", "minimum": 0},
+            },
+        },
+        "DemoStreamSafeguards": {
+            "type": "object",
+            "required": [
+                "operator_stop_required",
+                "workflow_chunk_events",
+                "raw_retention_days",
+                "estimated_events_per_hour",
+            ],
+            "properties": {
+                "operator_stop_required": {"type": "boolean"},
+                "workflow_chunk_events": {"type": "integer", "minimum": 1},
+                "raw_retention_days": {"type": "integer", "minimum": 1},
+                "estimated_events_per_hour": {"type": "integer", "minimum": 0},
             },
         },
         "DemoStreamResponse": {
@@ -379,9 +397,10 @@ def _schemas() -> dict[str, Any]:
                 "contract": {"type": "string", "const": "compass.demo-stream.v1"},
                 "mode": {"type": "string", "const": "live"},
                 "generated_at": {"type": "string", "format": "date-time"},
-                "stream_kind": {"type": "string", "const": "accelerated-synthetic"},
+                "stream_kind": {"type": "string", "const": "continuous-synthetic"},
                 "session": _ref("DemoStreamSession"),
                 "latest_event": _ref("DemoStreamEvent"),
+                "safeguards": _ref("DemoStreamSafeguards"),
                 "disclosure": {"type": "string"},
             },
         },
@@ -2368,7 +2387,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
         "/demo-stream": {
             "get": _op(
                 "getDemoStream",
-                "Read the bounded accelerated synthetic stream session",
+                "Read the operator-controlled continuous stream session",
                 "3 · ingest",
                 _ref("DemoStreamResponse"),
                 description=(
@@ -2380,22 +2399,24 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
         "/demo-stream/start": {
             "post": _op(
                 "startDemoStream",
-                "Start one bounded accelerated synthetic stream",
+                "Start an operator-controlled continuous synthetic stream",
                 "3 · ingest",
                 _ref("DemoStreamResponse"),
                 request_schema=_ref("DemoStreamStartRequest"),
                 success_status="202",
                 success_description="Accepted",
                 description=(
-                    "Starts 1 to 60 synthetic S3 drops at a one-second or two-second cadence. "
-                    "Every drop follows the deployed EventBridge and Step Functions intake path."
+                    "Starts synthetic S3 drops at a one-second or two-second cadence and "
+                    "continues until an operator calls Stop. Every drop follows the deployed "
+                    "EventBridge and Step Functions intake path. Bounded mode remains available "
+                    "for automated smoke tests."
                 ),
             )
         },
         "/demo-stream/stop": {
             "post": _op(
                 "stopDemoStream",
-                "Stop the current accelerated synthetic stream",
+                "Stop the current continuous synthetic stream",
                 "3 · ingest",
                 _ref("DemoStreamResponse"),
                 request_schema=_ref("DemoStreamStopRequest"),

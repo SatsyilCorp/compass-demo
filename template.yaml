@@ -805,6 +805,12 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+          - Id: expire-continuous-demo-stream
+            Status: Enabled
+            Prefix: drops/live-stream/
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
           - Id: expire-document-inputs
             Status: Enabled
             Prefix: documents/incoming/
@@ -1571,8 +1577,8 @@ Resources:
             Method: GET
             Path: /me
 
-  # --- intake: ingest simulation, status, ticker, and a bounded accelerated
-  #     synthetic stream; also the first worker of the intake state machine.
+  # --- intake: ingest simulation, status, ticker, and an operator-controlled
+  #     continuous synthetic stream; also the first intake workflow worker.
   IntakeFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -2120,7 +2126,7 @@ Resources:
       Layers: [!Ref CommonLayer]
       Environment:
         Variables:
-          # The bounded demo stream refreshes on receipt boundaries. A one-second
+          # The continuous demo stream refreshes on receipt boundaries. A one-second
           # projection cache keeps those changes visible without disabling caching.
           DASHBOARD_CACHE_TTL_SECONDS: "1"
       VpcConfig:

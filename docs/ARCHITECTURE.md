@@ -26,6 +26,7 @@ flowchart LR
   end
 
   RAW[("KMS-encrypted raw bucket")]
+  CTRL["Continuous synthetic controller\nStandard workflow with rotation"]
   EB["EventBridge"]
   SFN["Express Step Functions\nFetch, validate, gate, persist or quarantine"]
   KIN["Kinesis activity stream"]
@@ -41,6 +42,8 @@ flowchart LR
   U -->|"OIDC"| COG
   U -->|"JWT over HTTPS"| API
   API --> L
+  API -->|"Start, status, Stop"| CTRL
+  CTRL -->|"One immutable pulse every 1 or 2 seconds"| RAW
   RAW --> EB --> SFN --> L
   L <--> KIN
   L --> BR
@@ -54,6 +57,8 @@ flowchart LR
   ACQ --> RAW
   ACQ -->|"change events"| KIN
   L --> OPS
+  CTRL --> OPS
+  CTRL --> CW
   SFN --> OPS
   PI --> OPS
   ACQ --> OPS
@@ -75,6 +80,8 @@ The template provisions:
 - Eighteen core application Lambda functions, one CloudFront path rewrite
   function, and one shared Lambda layer
 - A KMS-encrypted raw S3 bucket with EventBridge notifications
+- An operator-controlled continuous synthetic ingestion session whose Standard
+  workflow rotates every 250 pulses and runs until Stop
 - An on-demand Kinesis stream
 - A five-minute bounded USAspending acquisition with immutable snapshots,
   watermarks, hash-based deltas, and Kinesis change events
@@ -124,6 +131,16 @@ the governed database projection. The service merges recent Kinesis transport
 receipts by stable event identifier when present. A receipt with no
 organization scope is corporate-only, so missing transport metadata cannot
 widen a scoped viewer's feed.
+
+The continuous demonstration source is separate from official public-source
+acquisition. A corporate poweruser starts one one-second or two-second
+synthetic cadence. Each pulse receives a cumulative sequence, immutable S3
+object, source digest, intake run identifier, quality decision, lineage chain,
+catalog row, and decision projection. The visible session has no event-count
+cutoff. The Standard controller rotates its underlying execution every 250
+pulses so one execution history cannot grow without limit. Stop is
+authoritative across rotation, deterministic object keys make retry safe, and
+raw pulse objects expire after seven days.
 
 Workers exchange batch and run manifests. They do not pass the complete
 record set through Step Functions state.

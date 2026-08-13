@@ -369,6 +369,17 @@ def _passing_rows(cur, batch_id: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _continuous_demo_sequence(batch_id: str) -> Optional[int]:
+    """Return the pulse sequence for a continuous synthetic batch."""
+    if not batch_id.startswith("live-"):
+        return None
+    try:
+        sequence = int(batch_id.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return None
+    return sequence if sequence > 0 else None
+
+
 def persist_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Insert the gate-approved rows of a batch into ``grants_curated``."""
     batch_id = payload.get("batch_id")
@@ -376,6 +387,7 @@ def persist_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("persist requires a batch_id")
     run_id = payload.get("run_id") or run_id_for(batch_id)
     source_file = payload.get("source_file") or ""
+    continuous_demo_sequence = _continuous_demo_sequence(str(batch_id))
 
     conn = db.get_conn()
     with conn.cursor() as cur:            # autocommit read; no RLS on grants_raw
@@ -545,21 +557,25 @@ def persist_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
             "consumer": "Authorized portfolio users",
         },
     )
-    operational_evidence.record_signal(
-        category="structured-intake",
-        severity="info",
-        title="Structured intake completed",
-        message=(
-            f"The governed intake published {inserted} records and retained "
-            f"{duplicates} duplicate records without creating copies."
-        ),
-        run_id=run_id,
-        evidence_uri="database://grants_curated",
-        detail={
-            "accepted_records": inserted,
-            "record_count": len(rows),
-            "unchanged_records": duplicates,
-        },
-    )
+    # The continuous demo already records one start signal and one stop signal.
+    # Suppress one routine notification per pulse so an operator can run the
+    # stream for hours without flooding the in-app ledger or SNS subscribers.
+    if continuous_demo_sequence is None:
+        operational_evidence.record_signal(
+            category="structured-intake",
+            severity="info",
+            title="Structured intake completed",
+            message=(
+                f"The governed intake published {inserted} records and retained "
+                f"{duplicates} duplicate records without creating copies."
+            ),
+            run_id=run_id,
+            evidence_uri="database://grants_curated",
+            detail={
+                "accepted_records": inserted,
+                "record_count": len(rows),
+                "unchanged_records": duplicates,
+            },
+        )
     print(json.dumps({"event_type": "ingest_persist_complete", **result}, default=str))
     return result

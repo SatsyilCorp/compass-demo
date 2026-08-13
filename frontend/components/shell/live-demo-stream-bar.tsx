@@ -20,10 +20,9 @@ import {
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { publishLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import type { LiveDemoStreamResponse } from "@/lib/types";
-import { liveDemoStreamProgress, liveDemoStreamReceiptKey } from "./live-demo-stream-model";
+import { liveDemoStreamReceiptKey } from "./live-demo-stream-model";
 
 const DEFAULT_CADENCE_SECONDS = 2 as const;
-const DEFAULT_TOTAL_EVENTS = 15;
 const ACTIVE_POLL_MS = 1_000;
 const IDLE_POLL_MS = 15_000;
 const PROJECTION_SETTLE_MS = 2_500;
@@ -34,6 +33,7 @@ export function LiveDemoStreamBar() {
   const [cadence, setCadence] = useState<1 | 2>(DEFAULT_CADENCE_SECONDS);
   const [pending, setPending] = useState<"start" | "stop" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [clockMs, setClockMs] = useState(() => Date.now());
   const lastReceiptKey = useRef<string | null>(null);
   const projectionSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const status = data?.session.status ?? "idle";
@@ -69,6 +69,12 @@ export function LiveDemoStreamBar() {
   useEffect(() => () => {
     if (projectionSettleTimer.current) clearTimeout(projectionSettleTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (status !== "running") return;
+    const timer = setInterval(() => setClockMs(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [status]);
 
   const load = useCallback(async () => {
     if (auth.isLoading) return null;
@@ -108,7 +114,7 @@ export function LiveDemoStreamBar() {
       lastReceiptKey.current = null;
       applyResponse(await postLiveDemoStreamStart({
         cadence_seconds: cadence,
-        total_events: DEFAULT_TOTAL_EVENTS,
+        stream_mode: "continuous",
       }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The accelerated stream could not start.");
@@ -133,13 +139,12 @@ export function LiveDemoStreamBar() {
   };
 
   const running = status === "running";
-  const progress = data ? liveDemoStreamProgress(data) : 0;
   const session = data?.session;
-  const durationSeconds = cadence * DEFAULT_TOTAL_EVENTS;
+  const elapsed = formatElapsed(session?.started_at ?? null, clockMs);
 
   return (
     <section
-      aria-label="Accelerated synthetic demo stream"
+      aria-label="Continuous synthetic ingestion"
       aria-live="polite"
       className={`border-b px-4 py-3 sm:px-6 xl:px-8 ${
         running ? "border-info/30 bg-info-soft/55" : "border-border bg-white"
@@ -161,17 +166,18 @@ export function LiveDemoStreamBar() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-strong">
-                Accelerated synthetic stream
+                Continuous synthetic ingestion
               </p>
               <StatusBadge status={status} />
-              {session && session.total_events > 0 ? (
+              {session ? (
                 <span className="font-mono text-[10px] font-bold text-text-muted">
-                  {session.emitted_events}/{session.total_events} receipts | {session.cadence_seconds}s cadence
+                  {session.emitted_events.toLocaleString()} receipts | {session.cadence_seconds}s cadence
+                  {running ? ` | ${elapsed} live` : ""}
                 </span>
               ) : null}
             </div>
             <p className="mt-1 text-[10.5px] leading-4 text-text-muted">
-              Synthetic drops use the deployed S3, EventBridge, intake, quality, lineage, catalog, and decision path. Official USAspending acquisition keeps its bounded source cadence.
+              Continues until Stop. Each synthetic pulse uses S3, EventBridge, Step Functions, quality, lineage, catalog, and decision projections. USAspending remains a separate official feed.
             </p>
             {data?.latest_event ? (
               <p className="mt-1 truncate font-mono text-[9px] text-info" title={data.latest_event.message}>
@@ -179,8 +185,8 @@ export function LiveDemoStreamBar() {
               </p>
             ) : null}
             {running ? (
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/80" aria-label={`${progress}% complete`}>
-                <div className="h-full rounded-full bg-info transition-[width] duration-500" style={{ width: `${progress}%` }} />
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/80" aria-label="Continuous ingestion active">
+                <div className="h-full w-full rounded-full bg-gradient-to-r from-info/25 via-info to-info/25 motion-safe:animate-pulse" />
               </div>
             ) : null}
           </div>
@@ -212,7 +218,7 @@ export function LiveDemoStreamBar() {
                 className="inline-flex min-h-10 items-center gap-2 rounded-md bg-gov-primary px-3 text-[10px] font-bold text-white transition-colors hover:bg-gov-primary-dark disabled:opacity-50"
               >
                 {pending === "start" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Play className="size-3.5" aria-hidden />}
-                Start {durationSeconds}s stream
+                Start continuous stream
               </button>
             </>
           ) : null}
@@ -231,6 +237,19 @@ export function LiveDemoStreamBar() {
       </div>
     </section>
   );
+}
+
+function formatElapsed(startedAt: string | null, nowMs: number): string {
+  if (!startedAt) return "0:00";
+  const startMs = Date.parse(startedAt);
+  if (!Number.isFinite(startMs)) return "0:00";
+  const totalSeconds = Math.max(0, Math.floor((nowMs - startMs) / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function StatusBadge({ status }: { status: LiveDemoStreamResponse["session"]["status"] }) {

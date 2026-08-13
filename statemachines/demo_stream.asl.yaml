@@ -1,4 +1,4 @@
-Comment: Bounded accelerated synthetic demo stream through the real S3 event path.
+Comment: Operator-controlled continuous synthetic stream through the real S3 event path.
 StartAt: Emit
 
 States:
@@ -60,7 +60,7 @@ States:
   Failed:
     Type: Fail
     Error: CompassDemoStreamFailed
-    Cause: Accelerated synthetic demo stream failed.
+    Cause: Continuous synthetic demo stream failed.
 
   Complete:
     Type: Succeed

@@ -1215,7 +1215,6 @@ type DemoStreamReplayState = {
   sessionId: string;
   startedAtMs: number;
   cadenceSeconds: 1 | 2;
-  totalEvents: number;
   stoppedAtMs: number | null;
 };
 
@@ -1231,26 +1230,40 @@ function normalizeLiveDemoStream(response: unknown): LiveDemoStreamResponse {
   if (!isRecord(response)) throw new ApiError(502, response, "demo_stream_response_invalid");
   const rawSession = isRecord(response.session) ? response.session : {};
   const cadence = finiteNumber(rawSession.cadence_seconds) === 1 ? 1 : 2;
-  const totalEvents = Math.max(0, Math.trunc(finiteNumber(rawSession.total_events) ?? 0));
-  const emittedEvents = Math.max(
-    0,
-    Math.min(totalEvents, Math.trunc(finiteNumber(rawSession.emitted_events) ?? 0)),
-  );
+  const streamMode = rawSession.stream_mode === "bounded" ? "bounded" : "continuous";
+  const rawTotalEvents = finiteNumber(rawSession.total_events);
+  const totalEvents = streamMode === "bounded"
+    ? Math.max(0, Math.trunc(rawTotalEvents ?? 0))
+    : null;
+  const rawEmittedEvents = Math.max(0, Math.trunc(finiteNumber(rawSession.emitted_events) ?? 0));
+  const emittedEvents = totalEvents === null
+    ? rawEmittedEvents
+    : Math.min(totalEvents, rawEmittedEvents);
   const rawLatest = isRecord(response.latest_event) ? response.latest_event : null;
+  const rawSafeguards = isRecord(response.safeguards) ? response.safeguards : null;
   return {
     contract: "compass.demo-stream.v1",
     mode: response.mode === "replay" ? "replay" : "live",
     generated_at: textValue(response.generated_at, new Date().toISOString()),
-    stream_kind: response.stream_kind === "accelerated-synthetic" ? "accelerated-synthetic" : undefined,
+    stream_kind: response.stream_kind === "continuous-synthetic"
+      ? "continuous-synthetic"
+      : response.stream_kind === "accelerated-synthetic"
+        ? "accelerated-synthetic"
+        : undefined,
     session: {
       session_id: nullableText(rawSession.session_id),
       status: demoStreamStatus(rawSession.status),
+      stream_mode: streamMode,
       cadence_seconds: cadence,
       total_events: totalEvents,
       emitted_events: emittedEvents,
       started_at: nullableText(rawSession.started_at),
       updated_at: nullableText(rawSession.updated_at),
       completed_at: nullableText(rawSession.completed_at),
+      execution_chunk_number: Math.max(
+        0,
+        Math.trunc(finiteNumber(rawSession.execution_chunk_number) ?? 0),
+      ),
     },
     latest_event: rawLatest ? {
       sequence: Math.max(0, Math.trunc(finiteNumber(rawLatest.sequence) ?? emittedEvents)),
@@ -1259,9 +1272,15 @@ function normalizeLiveDemoStream(response: unknown): LiveDemoStreamResponse {
       occurred_at: textValue(rawLatest.occurred_at, new Date().toISOString()),
       message: textValue(rawLatest.message, "Synthetic event accepted by the accelerated demo path."),
     } : null,
+    safeguards: rawSafeguards ? {
+      operator_stop_required: rawSafeguards.operator_stop_required !== false,
+      workflow_chunk_events: Math.max(1, Math.trunc(finiteNumber(rawSafeguards.workflow_chunk_events) ?? 250)),
+      raw_retention_days: Math.max(1, Math.trunc(finiteNumber(rawSafeguards.raw_retention_days) ?? 7)),
+      estimated_events_per_hour: Math.max(0, Math.trunc(finiteNumber(rawSafeguards.estimated_events_per_hour) ?? (3600 / cadence))),
+    } : undefined,
     disclosure: textValue(
       response.disclosure,
-      "Accelerated synthetic events use the deployed intake path. Official public-source acquisition retains its own bounded cadence.",
+      "Continuous synthetic events use the deployed intake path until an operator stops the session.",
     ),
   };
 }
@@ -1277,24 +1296,31 @@ function replayLiveDemoStream(): LiveDemoStreamResponse {
       session: {
         session_id: null,
         status: "idle",
+        stream_mode: "continuous",
         cadence_seconds: 2,
-        total_events: 15,
+        total_events: null,
         emitted_events: 0,
         started_at: null,
         updated_at: null,
         completed_at: null,
+        execution_chunk_number: 0,
       },
       latest_event: null,
+      safeguards: {
+        operator_stop_required: true,
+        workflow_chunk_events: 250,
+        raw_retention_days: 7,
+        estimated_events_per_hour: 1800,
+      },
       disclosure: "Deterministic browser replay. Live deployment uses the protected AWS intake path.",
     };
   }
   const effectiveNow = state.stoppedAtMs ?? now;
-  const emitted = Math.min(
-    state.totalEvents,
-    Math.max(0, Math.floor((effectiveNow - state.startedAtMs) / (state.cadenceSeconds * 1000))),
+  const emitted = Math.max(
+    0,
+    Math.floor((effectiveNow - state.startedAtMs) / (state.cadenceSeconds * 1000)),
   );
-  const completed = emitted >= state.totalEvents;
-  const status: LiveDemoStreamStatus = state.stoppedAtMs ? "stopped" : completed ? "completed" : "running";
+  const status: LiveDemoStreamStatus = state.stoppedAtMs ? "stopped" : "running";
   const occurredAtMs = emitted > 0
     ? state.startedAtMs + emitted * state.cadenceSeconds * 1000
     : state.startedAtMs;
@@ -1305,20 +1331,28 @@ function replayLiveDemoStream(): LiveDemoStreamResponse {
     session: {
       session_id: state.sessionId,
       status,
+      stream_mode: "continuous",
       cadence_seconds: state.cadenceSeconds,
-      total_events: state.totalEvents,
+      total_events: null,
       emitted_events: emitted,
       started_at: new Date(state.startedAtMs).toISOString(),
       updated_at: new Date(occurredAtMs).toISOString(),
       completed_at: status === "running" ? null : new Date(effectiveNow).toISOString(),
+      execution_chunk_number: Math.floor(emitted / 250) + 1,
     },
     latest_event: emitted > 0 ? {
       sequence: emitted,
       run_id: `run-${state.sessionId}-${emitted}`,
       event_id: `${state.sessionId}:${emitted}`,
       occurred_at: new Date(occurredAtMs).toISOString(),
-      message: `Synthetic event ${emitted} of ${state.totalEvents} accepted by the accelerated demo path.`,
+      message: `Continuous synthetic event ${emitted} accepted by the deployed demo path.`,
     } : null,
+    safeguards: {
+      operator_stop_required: true,
+      workflow_chunk_events: 250,
+      raw_retention_days: 7,
+      estimated_events_per_hour: 3600 / state.cadenceSeconds,
+    },
     disclosure: "Deterministic browser replay. Live deployment uses the protected AWS intake path.",
   };
 }
@@ -1338,7 +1372,6 @@ export async function postLiveDemoStreamStart(
       sessionId: `demo-${Date.now().toString(36)}`,
       startedAtMs: Date.now(),
       cadenceSeconds: request.cadence_seconds,
-      totalEvents: request.total_events,
       stoppedAtMs: null,
     };
     return replayLiveDemoStream();

@@ -9,8 +9,9 @@ export function liveDemoStreamReceiptKey(
   return `${sessionId}:${event.sequence}`;
 }
 
-export function liveDemoStreamProgress(response: LiveDemoStreamResponse): number {
+export function liveDemoStreamProgress(response: LiveDemoStreamResponse): number | null {
   const { emitted_events: emitted, total_events: total } = response.session;
+  if (total === null) return null;
   if (total < 1) return 0;
   return Math.max(0, Math.min(100, Math.round((emitted / total) * 100)));
 }
