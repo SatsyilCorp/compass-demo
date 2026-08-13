@@ -9,6 +9,7 @@ import type {
 import {
   applySignalAcknowledgement,
   buildSignalInbox,
+  signalGuidance,
   unreadSignalCount,
 } from "./model";
 
@@ -115,4 +116,24 @@ test("acknowledgement updates only the matching signal and recalculates unread c
   assert.equal(next.signals[0].status, "acknowledged");
   assert.equal(next.signals[0].acknowledged_by, "reviewer@compass.demo");
   assert.equal(next.signals[1].status, "open");
+});
+
+test("model drift alert explains impact and next action in plain language", () => {
+  const guidance = signalGuidance(signal("drift", "open", {
+    signal_type: "model_drift",
+    severity: "critical",
+    title: "Document classifier drift requires review",
+  }));
+  assert.match(guidance.whyItMatters, /less reliable/i);
+  assert.match(guidance.recommendedAction, /review/i);
+});
+
+test("quarantine alert explains that unsafe data did not reach decisions", () => {
+  const guidance = signalGuidance(signal("quality", "open", {
+    signal_type: "structured-quality",
+    severity: "warning",
+    title: "Structured intake quarantined",
+  }));
+  assert.match(guidance.whyItMatters, /did not reach/i);
+  assert.match(guidance.recommendedAction, /correct/i);
 });

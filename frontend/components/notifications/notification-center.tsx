@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   getOperationsSignals,
@@ -32,7 +33,7 @@ import type {
   OperationsSignalDelivery,
   OperationsSignalsResponse,
 } from "@/lib/types";
-import { applySignalAcknowledgement, buildSignalInbox } from "./model";
+import { applySignalAcknowledgement, buildSignalInbox, signalGuidance } from "./model";
 
 const POLL_MS = 10_000;
 
@@ -145,22 +146,26 @@ export function NotificationCenter() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={unread > 0 ? `Open operations signals, ${unread} need attention` : "Open operations signals"}
+        aria-label={unread > 0 ? `Open alerts, ${unread} need attention` : "Open alerts and activity"}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 text-text-muted transition-colors hover:bg-surface-2 hover:text-text-strong"
+        className={`relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border px-3 font-bold transition-colors ${
+          unread > 0
+            ? "border-danger/35 bg-danger-soft text-danger hover:border-danger/55"
+            : "border-border bg-surface text-text-muted hover:bg-surface-2 hover:text-text-strong"
+        }`}
       >
         {unread > 0 ? <BellRing className="size-4.5" aria-hidden /> : <Bell className="size-4.5" aria-hidden />}
-        <span className="hidden text-xs font-bold sm:inline">Signals</span>
+        <span className="hidden text-xs sm:inline">{unread > 0 ? `${unread} action${unread === 1 ? "" : "s"}` : "Alerts"}</span>
         {unread > 0 ? (
-          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-danger px-1 font-mono text-[9px] font-bold text-white sm:static sm:border-0">
+          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-danger px-1 font-mono text-[9px] font-bold text-white sm:hidden">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
         {error && !data ? <span className="absolute bottom-1 right-1 size-2 rounded-full bg-warn" aria-hidden /> : null}
       </button>
 
-      {open ? (
+      {open && typeof document !== "undefined" ? createPortal((
         <div className="fixed inset-0 z-[70]">
           <button
             type="button"
@@ -172,7 +177,7 @@ export function NotificationCenter() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="operations-notifications-title"
-            className="compass-drawer-enter absolute inset-y-0 right-0 flex w-[min(94vw,500px)] flex-col border-l border-border bg-bg shadow-2xl"
+            className="compass-drawer-enter-right absolute inset-y-0 right-0 flex w-[min(100vw,560px)] flex-col border-l border-border bg-white shadow-2xl"
           >
             <div className="border-b border-border bg-gov-primary px-5 py-5 text-white">
               <div className="flex items-start gap-3">
@@ -181,10 +186,10 @@ export function NotificationCenter() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 id="operations-notifications-title" className="text-base font-bold">Operations signals</h2>
+                    <h2 id="operations-notifications-title" className="text-lg font-bold">Alerts and activity</h2>
                     {data ? <ModeBadge mode={data.mode} /> : null}
                   </div>
-                  <p className="mt-1 text-[10.5px] leading-4 text-white/65">Workflow outcomes, model drift, acquisition health, and delivery state.</p>
+                  <p className="mt-1 text-xs leading-5 text-white/70">See what needs action first, then review the latest system activity.</p>
                 </div>
                 <button
                   ref={closeRef}
@@ -197,7 +202,7 @@ export function NotificationCenter() {
                 </button>
               </div>
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
-                <p className="font-mono text-[10px] text-white/65">{unread} need attention | {inbox?.activityTotal ?? 0} activity</p>
+                <p className="text-xs font-semibold text-white/75">{unread} need attention | {inbox?.activityTotal ?? 0} recent events</p>
                 <button
                   type="button"
                   onClick={() => void load(false)}
@@ -215,16 +220,31 @@ export function NotificationCenter() {
               </div>
             ) : null}
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-bg p-5">
               {loading && !data ? (
                 <div className="grid min-h-48 place-items-center text-center text-text-muted">
                   <div><Loader2 className="mx-auto size-6 animate-spin text-gov-primary" aria-hidden /><p className="mt-3 text-xs">Loading retained signals</p></div>
                 </div>
               ) : data && inbox && data.signals.length > 0 ? (
-                <div className="space-y-6">
+                <div className="space-y-7">
+                  <div className="grid grid-cols-2 gap-3" aria-label="Alert summary">
+                    <div className="rounded-lg border border-danger/25 bg-white p-4 shadow-soft">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-danger">Needs action</p>
+                      <p className="mt-1 text-2xl font-bold text-text-strong">{unread}</p>
+                      <p className="mt-1 text-xs text-text-muted">Review before relying on affected evidence.</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-white p-4 shadow-soft">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">System activity</p>
+                      <p className="mt-1 text-2xl font-bold text-text-strong">{inbox.activityTotal}</p>
+                      <p className="mt-1 text-xs text-text-muted">Routine events are grouped below.</p>
+                    </div>
+                  </div>
                   <section aria-labelledby="signals-attention-heading">
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <h3 id="signals-attention-heading" className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Needs attention</h3>
+                      <div>
+                        <h3 id="signals-attention-heading" className="text-sm font-bold text-text-strong">Needs your attention</h3>
+                        <p className="mt-1 text-xs leading-5 text-text-muted">These items may affect data reliability or a decision. Review the evidence before marking them complete.</p>
+                      </div>
                       <span className="rounded-full border border-danger/20 bg-danger-soft px-2 py-1 font-mono text-[8px] font-bold text-danger">{unread} open</span>
                     </div>
                     {inbox.attention.length > 0 ? (
@@ -251,13 +271,13 @@ export function NotificationCenter() {
                     <section aria-labelledby="signals-activity-heading">
                       <div className="mb-3 flex items-center justify-between gap-3 border-t border-border pt-5">
                         <div>
-                          <h3 id="signals-activity-heading" className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">Recent activity</h3>
-                          <p className="mt-1 text-[9px] text-text-subtle">Repeated routine events are grouped. The newest evidence link remains available.</p>
+                          <h3 id="signals-activity-heading" className="text-sm font-bold text-text-strong">Recent activity</h3>
+                          <p className="mt-1 text-xs text-text-muted">Repeated successful events are grouped so important alerts stay visible.</p>
                         </div>
                         <span className="shrink-0 rounded-full border border-border bg-white px-2 py-1 font-mono text-[8px] font-bold text-text-muted">{inbox.activityTotal} events</span>
                       </div>
                       <div className="space-y-3">
-                        {inbox.activity.map((group) => (
+                        {inbox.activity.slice(0, 6).map((group) => (
                           <SignalCard
                             key={group.signal.event_id}
                             signal={group.signal}
@@ -269,6 +289,9 @@ export function NotificationCenter() {
                           />
                         ))}
                       </div>
+                      {inbox.activity.length > 6 ? (
+                        <p className="mt-3 text-center text-[10px] text-text-subtle">More routine activity is available in All runs.</p>
+                      ) : null}
                     </section>
                   ) : null}
                 </div>
@@ -291,7 +314,7 @@ export function NotificationCenter() {
             </div>
           </aside>
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }
@@ -314,6 +337,7 @@ function SignalCard({
   const meta = SEVERITY[signal.severity];
   const Icon = meta.icon;
   const open = signal.status === "open";
+  const guidance = signalGuidance(signal);
   return (
     <article className={`overflow-hidden rounded-xl border ${open ? meta.card : "border-border bg-white opacity-80"}`}>
       <div className="p-4">
@@ -327,10 +351,25 @@ function SignalCard({
               <span className={`rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase ${open ? "border-gov-primary/20 bg-white text-gov-primary" : "border-success/25 bg-success-soft text-success"}`}>{activityOnly && open ? "activity" : signal.status}</span>
               {occurrenceCount > 1 ? <span className="rounded-full border border-info/20 bg-info-soft px-2 py-0.5 text-[8px] font-bold uppercase text-info">{occurrenceCount} similar</span> : null}
             </div>
-            <h3 className="mt-1 text-xs font-bold leading-5 text-text-strong">{signal.title}</h3>
-            <p className="mt-1 text-[10.5px] leading-5 text-text-muted">{signal.message}</p>
+            <h3 className="mt-1 text-sm font-bold leading-5 text-text-strong">{signal.title}</h3>
+            <div className="mt-2">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-text-subtle">What happened</p>
+              <p className="mt-1 text-xs leading-5 text-text-muted">{signal.message}</p>
+            </div>
           </div>
         </div>
+        {!activityOnly ? (
+          <div className="mt-4 grid gap-3 rounded-lg border border-white/80 bg-white/85 p-3 sm:grid-cols-2">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-gold-ink">Why it matters</p>
+              <p className="mt-1 text-xs leading-5 text-text">{guidance.whyItMatters}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-gov-primary">Recommended action</p>
+              <p className="mt-1 text-xs leading-5 text-text">{guidance.recommendedAction}</p>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-current/10 pt-3 font-mono text-[8.5px] text-text-subtle">
           <span>{formatTimestamp(signal.occurred_at)}</span>
           <span>{signal.source}</span>
@@ -354,7 +393,7 @@ function SignalCard({
             className="ml-auto inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-[10px] font-bold text-text-strong hover:bg-surface-2 disabled:cursor-wait disabled:opacity-55"
           >
             {pending ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Check className="size-3" aria-hidden />}
-            Acknowledge
+            Mark reviewed
           </button>
         ) : signal.status === "acknowledged" ? (
           <span className="ml-auto text-[9px] text-text-subtle">Acknowledged {signal.acknowledged_at ? formatTimestamp(signal.acknowledged_at) : ""}</span>

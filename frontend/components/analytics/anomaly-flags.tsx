@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import type { Anomaly } from "@/lib/types";
+import { explainAnomaly, friendlyAnomalyKind } from "@/components/dashboard/anomaly-explanation";
 
 const SEVERITY_RANK: Record<Anomaly["severity"], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -25,6 +26,8 @@ const STATUS_TONE: Record<Anomaly["status"], string> = {
 export function AnomalyFlags({ anomalies }: { anomalies: Anomaly[] }) {
   const openCount = anomalies.filter((a) => a.status === "open").length;
   const sorted = [...anomalies].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+  const visible = sorted.slice(0, 5);
+  const remaining = sorted.slice(5);
 
   if (anomalies.length === 0) {
     return (
@@ -36,41 +39,43 @@ export function AnomalyFlags({ anomalies }: { anomalies: Anomaly[] }) {
 
   return (
     <div className="rounded-md border border-border bg-surface">
-      <div className="flex items-center gap-2 border-b border-border-2 px-4 py-2.5">
+      <div className="flex items-start gap-2 border-b border-border-2 px-4 py-3">
         <AlertTriangle className="size-3.5 text-warn" aria-hidden />
-        <p className="text-xs text-text-muted">
-          <span className="font-semibold text-text-strong">{openCount}</span> open of {anomalies.length} flagged
-          anomal{anomalies.length === 1 ? "y" : "ies"} across the visible portfolio.
-        </p>
+        <div>
+          <p className="text-xs font-bold text-text-strong">{openCount} items need human review</p>
+          <p className="mt-1 text-[11px] leading-5 text-text-muted">An anomaly means a record looks different from similar records. It is not proof that the record or project is wrong.</p>
+        </div>
       </div>
       <ul className="divide-y divide-border-2">
-        {sorted.map((a) => (
-          <li key={a.id} className="flex items-start gap-3 px-4 py-2.5">
-            <span
-              className={`mt-0.5 shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${SEVERITY_TONE[a.severity]}`}
-            >
-              {a.severity}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs leading-snug text-text">{a.reason}</p>
-              <p className="mt-0.5 text-[10.5px] text-text-subtle">
-                {a.kind}
-                {a.grant_no && (
-                  <>
-                    {" · "}
-                    <span className="font-mono">{a.grant_no}</span>
-                  </>
-                )}
-              </p>
-            </div>
-            <span
-              className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold capitalize ${STATUS_TONE[a.status]}`}
-            >
-              {a.status}
-            </span>
-          </li>
-        ))}
+        {visible.map((a) => <FindingRow key={a.id} anomaly={a} />)}
       </ul>
+      {remaining.length > 0 ? (
+        <details className="border-t border-border">
+          <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-gov-primary">Show {remaining.length} more findings</summary>
+          <ul className="divide-y divide-border-2 border-t border-border-2">
+            {remaining.map((a) => <FindingRow key={a.id} anomaly={a} />)}
+          </ul>
+        </details>
+      ) : null}
     </div>
+  );
+}
+
+function FindingRow({ anomaly }: { anomaly: Anomaly }) {
+  const explanation = explainAnomaly(anomaly);
+  return (
+    <li className="px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${SEVERITY_TONE[anomaly.severity]}`}>{anomaly.severity}</span>
+        <p className="text-xs font-bold text-text-strong">{friendlyAnomalyKind(anomaly.kind)}</p>
+        <span className={`ml-auto rounded-full border px-1.5 py-0.5 text-[10px] font-semibold capitalize ${STATUS_TONE[anomaly.status]}`}>{anomaly.status}</span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-text">{explanation.whatHappened}</p>
+      <p className="mt-1 text-[11px] leading-5 text-text-muted"><span className="font-bold text-gov-primary">Next:</span> {explanation.recommendedAction}</p>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-[10px] font-bold text-text-subtle">Technical reason</summary>
+        <p className="mt-1 text-[10.5px] leading-5 text-text-muted">{anomaly.reason}{anomaly.grant_no ? ` | ${anomaly.grant_no}` : ""}</p>
+      </details>
+    </li>
   );
 }

@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import {
   AlertTriangle,
   CheckCircle2,
+  Database,
   FlaskConical,
   Loader2,
   Play,
   RadioTower,
+  RotateCcw,
   Square,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,6 +22,7 @@ import {
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { publishLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
+import { useMissionDataContext } from "@/lib/mission-data-context";
 import type { LiveDemoStreamResponse } from "@/lib/types";
 import { liveDemoStreamReceiptKey } from "./live-demo-stream-model";
 
@@ -29,6 +33,7 @@ const PROJECTION_SETTLE_MS = 2_500;
 
 export function LiveDemoStreamBar() {
   const auth = useAppAuth();
+  const { hydrated, selection, selectCurated } = useMissionDataContext();
   const [data, setData] = useState<LiveDemoStreamResponse | null>(null);
   const [cadence, setCadence] = useState<1 | 2>(DEFAULT_CADENCE_SECONDS);
   const [pending, setPending] = useState<"start" | "stop" | null>(null);
@@ -84,7 +89,7 @@ export function LiveDemoStreamBar() {
       applyResponse(response);
       return response;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The accelerated stream status is unavailable.");
+      setError(cause instanceof Error ? cause.message : "Live update status is unavailable.");
       return null;
     }
   }, [applyResponse, auth.isLoading, publishAuth]);
@@ -117,7 +122,7 @@ export function LiveDemoStreamBar() {
         stream_mode: "continuous",
       }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The accelerated stream could not start.");
+      setError(cause instanceof Error ? cause.message : "Live updates could not start.");
     } finally {
       setPending(null);
     }
@@ -132,7 +137,7 @@ export function LiveDemoStreamBar() {
     try {
       applyResponse(await postLiveDemoStreamStop({ session_id: sessionId }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The accelerated stream could not stop.");
+      setError(cause instanceof Error ? cause.message : "Live updates could not stop.");
     } finally {
       setPending(null);
     }
@@ -141,18 +146,19 @@ export function LiveDemoStreamBar() {
   const running = status === "running";
   const session = data?.session;
   const elapsed = formatElapsed(session?.started_at ?? null, clockMs);
+  const scaleSelected = hydrated && selection.kind === "scale";
 
   return (
     <section
-      aria-label="Continuous synthetic ingestion"
+      aria-label="Live demo data"
       aria-live="polite"
-      className={`border-b px-4 py-3 sm:px-6 xl:px-8 ${
-        running ? "border-info/30 bg-info-soft/55" : "border-border bg-white"
+      className={`border-b px-4 py-2.5 sm:px-6 xl:px-8 ${
+        running ? "border-info/35 bg-info-soft" : "border-border bg-white"
       }`}
     >
-      <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 xl:flex-row xl:items-center">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span className={`relative grid size-10 shrink-0 place-items-center rounded-lg ${
+      <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className={`relative grid size-9 shrink-0 place-items-center rounded-lg ${
             running ? "bg-info text-white" : "bg-gov-primary-lighter text-gov-primary"
           }`}>
             {running ? (
@@ -160,45 +166,43 @@ export function LiveDemoStreamBar() {
                 <span className="absolute inset-1 rounded-md bg-white/25 motion-safe:animate-ping" aria-hidden />
                 <RadioTower className="relative size-4" aria-hidden />
               </>
-            ) : <FlaskConical className="size-4" aria-hidden />}
+            ) : scaleSelected ? <Database className="size-4" aria-hidden /> : <FlaskConical className="size-4" aria-hidden />}
           </span>
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-strong">
-                Continuous synthetic ingestion
-              </p>
-              <StatusBadge status={status} />
-              {session ? (
-                <span className="font-mono text-[10px] font-bold text-text-muted">
-                  {session.emitted_events.toLocaleString()} receipts | {session.cadence_seconds}s cadence
-                  {running ? ` | ${elapsed} live` : ""}
-                </span>
-              ) : null}
+              <p className="text-xs font-bold text-text-strong">{scaleSelected ? "Scale test selected" : "Live demo data"}</p>
+              {!scaleSelected ? <StatusBadge status={status} /> : null}
+              <span className="rounded-full border border-success/30 bg-success-soft px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-success">Safe synthetic data</span>
             </div>
-            <p className="mt-1 text-[10.5px] leading-4 text-text-muted">
-              Continues until Stop. Each synthetic pulse uses S3, EventBridge, Step Functions, quality, lineage, catalog, and decision projections. USAspending remains a separate official feed.
+            <p className="mt-0.5 text-[11px] leading-4 text-text-muted">
+              {scaleSelected
+                ? `Viewing ${selection.runId}. Return to the demo portfolio to use live updates.`
+                : running
+                  ? `${session?.emitted_events.toLocaleString() ?? 0} new ${session?.emitted_events === 1 ? "record" : "records"} | every ${session?.cadence_seconds ?? cadence} ${session?.cadence_seconds === 1 ? "second" : "seconds"} | live for ${elapsed}`
+                  : session && session.emitted_events > 0
+                    ? `Last session added ${session.emitted_events.toLocaleString()} records. Start again to keep the portfolio changing.`
+                    : "Adds one sample research award at a time and updates the dashboard, trusted data, and history."}
             </p>
-            {data?.latest_event ? (
-              <p className="mt-1 truncate font-mono text-[9px] text-info" title={data.latest_event.message}>
-                Latest receipt {data.latest_event.sequence}: {data.latest_event.run_id ?? data.latest_event.event_id}
-              </p>
-            ) : null}
-            {running ? (
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/80" aria-label="Continuous ingestion active">
-                <div className="h-full w-full rounded-full bg-gradient-to-r from-info/25 via-info to-info/25 motion-safe:animate-pulse" />
-              </div>
-            ) : null}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {error ? (
             <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-danger">
-              <AlertTriangle className="size-3.5" aria-hidden /> Status unavailable
+              <AlertTriangle className="size-3.5" aria-hidden /> Live status unavailable
             </span>
           ) : null}
-          {auth.role === "poweruser" && !running ? (
+          {scaleSelected ? (
+            <button
+              type="button"
+              onClick={selectCurated}
+              className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-[10px] font-bold text-text-strong hover:bg-surface-2"
+            >
+              <RotateCcw className="size-3.5" aria-hidden /> Use demo portfolio
+            </button>
+          ) : null}
+          {auth.role === "poweruser" && !running && !scaleSelected ? (
             <>
               <label className="sr-only" htmlFor="demo-stream-cadence">Synthetic stream cadence</label>
               <select
@@ -209,7 +213,7 @@ export function LiveDemoStreamBar() {
                 className="min-h-10 rounded-md border border-border bg-white px-2 text-[10px] font-bold text-text-muted"
               >
                 <option value="2">Every 2 seconds</option>
-                <option value="1">Every 1 second</option>
+                <option value="1">Every second</option>
               </select>
               <button
                 type="button"
@@ -218,11 +222,11 @@ export function LiveDemoStreamBar() {
                 className="inline-flex min-h-10 items-center gap-2 rounded-md bg-gov-primary px-3 text-[10px] font-bold text-white transition-colors hover:bg-gov-primary-dark disabled:opacity-50"
               >
                 {pending === "start" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Play className="size-3.5" aria-hidden />}
-                Start continuous stream
+                Start live updates
               </button>
             </>
           ) : null}
-          {auth.role === "poweruser" && running ? (
+          {auth.role === "poweruser" && running && !scaleSelected ? (
             <button
               type="button"
               onClick={() => void stop()}
@@ -230,9 +234,12 @@ export function LiveDemoStreamBar() {
               className="inline-flex min-h-10 items-center gap-2 rounded-md border border-danger/30 bg-white px-3 text-[10px] font-bold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
             >
               {pending === "stop" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Square className="size-3.5" aria-hidden />}
-              Stop stream
+              Stop live updates
             </button>
           ) : null}
+          <Link href="/ingest/" className="inline-flex min-h-10 items-center rounded-md px-2 text-[10px] font-bold text-gov-primary hover:bg-gov-primary-lighter">
+            See how data moves
+          </Link>
         </div>
       </div>
     </section>
@@ -254,7 +261,7 @@ function formatElapsed(startedAt: string | null, nowMs: number): string {
 
 function StatusBadge({ status }: { status: LiveDemoStreamResponse["session"]["status"] }) {
   if (status === "running") {
-    return <span className="rounded-full border border-info/30 bg-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-info">Live now</span>;
+    return <span className="rounded-full border border-info/30 bg-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-info">Updating now</span>;
   }
   if (status === "completed") {
     return <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success-soft px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-success"><CheckCircle2 className="size-3" aria-hidden /> Complete</span>;
@@ -262,5 +269,5 @@ function StatusBadge({ status }: { status: LiveDemoStreamResponse["session"]["st
   if (status === "failed") {
     return <span className="rounded-full border border-danger/30 bg-danger-soft px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-danger">Failed</span>;
   }
-  return <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-text-muted">{status}</span>;
+  return <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-text-muted">{status === "stopped" || status === "idle" ? "Updates stopped" : status}</span>;
 }

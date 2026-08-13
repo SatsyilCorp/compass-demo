@@ -18,6 +18,49 @@ export type SignalInbox = {
   activityTotal: number;
 };
 
+export type SignalGuidance = {
+  whyItMatters: string;
+  recommendedAction: string;
+};
+
+export function signalGuidance(signal: OperationsSignal): SignalGuidance {
+  const kind = `${signal.signal_type} ${signal.run_kind ?? ""} ${signal.title}`.toLowerCase();
+  if (kind.includes("model") && kind.includes("drift")) {
+    return {
+      whyItMatters: "Recent documents look different from the model's training baseline, so new classifications may become less reliable.",
+      recommendedAction: "Review the drift evidence, sample recent classifications, and approve retraining only if the change is confirmed.",
+    };
+  }
+  if (kind.includes("quarant") || kind.includes("quality")) {
+    return {
+      whyItMatters: "The affected data did not reach the trusted portfolio, so the current dashboard remains protected from the failed records.",
+      recommendedAction: "Open the evidence, review the failed checks, correct the source, and submit it again.",
+    };
+  }
+  if (kind.includes("public") || kind.includes("acquisition")) {
+    return {
+      whyItMatters: "A public-source change can alter portfolio totals or relationships and should be confirmed before it informs a decision.",
+      recommendedAction: "Compare the new public snapshot with the prior version and confirm the changed records.",
+    };
+  }
+  if (signal.deliveries.some((delivery) => delivery.state === "failed")) {
+    return {
+      whyItMatters: "The system retained the event, but one notification channel did not deliver it to its intended destination.",
+      recommendedAction: "Review the delivery evidence, repair the channel configuration, and retry the notification.",
+    };
+  }
+  if (signal.severity === "critical") {
+    return {
+      whyItMatters: "A critical workflow condition could affect the freshness or reliability of decision information.",
+      recommendedAction: "Open the evidence now, confirm the affected run, and assign an owner before acknowledging the alert.",
+    };
+  }
+  return {
+    whyItMatters: "This condition may require a person to confirm the data or workflow result before it is relied upon.",
+    recommendedAction: "Open the evidence, verify what happened, and mark the alert reviewed when the next step is owned.",
+  };
+}
+
 export function signalNeedsAttention(signal: OperationsSignal): boolean {
   if (signal.status !== "open") return false;
   if (signal.severity === "critical" || signal.severity === "warning") return true;

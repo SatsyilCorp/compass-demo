@@ -21,6 +21,7 @@ import type { Anomaly, Approval, ChatCitation } from "@/lib/types";
 
 import { useCompassAction, useCompassQuery } from "./use-compass-query";
 import { dateTimeShort } from "./format";
+import { explainAnomaly, friendlyAnomalyKind } from "./anomaly-explanation";
 
 /**
  * Anomaly → summary → approval (element 6).
@@ -59,10 +60,10 @@ const SEVERITY_STYLE: Record<Anomaly["severity"], string> = {
 
 const STAGE_LABEL: Record<Stage, string> = {
   detected: "Open",
-  summarized: "Summarized",
-  pending: "Approval pending",
-  approved: "Approved",
-  rejected: "Rejected",
+  summarized: "Explained",
+  pending: "In review",
+  approved: "Confirmed",
+  rejected: "Correction needed",
 };
 
 const STAGE_STYLE: Record<Stage, string> = {
@@ -74,10 +75,10 @@ const STAGE_STYLE: Record<Stage, string> = {
 };
 
 const STEPS: { key: Stage; title: string }[] = [
-  { key: "detected", title: "Detected" },
-  { key: "summarized", title: "Summarized" },
-  { key: "pending", title: "Approval requested" },
-  { key: "approved", title: "Decided" },
+  { key: "detected", title: "Flagged" },
+  { key: "summarized", title: "Explained" },
+  { key: "pending", title: "Sent for review" },
+  { key: "approved", title: "Decision recorded" },
 ];
 
 const STAGE_ORDER: Record<Stage, number> = {
@@ -104,12 +105,14 @@ export function AnomalyWorkflow() {
     const rank: Record<Anomaly["status"], number> = { open: 0, acknowledged: 1, resolved: 2 };
     const sev: Record<Anomaly["severity"], number> = { critical: 0, high: 1, medium: 2, low: 3 };
     return list
+      .filter((anomaly) => anomaly.status === "open")
       .slice()
       .sort((a, b) => rank[a.status] - rank[b.status] || sev[a.severity] - sev[b.severity]);
   }, [anomalies.data]);
 
   const selected = rows.find((a) => a.id === selectedId) ?? rows[0] ?? null;
   const item: WorkItem = selected ? (work[selected.id] ?? { stage: "detected" }) : { stage: "detected" };
+  const explanation = selected ? explainAnomaly(selected) : null;
 
   function patch(id: number, next: Partial<WorkItem>) {
     setWork((prev) => ({ ...prev, [id]: { ...(prev[id] ?? { stage: "detected" }), ...next } }));
@@ -119,10 +122,10 @@ export function AnomalyWorkflow() {
     try {
       const res = await chat.run({
         message:
-          `An automated quality check flagged grant ${a.grant_no ?? a.grant_id} with anomaly type ` +
-          `"${a.kind}" (severity ${a.severity}). Reason on file: ${a.reason} ` +
-          `Write a two-sentence triage note for a program officer: what the finding means and what ` +
-          `to check before approving a disposition.`,
+          `Compass flagged ${a.grant_no ?? a.grant_id} for human review. ` +
+          `The finding is ${friendlyAnomalyKind(a.kind)} with ${a.severity} priority. ` +
+          `Source reason: ${a.reason} Write two plain-language sentences that explain what to verify ` +
+          `before recording a decision. Do not imply that the project or record is wrong.`,
       });
       patch(a.id, {
         stage: "summarized",
@@ -175,13 +178,15 @@ export function AnomalyWorkflow() {
             <CircleAlert className="size-4" aria-hidden />
           </span>
           <div>
-            <h2 className="text-[14.5px] font-semibold text-text-strong">
-              Anomaly → summary → approval
-            </h2>
-            <p className="mt-0.5 max-w-2xl text-[11.5px] leading-snug text-text-muted">
-              Pick a finding, draft an LLM triage note, raise it for approval, and record the
-              decision. Three endpoints, one thread: GET /anomalies → POST /chat → POST /approvals.
+            <h2 className="text-lg font-bold text-text-strong">Items needing review</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-text-muted">
+              An anomaly is a record that looks different from similar records. It is a prompt for a person to review the evidence, not proof that anything is wrong.
             </p>
+            {!anomalies.loading && !anomalies.error ? (
+              <p className="mt-1 text-[10px] font-semibold text-text-subtle">
+                Showing {rows.length} open {rows.length === 1 ? "finding" : "findings"}. Reviewed items remain available in run history.
+              </p>
+            ) : null}
           </div>
         </div>
         <span
@@ -193,7 +198,7 @@ export function AnomalyWorkflow() {
           )}
         >
           {canDecide ? <ShieldCheck className="size-3.5" aria-hidden /> : <Lock className="size-3.5" aria-hidden />}
-          {canDecide ? "You may decide approvals" : "Request only. Decisions need the power-user role"}
+          {canDecide ? "You can complete reviews" : "You can request a review"}
         </span>
       </header>
 
@@ -212,7 +217,7 @@ export function AnomalyWorkflow() {
             </p>
           ) : rows.length === 0 ? (
             <p className="m-4 rounded border border-dashed border-border px-3 py-6 text-center text-[12px] text-text-subtle">
-              No anomalies are open in the portfolio visible to you.
+              No unusual records need review in the portfolio visible to you.
             </p>
           ) : (
             <ul className="max-h-[420px] overflow-y-auto">
@@ -243,10 +248,8 @@ export function AnomalyWorkflow() {
                           {a.severity}
                         </span>
                       </div>
-                      <p className="mt-1 text-[12px] font-medium text-text-strong">{a.kind}</p>
-                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-text-muted">
-                        {a.reason}
-                      </p>
+                      <p className="mt-1 text-[13px] font-bold text-text-strong">{friendlyAnomalyKind(a.kind)}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-5 text-text-muted">{explainAnomaly(a).whatHappened}</p>
                       <span
                         className={clsx(
                           "mt-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold",
@@ -271,16 +274,25 @@ export function AnomalyWorkflow() {
             <>
               <Stepper stage={item.stage} />
 
-              <div className="mt-4 rounded border border-border bg-surface-2 px-3 py-2.5">
-                <p className="flex items-center gap-2 text-[12px] font-semibold text-text-strong">
-                  <AlertTriangle className="size-3.5 text-warn" aria-hidden />
-                  {selected.kind} · {selected.grant_no ?? `grant #${selected.grant_id}`}
-                </p>
-                <p className="mt-1 text-[11.5px] leading-snug text-text-muted">{selected.reason}</p>
-                <p className="mt-1 font-mono text-[10px] text-text-subtle">
-                  anomalies.id {selected.id} · status {selected.status} · detected{" "}
-                  {dateTimeShort(selected.created_at)}
-                </p>
+              <div className="mt-4 overflow-hidden rounded-lg border border-warn/35 bg-warn-soft/55">
+                <div className="flex items-start gap-3 border-b border-warn/20 p-4">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-md bg-warn text-white"><AlertTriangle className="size-4" aria-hidden /></span>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-wide text-warn">Review this finding</p>
+                    <h3 className="mt-1 text-base font-bold text-text-strong">{explanation?.title}</h3>
+                    <p className="mt-1 text-xs text-text-muted">{selected.grant_no ?? `Grant ${selected.grant_id ?? "not linked"}`}{selected.title ? ` | ${selected.title}` : ""}</p>
+                  </div>
+                </div>
+                <div className="grid gap-px bg-warn/15 sm:grid-cols-3">
+                  <ExplanationCell label="What happened" value={explanation?.whatHappened ?? ""} />
+                  <ExplanationCell label="Why it matters" value={explanation?.whyItMatters ?? ""} />
+                  <ExplanationCell label="Recommended action" value={explanation?.recommendedAction ?? ""} />
+                </div>
+                <details className="border-t border-warn/20 bg-white/70 px-4 py-3">
+                  <summary className="cursor-pointer text-[10px] font-bold text-text-muted">Technical evidence</summary>
+                  <p className="mt-2 text-xs leading-5 text-text-muted">{selected.reason}</p>
+                  <p className="mt-1 font-mono text-[9px] text-text-subtle">Finding {selected.id} | {selected.status} | {dateTimeShort(selected.created_at)}</p>
+                </details>
               </div>
 
               {/* Step 2: summary */}
@@ -289,7 +301,7 @@ export function AnomalyWorkflow() {
                   <div className="rounded border border-border px-3 py-2.5">
                     <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
                       <FileText className="size-3.5" aria-hidden />
-                      Triage note: generated
+                      Compass explanation
                     </p>
                     <p className="mt-1.5 text-[12.5px] leading-relaxed text-text">{item.summary}</p>
                     {item.citations && item.citations.length > 0 ? (
@@ -305,11 +317,7 @@ export function AnomalyWorkflow() {
                         ))}
                       </ul>
                     ) : null}
-                    {item.model ? (
-                      <p className="mt-1.5 font-mono text-[10px] text-text-subtle">
-                        model: {item.model}
-                      </p>
-                    ) : null}
+                    {item.model ? <p className="mt-1.5 text-[10px] text-text-subtle">Generated with the configured language model. Evidence links are shown above.</p> : null}
                   </div>
                 ) : (
                   <button
@@ -323,7 +331,7 @@ export function AnomalyWorkflow() {
                     ) : (
                       <FileText className="size-3.5" aria-hidden />
                     )}
-                    Draft triage note
+                    Explain this finding
                   </button>
                 )}
                 {chat.error ? (
@@ -345,7 +353,7 @@ export function AnomalyWorkflow() {
                     ) : (
                       <Send className="size-3.5" aria-hidden />
                     )}
-                    Request approval
+                    Send for review
                   </button>
                 ) : null}
 
@@ -358,7 +366,7 @@ export function AnomalyWorkflow() {
                       className="inline-flex items-center gap-1.5 rounded bg-success px-3 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
                       <Check className="size-3.5" aria-hidden />
-                      Approve
+                      Confirm disposition
                     </button>
                     <button
                       type="button"
@@ -367,7 +375,7 @@ export function AnomalyWorkflow() {
                       className="inline-flex items-center gap-1.5 rounded border border-danger px-3 py-2 text-[12px] font-semibold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
                     >
                       <X className="size-3.5" aria-hidden />
-                      Reject
+                      Send back for correction
                     </button>
                   </>
                 ) : null}
@@ -375,7 +383,7 @@ export function AnomalyWorkflow() {
                 {item.stage === "pending" && !canDecide ? (
                   <p className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-3 py-2 text-[11.5px] text-text-muted">
                     <Lock className="size-3.5" aria-hidden />
-                    Waiting on a power-user decision. Switch persona to decide it.
+                    Waiting for an authorized reviewer.
                   </p>
                 ) : null}
 
@@ -400,7 +408,7 @@ export function AnomalyWorkflow() {
                   className="mt-3 inline-flex items-center gap-1.5 rounded border border-border px-3 py-2 text-[12px] font-semibold text-text transition-colors hover:bg-surface-2"
                 >
                   <RotateCcw className="size-3.5" aria-hidden />
-                  Reset this finding
+                  Review again
                 </button>
               ) : null}
             </>
@@ -408,6 +416,15 @@ export function AnomalyWorkflow() {
         </div>
       </div>
     </section>
+  );
+}
+
+function ExplanationCell({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="bg-white/90 p-4">
+      <p className="text-[9px] font-bold uppercase tracking-wide text-gold-ink">{label}</p>
+      <p className="mt-1.5 text-xs leading-5 text-text">{value}</p>
+    </article>
   );
 }
 
@@ -421,7 +438,7 @@ function Stepper({ stage }: { stage: Stage }) {
         const done = terminal || i < current;
         const active = !done && i === current;
         const label =
-          s.key === "approved" && stage === "rejected" ? "Decided: rejected" : s.title;
+          s.key === "approved" && stage === "rejected" ? "Correction requested" : s.title;
         return (
           <li key={s.key} className="flex items-center gap-1.5">
             <span
@@ -458,14 +475,14 @@ function ApprovalRecord({ approval }: { approval: Approval }) {
         : "border-warn bg-warn-soft";
   return (
     <dl className={clsx("mt-4 grid grid-cols-2 gap-x-4 gap-y-1.5 rounded border px-3 py-2.5 text-[11.5px] sm:grid-cols-3", tone)}>
-      <Field label="approvals.id" value={String(approval.id)} mono />
-      <Field label="subject" value={`${approval.subject_type}:${approval.subject_id}`} mono />
-      <Field label="state" value={approval.state} mono />
-      <Field label="requested_by" value={approval.requested_by} />
-      <Field label="decided_by" value={approval.decided_by ?? "Not available"} />
+      <Field label="Review number" value={String(approval.id)} mono />
+      <Field label="Finding" value={`${approval.subject_type}:${approval.subject_id}`} mono />
+      <Field label="Status" value={approval.state} mono />
+      <Field label="Requested by" value={approval.requested_by} />
+      <Field label="Reviewed by" value={approval.decided_by ?? "Not yet reviewed"} />
       <Field
-        label="decided_at"
-        value={approval.decided_at ? dateTimeShort(approval.decided_at) : "Not available"}
+        label="Reviewed at"
+        value={approval.decided_at ? dateTimeShort(approval.decided_at) : "Not yet reviewed"}
       />
     </dl>
   );

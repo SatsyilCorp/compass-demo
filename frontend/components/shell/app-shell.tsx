@@ -9,7 +9,6 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { AppFooter } from "@/components/shell/app-footer";
 import type { AppRole } from "@/lib/auth/use-app-auth";
 import { PresenterGuide } from "@/components/presenter/presenter-guide";
-import { EvidenceSetBar } from "@/components/shell/evidence-set-bar";
 import { LiveDemoStreamBar } from "@/components/shell/live-demo-stream-bar";
 
 export function AppShell({
@@ -51,7 +50,6 @@ export function AppShell({
             presenterOpen={presenterOpen}
             onPresenterToggle={togglePresenter}
           />
-          <EvidenceSetBar />
           <LiveDemoStreamBar />
           <main
             id="main-content"

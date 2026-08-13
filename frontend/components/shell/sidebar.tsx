@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import {
   CircleDot,
+  ChevronDown,
   ClipboardCheck,
   Database,
   Download,
@@ -43,7 +44,7 @@ type SidebarProps = {
 
 export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }: SidebarProps) {
   const pathname = usePathname() ?? "";
-  const { role, displayName, orgUnit } = useAppAuth();
+  const { role } = useAppAuth();
   const sections = sidebarFor(role);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -72,8 +73,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }:
         <RailContent
           pathname={pathname}
           sections={sections}
-          displayName={displayName}
-          orgUnit={orgUnit}
         />
       </aside>
 
@@ -104,8 +103,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }:
             <RailContent
               pathname={pathname}
               sections={sections}
-              displayName={displayName}
-              orgUnit={orgUnit}
               onNavigate={onMobileClose}
               mobile
             />
@@ -119,15 +116,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }:
 function RailContent({
   pathname,
   sections,
-  displayName,
-  orgUnit,
   onNavigate,
   mobile = false,
 }: {
   pathname: string;
   sections: NavSection[];
-  displayName?: string | null;
-  orgUnit?: string | null;
   onNavigate?: () => void;
   mobile?: boolean;
 }) {
@@ -144,65 +137,31 @@ function RailContent({
         {mobile && <p className="mt-2 text-xs text-white/45">Mission workspace</p>}
       </div>
 
-      {displayName && (
-        <div className="mx-4 mt-4 flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-3">
-          <span className="relative grid size-8 shrink-0 place-items-center rounded-full bg-white/10">
-            <CircleDot className="size-3.5 text-gold-light" aria-hidden />
-            <span className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-gov-primary bg-emerald-400" aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/45">Active persona</p>
-            <p className="truncate text-[13px] font-semibold text-white">{displayName}</p>
-            {orgUnit && <p className="truncate text-[11px] text-white/55">{orgUnit}</p>}
-          </div>
-        </div>
-      )}
-
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
-        {sections.map((section) => (
-          <div key={section.label} className="mb-6 last:mb-0">
-            <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.17em] text-gold-light/75">
-              {section.label}
-            </p>
-            <ul className="m-0 list-none space-y-1 p-0">
-              {section.items.map((item) => {
-                const active =
-                  pathname === item.href || pathname.startsWith(`${item.href.replace(/\/$/, "")}/`);
-                const Icon = ICONS[item.icon] ?? CircleDot;
-
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={onNavigate}
-                      aria-current={active ? "page" : undefined}
-                      className={`group relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-[13px] transition-colors ${
-                        active
-                          ? "bg-white/12 font-semibold text-white"
-                          : "text-white/68 hover:bg-white/[0.07] hover:text-white"
-                      }`}
-                    >
-                      <span
-                        aria-hidden
-                        className={`absolute inset-y-2 left-0 w-[3px] rounded-full transition-colors ${active ? "bg-gold-light" : "bg-transparent"}`}
-                      />
-                      <Icon
-                        className={`size-[17px] shrink-0 ${active ? "text-gold-light" : "text-white/45 group-hover:text-white/75"}`}
-                        aria-hidden
-                      />
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {item.stage && (
-                        <span className={`font-mono text-[10px] ${active ? "text-white/60" : "text-white/30"}`}>
-                          {item.stage}
-                        </span>
-                      )}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+        {sections.map((section) => {
+          const sectionActive = section.items.some((item) => (
+            pathname === item.href || pathname.startsWith(`${item.href.replace(/\/$/, "")}/`)
+          ));
+          if (section.collapsed) {
+            return (
+              <details key={section.label} open={sectionActive} className="group mb-3 last:mb-0">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-md px-3 text-[12px] font-bold text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white [&::-webkit-details-marker]:hidden">
+                  <ChevronDown className="size-4 -rotate-90 text-white/40 transition-transform group-open:rotate-0" aria-hidden />
+                  <span>{section.label}</span>
+                </summary>
+                <NavItems pathname={pathname} section={section} onNavigate={onNavigate} nested />
+              </details>
+            );
+          }
+          return (
+            <div key={section.label} className="mb-6 last:mb-0">
+              <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.17em] text-gold-light/75">
+                {section.label}
+              </p>
+              <NavItems pathname={pathname} section={section} onNavigate={onNavigate} />
+            </div>
+          );
+        })}
       </nav>
 
       <div className="border-t border-white/10 px-5 py-4">
@@ -210,5 +169,44 @@ function RailContent({
         <p className="mt-1 text-[10px] text-white/35">Built by Satsyil Corp</p>
       </div>
     </>
+  );
+}
+
+function NavItems({
+  pathname,
+  section,
+  onNavigate,
+  nested = false,
+}: {
+  pathname: string;
+  section: NavSection;
+  onNavigate?: () => void;
+  nested?: boolean;
+}) {
+  return (
+    <ul className={`m-0 list-none space-y-1 p-0 ${nested ? "pb-2 pl-3" : ""}`}>
+      {section.items.map((item) => {
+        const active = pathname === item.href || pathname.startsWith(`${item.href.replace(/\/$/, "")}/`);
+        const Icon = ICONS[item.icon] ?? CircleDot;
+        return (
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
+              className={`group relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-[13px] transition-colors ${
+                active
+                  ? "bg-white/12 font-semibold text-white"
+                  : "text-white/68 hover:bg-white/[0.07] hover:text-white"
+              }`}
+            >
+              <span aria-hidden className={`absolute inset-y-2 left-0 w-[3px] rounded-full ${active ? "bg-gold-light" : "bg-transparent"}`} />
+              <Icon className={`size-[17px] shrink-0 ${active ? "text-gold-light" : "text-white/45 group-hover:text-white/75"}`} aria-hidden />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

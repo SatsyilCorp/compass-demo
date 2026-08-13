@@ -275,6 +275,9 @@ export type Anomaly = {
   id: number;
   grant_id: number | null;
   grant_no?: string;
+  title?: string;
+  program_area?: string;
+  org_unit?: string;
   kind: string;
   severity: "low" | "medium" | "high" | "critical";
   reason: string;
