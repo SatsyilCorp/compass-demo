@@ -219,7 +219,7 @@ DEMO_STREAM_PROGRAM_AREAS = (
     "Quantum",
     "Undersea Systems",
 )
-DEMO_STREAM_ORG_UNITS = ("Code-30", "Code-31", "Code-32", "Code-33", "Code-34")
+DEMO_STREAM_ORG_UNITS = ("Code-30", "Code-31", "Code-32", "Code-34", "Code-35")
 
 
 def _kinesis():

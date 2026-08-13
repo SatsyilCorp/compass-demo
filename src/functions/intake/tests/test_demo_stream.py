@@ -104,6 +104,17 @@ def identity():
     )
 
 
+def test_default_stream_records_use_only_governed_org_units():
+    governed = {"Code-30", "Code-31", "Code-32", "Code-34", "Code-35"}
+
+    records = [
+        app._demo_stream_record("pulse-policy", sequence, "2026-08-13T12:00:00Z")
+        for sequence in range(1, 16)
+    ]
+
+    assert {record["org_unit"] for record in records} == governed
+
+
 def test_start_validates_bounds_and_starts_one_bounded_execution(monkeypatch):
     table = FakeTable()
     states = FakeStepFunctions()
