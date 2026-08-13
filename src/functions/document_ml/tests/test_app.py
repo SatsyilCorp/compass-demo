@@ -254,6 +254,52 @@ def test_drop_runs_bronze_quality_silver_gold_and_exposes_lineage(monkeypatch):
     assert fake.records[("run", run_id)]["stage"] == "gold-published"
 
 
+def test_public_award_narratives_use_governed_champion_and_publish_evidence(monkeypatch):
+    fake = FakeRepository()
+    monkeypatch.setattr(app, "_REPOSITORY", fake)
+    train, _test = app.engine.split_samples(app.engine.default_training_samples())
+    model = app.engine.train_classifier(train)
+    fake.put_json("mlops/models/champion.json", model)
+    fake.put_record(
+        "model",
+        model["model_version"],
+        {
+            "model_version": model["model_version"],
+            "artifact_key": "mlops/models/champion.json",
+            "status": "deployed",
+            "updated_at": "2026-08-13T12:00:00+00:00",
+        },
+    )
+    fake.put_alias("champion", model["model_version"], {"status": "active"})
+
+    receipt = app.classify_public_records(
+        {
+            "acquisition_run_id": "acq-public-test",
+            "canonical_uri": "public-evidence://canonical-records.json",
+            "canonical_sha256": "b" * 64,
+            "records": [
+                {
+                    "source_record_id": "N00014-26-1-0001",
+                    "recipient_name": "Example Research University",
+                    "award_amount_usd": 500000,
+                    "award_type": "PROJECT GRANT",
+                    "awarding_subagency": "Department of the Navy",
+                    "description": "Technical research objectives, measured performance, laboratory findings, and test results.",
+                    "source_url": "https://www.usaspending.gov/award/example",
+                }
+            ],
+        }
+    )
+
+    assert receipt["status"] == "completed"
+    assert receipt["model_registered"] is True
+    assert receipt["model_version"] == model["model_version"]
+    assert receipt["record_count"] == 1
+    assert receipt["artifact_uri"].startswith("lake://documents/gold/public-acquisitions/")
+    assert fake.records[("run", receipt["run_id"])]["source_kind"] == "public-source-narratives"
+    assert receipt["preview"][0]["source_record_id"] == "N00014-26-1-0001"
+
+
 def test_public_upload_with_detected_sensitive_patterns_is_quarantined(monkeypatch):
     fake = FakeRepository()
     monkeypatch.setattr(app, "_REPOSITORY", fake)

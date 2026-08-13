@@ -1844,7 +1844,7 @@ Resources:
       CodeUri: src/functions/public_acquisition/
       Handler: app.handler
       MemorySize: 512
-      Timeout: 60
+      Timeout: 120
       Layers: [!Ref CommonLayer]
       Environment:
         Variables:
@@ -1852,6 +1852,7 @@ Resources:
           OPERATIONS_TOPIC_ARN: !Ref OperationsTopic
           PUBLIC_ACQUISITION_BUCKET: !Ref RawBucket
           PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD: !Ref PublicAcquisitionChangeAlertThreshold
+          PUBLIC_DOCUMENT_ML_FUNCTION: !Ref DocumentMlFunction
           STREAM_NAME: !Ref TickerStream
       Policies:
         - Statement:
@@ -1877,6 +1878,10 @@ Resources:
               Effect: Allow
               Action: [kinesis:PutRecord, kinesis:PutRecords]
               Resource: !GetAtt TickerStream.Arn
+            - Sid: ClassifyPublicAwardNarratives
+              Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt DocumentMlFunction.Arn
       Events:
         ListPublicAcquisitions:
           Type: HttpApi
@@ -1890,6 +1895,12 @@ Resources:
             ApiId: !Ref HttpApi
             Method: POST
             Path: /public-intelligence/acquisitions/run
+        RunPublicSourceAcquisition:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /public-intelligence/sources/{source_id}/run
         ScheduledPublicAcquisition:
           Type: Schedule
           Properties:
@@ -1904,6 +1915,48 @@ Resources:
             DeadLetterConfig:
               Type: SQS
               QueueLogicalId: PublicAcquisitionScheduleDeadLetterQueue
+        ScheduledGrantsGovAcquisition:
+          Type: Schedule
+          Properties:
+            Name: !Sub "${AWS::StackName}-grants-gov-acquisition"
+            Description: Fifteen-minute bounded Grants.gov DOD-ONR opportunity poll.
+            Schedule: rate(15 minutes)
+            State: !Ref PublicAcquisitionState
+            Input: '{"action":"poll_source","source_id":"grants-gov-onr","profile":"standard"}'
+            RetryPolicy:
+              MaximumEventAgeInSeconds: 3600
+              MaximumRetryAttempts: 2
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: GrantsGovAcquisitionScheduleDeadLetterQueue
+        ScheduledFederalRegisterAcquisition:
+          Type: Schedule
+          Properties:
+            Name: !Sub "${AWS::StackName}-federal-register-acquisition"
+            Description: Thirty-minute bounded Federal Register ONR notice poll.
+            Schedule: rate(30 minutes)
+            State: !Ref PublicAcquisitionState
+            Input: '{"action":"poll_source","source_id":"federal-register-onr","profile":"standard"}'
+            RetryPolicy:
+              MaximumEventAgeInSeconds: 3600
+              MaximumRetryAttempts: 2
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: FederalRegisterAcquisitionScheduleDeadLetterQueue
+        ScheduledCrossrefAcquisition:
+          Type: Schedule
+          Properties:
+            Name: !Sub "${AWS::StackName}-crossref-acquisition"
+            Description: Hourly bounded Crossref exact ONR funder publication poll.
+            Schedule: rate(1 hour)
+            State: !Ref PublicAcquisitionState
+            Input: '{"action":"poll_source","source_id":"crossref-onr","profile":"standard"}'
+            RetryPolicy:
+              MaximumEventAgeInSeconds: 3600
+              MaximumRetryAttempts: 2
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: CrossrefAcquisitionScheduleDeadLetterQueue
 
   PublicAcquisitionScheduleDeadLetterAlarm:
     Type: AWS::CloudWatch::Alarm

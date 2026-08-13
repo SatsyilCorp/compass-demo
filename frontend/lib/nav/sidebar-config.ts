@@ -23,6 +23,7 @@ export const SIDEBAR_SECTIONS: NavSection[] = [
     items: [
       { href: "/admin/delivery/", label: "IaC and DevSecOps", shortLabel: "Delivery", icon: "workflow", stage: "02", element: 2 },
       { href: "/ingest/", label: "Ingestion and DataOps", shortLabel: "Ingest", icon: "upload-cloud", stage: "03", element: 3 },
+      { href: "/admin/acquisition/", label: "Live source operations", shortLabel: "Sources", icon: "radio-tower", stage: "03A", element: 3 },
       { href: "/catalog/", label: "Governance and catalog", shortLabel: "Govern", icon: "database", stage: "04", element: 4 },
       { href: "/admin/mlops/", label: "Decision analytics and MLOps", shortLabel: "Model", icon: "network", stage: "05", element: 5 },
       { href: "/intelligence/", label: "Public portfolio intelligence", shortLabel: "Intelligence", icon: "radar", stage: "05A", element: 5 },

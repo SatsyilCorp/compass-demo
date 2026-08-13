@@ -1058,7 +1058,17 @@ def _schemas() -> dict[str, Any]:
             "properties": {
                 "contract": {"type": "string", "const": "compass.public-acquisition.v1"},
                 "run_id": {"type": "string"},
-                "source_id": {"type": "string", "const": "usaspending-onr-grants"},
+                "source_id": {
+                    "type": "string",
+                    "enum": [
+                        "usaspending-onr-grants",
+                        "grants-gov-onr",
+                        "federal-register-onr",
+                        "crossref-onr",
+                    ],
+                },
+                "source_label": {"type": "string"},
+                "source": {"type": "string"},
                 "status": {"type": "string", "enum": ["completed", "failed", "running"]},
                 "stage": {"type": "string"},
                 "started_at": {"type": "string", "format": "date-time"},
@@ -1068,15 +1078,82 @@ def _schemas() -> dict[str, Any]:
                 "source_response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "canonical_object_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "record_count": {"type": "integer", "minimum": 0},
+                "total_available": {"type": "integer", "minimum": 0},
+                "profile": {"type": "string", "enum": ["quick", "standard", "deep"]},
+                "requested_records": {"type": "integer", "minimum": 0},
+                "pages_fetched": {"type": "integer", "minimum": 0},
+                "source_response_bytes": {"type": "integer", "minimum": 0},
+                "duration_ms": {"type": "integer", "minimum": 0},
                 "added_records": {"type": "integer", "minimum": 0},
                 "changed_records": {"type": "integer", "minimum": 0},
                 "unchanged_records": {"type": "integer", "minimum": 0},
                 "not_observed_records": {"type": "integer", "minimum": 0},
+                "has_more_source_pages": {"type": "boolean"},
+                "review_flag_count": {"type": "integer", "minimum": 0},
+                "review_flags": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {"type": "object", "additionalProperties": True},
+                },
+                "record_preview": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {"type": "object", "additionalProperties": True},
+                },
+                "identity_summary": {"type": "object", "additionalProperties": True},
+                "classification_status": {
+                    "type": "string",
+                    "enum": ["completed", "degraded", "not-configured"],
+                },
+                "classification_summary": {
+                    "oneOf": [
+                        {"type": "object", "additionalProperties": True},
+                        {"type": "null"},
+                    ]
+                },
                 "poll_mode": {"type": "string", "const": "scheduled-micro-batch"},
                 "scope_disclosure": {"type": "string"},
                 "failure_code": {"type": "string"},
             },
             "additionalProperties": True,
+        },
+        "PublicSourceHealth": {
+            "type": "object",
+            "required": [
+                "source_id",
+                "label",
+                "authority",
+                "endpoint",
+                "cadence_seconds",
+                "status",
+            ],
+            "properties": {
+                "source_id": {"type": "string"},
+                "label": {"type": "string"},
+                "authority": {"type": "string"},
+                "endpoint": {"type": "string", "format": "uri"},
+                "cadence_seconds": {"type": "integer", "minimum": 1},
+                "data_kind": {"type": "string"},
+                "model_use": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["healthy", "stale", "failed", "awaiting-first-run"],
+                },
+                "last_attempt_at": {"type": ["string", "null"], "format": "date-time"},
+                "last_accepted_at": {"type": ["string", "null"], "format": "date-time"},
+                "age_seconds": {"type": ["integer", "null"], "minimum": 0},
+                "success_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+                "average_duration_ms": {"type": ["integer", "null"], "minimum": 0},
+                "latest_run_id": {"type": ["string", "null"]},
+                "latest_record_count": {"type": ["integer", "null"], "minimum": 0},
+                "latest_added_records": {"type": ["integer", "null"], "minimum": 0},
+                "latest_changed_records": {"type": ["integer", "null"], "minimum": 0},
+                "latest_review_flag_count": {"type": ["integer", "null"], "minimum": 0},
+                "classification_status": {"type": ["string", "null"]},
+                "model_version": {"type": ["string", "null"]},
+                "has_more_source_pages": {"type": "boolean"},
+            },
+            "additionalProperties": False,
         },
         "PublicAcquisitionList": {
             "type": "object",
@@ -1085,9 +1162,15 @@ def _schemas() -> dict[str, Any]:
                 "contract": {"type": "string", "const": "compass.public-acquisition-list.v1"},
                 "mode": {"type": "string", "const": "live"},
                 "generated_at": {"type": "string", "format": "date-time"},
-                "schedule": {"type": "string", "const": "rate(5 minutes)"},
+                "schedule": {"type": "string"},
                 "source_transport": {"type": "string"},
-                "acquisitions": {"type": "array", "maxItems": 50, "items": _ref("PublicAcquisition")},
+                "display_refresh": {"type": "string"},
+                "source_health": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": _ref("PublicSourceHealth"),
+                },
+                "acquisitions": {"type": "array", "maxItems": 100, "items": _ref("PublicAcquisition")},
             },
             "additionalProperties": False,
         },
@@ -2577,12 +2660,13 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
         "/public-intelligence/acquisitions": {
             "get": _op(
                 "listPublicAcquisitions",
-                "List scheduled USAspending acquisition and change receipts",
+                "List multi-source acquisition health and change receipts",
                 "9 · public intelligence",
                 _ref("PublicAcquisitionList"),
                 description=(
-                    "Returns bounded public-source micro-batch receipts, accepted "
-                    "watermarks, immutable snapshot digests, and hash-derived changes."
+                    "Returns source-specific health, bounded public-source micro-batch "
+                    "receipts, immutable snapshot digests, model evidence, exact identity "
+                    "keys, and hash-derived changes."
                 ),
             )
         },
@@ -2592,7 +2676,13 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "Run one bounded USAspending public-source poll",
                 "9 · public intelligence",
                 _ref("PublicAcquisition"),
-                request_schema={"type": "object", "maxProperties": 0},
+                request_schema={
+                    "type": "object",
+                    "properties": {
+                        "profile": {"type": "string", "enum": ["quick", "standard", "deep"]}
+                    },
+                    "additionalProperties": False,
+                },
                 success_status="201",
                 success_description="Accepted snapshot",
                 description=(
@@ -2601,6 +2691,40 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                     "snapshot active."
                 ),
                 extra_responses={"502": _ERR},
+            )
+        },
+        "/public-intelligence/sources/{source_id}/run": {
+            "post": _op(
+                "runNamedPublicSource",
+                "Run one bounded named public-source poll",
+                "9 · public intelligence",
+                _ref("PublicAcquisition"),
+                request_schema={
+                    "type": "object",
+                    "properties": {
+                        "profile": {"type": "string", "enum": ["quick", "standard", "deep"]}
+                    },
+                    "additionalProperties": False,
+                },
+                parameters=[
+                    {
+                        "name": "source_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {
+                            "type": "string",
+                            "enum": ["grants-gov-onr", "federal-register-onr", "crossref-onr"],
+                        },
+                    }
+                ],
+                success_status="201",
+                success_description="Accepted snapshot",
+                description=(
+                    "Corporate poweruser control for an official public connector. The "
+                    "accepted receipt retains source hashes, model version, identity keys, "
+                    "review flags, and lineage. A failed poll preserves the prior snapshot."
+                ),
+                extra_responses={"400": _ERR, "502": _ERR},
             )
         },
         "/operations/signals": {

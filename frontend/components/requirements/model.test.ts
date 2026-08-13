@@ -17,7 +17,7 @@ const EXACT_DEMO_ASKS = [
   "Real model lifecycle",
   "Drift and monitoring",
   "Alerts and notifications",
-  "Continuous public acquisition",
+  "Continuous multi-source public acquisition",
   "DevSecOps and IaC",
   "Identity and access",
   "Controlled release and API",

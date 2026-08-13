@@ -337,8 +337,8 @@ function OperationsProof({ state, onRefresh }: { state: OperationsState; onRefre
               <div className="flex items-start gap-3">
                 <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
                 <div>
-                  <p className="text-xs font-bold text-text-strong">No accepted USAspending watermark</p>
-                  <p className="mt-1 text-[10px] leading-4 text-text-muted">Continuous public acquisition remains not yet implemented on this proof screen.</p>
+                  <p className="text-xs font-bold text-text-strong">No accepted live source receipt</p>
+                  <p className="mt-1 text-[10px] leading-4 text-text-muted">The proof stays unverified until the protected live API returns an accepted public-source run.</p>
                 </div>
               </div>
             )}

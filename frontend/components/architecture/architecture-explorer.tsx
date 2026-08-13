@@ -50,6 +50,7 @@ import {
   type ScaleProfile,
 } from "./model";
 import { ArchitectureBriefing } from "./architecture-briefing";
+import { OverallArchitectureMap } from "./overall-architecture-map";
 
 type DiagramNodeData = {
   component: ArchitectureComponent;
@@ -228,6 +229,7 @@ export function ArchitectureExplorer() {
 
   return (
     <div className="mt-6 space-y-6">
+      <OverallArchitectureMap />
       <ArchitectureBriefing />
 
       <details className="group overflow-hidden rounded-xl border border-border bg-surface shadow-card">
@@ -267,7 +269,7 @@ export function ArchitectureExplorer() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Deployed architecture facts">
         <Fact icon={Activity} value="48" label="protected operations" detail="45 URL paths" />
         <Fact icon={Boxes} value="21" label="service functions" detail="plus one CloudFront edge rewrite" />
-        <Fact icon={Network} value="3" label="durable workflows" detail="intake, document ML, and scale" />
+        <Fact icon={Network} value="4" label="durable workflows" detail="intake, document ML, continuous stream, and scale" />
         <Fact icon={Database} value="6" label="lake datasets" detail="JSON Lines and Parquet" />
         <Fact icon={ShieldCheck} value="18" label="health alarms" detail="all critical seams" />
         <Fact icon={Layers3} value="2 AZ" label="HA database" detail="private writer and reader" />

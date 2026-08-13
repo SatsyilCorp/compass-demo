@@ -446,6 +446,199 @@ def _champion_or_baseline() -> tuple[Dict[str, Any], Dict[str, Any]]:
     }
 
 
+def classify_public_records(event: Mapping[str, Any]) -> Dict[str, Any]:
+    """Classify public source narratives with the same governed champion model.
+
+    USAspending returns structured award records with a public description. The
+    description is a narrative field, not a standalone source document. This
+    adapter preserves that distinction while producing model and lineage
+    evidence through the same governed registry used by browser uploads.
+    """
+    acquisition_run_id = str(event.get("acquisition_run_id") or "").strip()
+    source_kind = str(event.get("source_kind") or "public-source-narratives").strip()
+    canonical_uri = str(event.get("canonical_uri") or "").strip()
+    canonical_sha256 = str(event.get("canonical_sha256") or "").strip().lower()
+    raw_records = event.get("records")
+    if not acquisition_run_id or not canonical_uri:
+        raise ValueError("acquisition_run_id and canonical_uri are required")
+    if not SHA256_RE.fullmatch(canonical_sha256):
+        raise ValueError("canonical_sha256 must be a lowercase SHA-256 digest")
+    if not isinstance(raw_records, list) or not raw_records:
+        raise ValueError("records must be a non-empty list")
+    if len(raw_records) > 500:
+        raise ValueError("a public source classification run is limited to 500 records")
+
+    records = [item for item in raw_records if isinstance(item, Mapping)]
+    if not records:
+        raise ValueError("records did not contain any valid public source objects")
+    model, model_state = _champion_or_baseline()
+    model_version = str(model["model_version"])
+    run_id = f"public-ml-{acquisition_run_id.removeprefix('acq-')}"
+    now = engine.utc_now()
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="public-narrative-classification",
+        sequence=1,
+        stage_id="public-narratives-accepted",
+        label="Public source narratives accepted",
+        status="completed",
+        source=canonical_uri,
+        source_sha256=canonical_sha256,
+        actor="compass-public-acquisition",
+        detail={"record_count": len(records), "source_run_id": acquisition_run_id},
+    )
+
+    predictions: List[Dict[str, Any]] = []
+    class_counts: Dict[str, int] = {}
+    confidence_total = 0.0
+    review_required = 0
+    for record in records:
+        narrative = " ".join(
+            str(record.get(field) or "")
+            for field in (
+                "description",
+                "title",
+                "record_type",
+                "award_type",
+                "recipient_name",
+                "awarding_agency",
+                "awarding_subagency",
+                "funding_agency",
+                "funding_subagency",
+                "organizations",
+                "topics",
+            )
+        ).strip()
+        prediction = engine.predict(model, narrative)
+        label = str(prediction["label"])
+        confidence = float(prediction["confidence"])
+        needs_review = bool(prediction["review_required"])
+        class_counts[label] = class_counts.get(label, 0) + 1
+        confidence_total += confidence
+        review_required += int(needs_review)
+        predictions.append(
+            {
+                "source_record_id": str(record.get("source_record_id") or ""),
+                "recipient_name": record.get("recipient_name"),
+                "award_amount_usd": record.get("award_amount_usd"),
+                "source_url": record.get("source_url"),
+                "document_class": label,
+                "confidence": confidence,
+                "review_required": needs_review,
+                "class_probabilities": prediction["probabilities"],
+            }
+        )
+
+    artifact_key = (
+        f"documents/gold/public-acquisitions/{acquisition_run_id}/"
+        "public-record-classifications.json"
+    )
+    artifact = {
+        "contract": "compass.public-record-classifications.v1",
+        "run_id": run_id,
+        "acquisition_run_id": acquisition_run_id,
+        "source_uri": canonical_uri,
+        "source_sha256": canonical_sha256,
+        "model_version": model_version,
+        "model_state": model_state,
+        "record_count": len(predictions),
+        "class_counts": class_counts,
+        "review_required_count": review_required,
+        "mean_confidence": round(confidence_total / len(predictions), 6),
+        "predictions": predictions,
+        "generated_at": now,
+        "disclosure": (
+            "The model classified public source narrative fields. A structured source "
+            "record is not represented as a standalone source document."
+        ),
+    }
+    artifact_uri = _repo().put_json(
+        artifact_key,
+        artifact,
+        metadata={
+            "run-id": run_id,
+            "stage": "gold",
+            "model-version": model_version,
+            "source-sha256": canonical_sha256,
+        },
+    )
+    artifact_sha256 = operational_evidence.canonical_digest(artifact)
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="public-narrative-classification",
+        sequence=2,
+        stage_id="champion-inference",
+        label="Champion classifier scored public source narratives",
+        status="completed",
+        source=canonical_uri,
+        destination=artifact_uri,
+        source_sha256=canonical_sha256,
+        output_sha256=artifact_sha256,
+        actor="compass-public-acquisition",
+        detail={
+            "record_count": len(predictions),
+            "model_version": model_version,
+            "review_required": review_required,
+        },
+    )
+    record = {
+        "run_id": run_id,
+        "status": "completed",
+        "stage": "gold-published",
+        "source_kind": source_kind,
+        "source_run_id": acquisition_run_id,
+        "source_uri": canonical_uri,
+        "source_sha256": canonical_sha256,
+        "model_version": model_version,
+        "model_state": model_state,
+        "record_count": len(predictions),
+        "class_counts": class_counts,
+        "review_required_count": review_required,
+        "mean_confidence": artifact["mean_confidence"],
+        "artifact_uri": artifact_uri,
+        "artifact_sha256": artifact_sha256,
+        "updated_at": now,
+        "completed_at": now,
+    }
+    _repo().put_record("run", run_id, record)
+    operational_evidence.record_signal(
+        category="public-narrative-classification",
+        severity="medium" if review_required else "info",
+        title="Public source narrative classification completed",
+        message=(
+            f"The governed champion model classified {len(predictions)} public source "
+            f"narratives and routed {review_required} for analyst review."
+        ),
+        run_id=run_id,
+        evidence_uri=artifact_uri,
+        detail={
+            "model_version": model_version,
+            "record_count": len(predictions),
+            "review_required": review_required,
+        },
+    )
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "model_version": model_version,
+        "model_registered": bool(model_state.get("registered")),
+        "record_count": len(predictions),
+        "class_counts": class_counts,
+        "review_required_count": review_required,
+        "mean_confidence": artifact["mean_confidence"],
+        "artifact_uri": artifact_uri,
+        "artifact_sha256": artifact_sha256,
+        "preview": sorted(
+            predictions,
+            key=lambda item: (
+                not bool(item["review_required"]),
+                -float(item.get("award_amount_usd") or 0),
+            ),
+        )[:16],
+        "disclosure": artifact["disclosure"],
+    }
+
+
 def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
     bronze = _repo().get_json(str(event["bronze_key"]))
@@ -1106,6 +1299,8 @@ def handler(event, context=None):
             return curate_stage(event)
         if action == "quarantine":
             return quarantine_stage(event)
+        if action in {"classify_public_awards", "classify_public_records"}:
+            return classify_public_records(event)
         if action == "workflow_failure":
             return workflow_failure_stage(event)
         if (event.get("requestContext") or {}).get("http"):

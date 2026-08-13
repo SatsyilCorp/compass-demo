@@ -584,6 +584,8 @@ export type PublicAcquisitionRecord = {
   contract: "compass.public-acquisition.v1";
   run_id: string;
   source_id: string;
+  source_label?: string;
+  source?: string;
   status: "completed" | "failed" | "running";
   stage: string;
   started_at: string;
@@ -591,13 +593,106 @@ export type PublicAcquisitionRecord = {
   watermark?: string | null;
   snapshot_sha256?: string;
   record_count?: number;
+  total_available?: number;
+  profile?: "quick" | "standard" | "deep";
+  requested_records?: number;
+  pages_fetched?: number;
+  source_response_bytes?: number;
+  duration_ms?: number;
   added_records?: number;
   changed_records?: number;
   unchanged_records?: number;
   not_observed_records?: number;
+  has_more_source_pages?: boolean;
+  review_flag_count?: number;
+  review_flags?: Array<{
+    source_record_id: string;
+    recipient_name?: string | null;
+    award_amount_usd?: number | null;
+    last_modified_at?: string | null;
+    source_url?: string | null;
+    reasons: string[];
+  }>;
+  record_preview?: Array<{
+    source_id?: string;
+    source_record_id: string;
+    record_type?: string;
+    title?: string;
+    description?: string;
+    recipient_name?: string;
+    award_amount_usd?: number;
+    award_type?: string;
+    published_date?: string;
+    last_modified_at?: string;
+    end_date?: string;
+    organizations?: string[];
+    topics?: string[];
+    award_ids?: string[];
+    status?: string;
+    citation_count?: number;
+    source_url?: string;
+    document_url?: string;
+    document_title?: string;
+    identity_keys?: string[];
+  }>;
+  identity_summary?: {
+    indexed_records: number;
+    identity_key_count: number;
+    link_method: string;
+    governance_owner: string;
+    governance_steward?: string;
+    classification?: string;
+  };
+  classification_status?: "completed" | "degraded" | "not-configured";
+  classification_summary?: {
+    status: "completed";
+    run_id: string;
+    model_version: string;
+    model_registered?: boolean;
+    record_count: number;
+    class_counts: Record<string, number>;
+    review_required_count: number;
+    mean_confidence: number;
+    artifact_uri: string;
+    artifact_sha256?: string;
+    preview: Array<{
+      source_record_id: string;
+      recipient_name?: string | null;
+      award_amount_usd?: number | null;
+      source_url?: string | null;
+      document_class: string;
+      confidence: number;
+      review_required: boolean;
+    }>;
+    disclosure?: string;
+  } | null;
   poll_mode?: "scheduled-micro-batch";
   scope_disclosure?: string;
   failure_code?: string;
+};
+
+export type PublicSourceHealth = {
+  source_id: string;
+  label: string;
+  authority: string;
+  endpoint: string;
+  cadence_seconds: number;
+  data_kind: string;
+  model_use: string;
+  status: "healthy" | "stale" | "failed" | "awaiting-first-run";
+  last_attempt_at?: string | null;
+  last_accepted_at?: string | null;
+  age_seconds?: number | null;
+  success_rate?: number | null;
+  average_duration_ms?: number | null;
+  latest_run_id?: string | null;
+  latest_record_count?: number | null;
+  latest_added_records?: number | null;
+  latest_changed_records?: number | null;
+  latest_review_flag_count?: number | null;
+  classification_status?: string | null;
+  model_version?: string | null;
+  has_more_source_pages?: boolean;
 };
 
 export type PublicAcquisitionList = {
@@ -606,6 +701,8 @@ export type PublicAcquisitionList = {
   generated_at: string;
   schedule: string;
   source_transport: string;
+  display_refresh?: string;
+  source_health?: PublicSourceHealth[];
   acquisitions: PublicAcquisitionRecord[];
 };
 
@@ -625,12 +722,25 @@ export async function getPublicAcquisitionsApi(): Promise<PublicAcquisitionList>
   });
 }
 
-export async function postPublicAcquisitionRunApi(): Promise<PublicAcquisitionRecord> {
+export async function postPublicAcquisitionRunApi(
+  profile: "quick" | "standard" | "deep" = "standard",
+): Promise<PublicAcquisitionRecord> {
   if (USE_MOCK) throw new ApiError(409, { error: "live_acquisition_unavailable_in_replay" });
   return fetchJson<PublicAcquisitionRecord>("/public-intelligence/acquisitions/run", {
     method: "POST",
-    body: "{}",
+    body: JSON.stringify({ profile }),
   });
+}
+
+export async function postPublicSourceRunApi(
+  sourceId: string,
+  profile: "quick" | "standard" | "deep" = "standard",
+): Promise<PublicAcquisitionRecord> {
+  if (USE_MOCK) throw new ApiError(409, { error: "live_acquisition_unavailable_in_replay" });
+  return fetchJson<PublicAcquisitionRecord>(
+    `/public-intelligence/sources/${encodeURIComponent(sourceId)}/run`,
+    { method: "POST", body: JSON.stringify({ profile }) },
+  );
 }
 
 // ---------------------------------------------------------------------------

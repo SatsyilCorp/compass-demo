@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src" / "common" / "python"))
+sys.path.insert(0, str(ROOT / "src" / "functions" / "public_acquisition"))
 os.environ.setdefault("OPERATIONS_TABLE", "test")
 os.environ.setdefault("PUBLIC_ACQUISITION_BUCKET", "test-bucket")
 os.environ.setdefault("STREAM_NAME", "test-stream")
@@ -71,6 +72,39 @@ class Kinesis:
         return {"FailedRecordCount": 0}
 
 
+class Payload:
+    def __init__(self, value):
+        self.value = value
+
+    def read(self):
+        return json.dumps(self.value).encode()
+
+
+class Lambda:
+    def __init__(self):
+        self.invocations = []
+
+    def invoke(self, **kwargs):
+        request = json.loads(kwargs["Payload"])
+        self.invocations.append(request)
+        return {
+            "Payload": Payload(
+                {
+                    "status": "completed",
+                    "run_id": f"public-ml-{request['acquisition_run_id']}",
+                    "model_version": "doc-nb-test",
+                    "record_count": len(request["records"]),
+                    "class_counts": {"technical_report": len(request["records"])},
+                    "review_required_count": 0,
+                    "mean_confidence": 0.91,
+                    "artifact_uri": "lake://public-award-classifications.json",
+                    "artifact_sha256": "c" * 64,
+                    "preview": [],
+                }
+            )
+        }
+
+
 def source_response(amount=120000, award_id="N00014-26-1-0001"):
     return {
         "results": [
@@ -95,6 +129,7 @@ def configure(monkeypatch, value):
     monkeypatch.setattr(app, "_TABLE", table)
     monkeypatch.setattr(app, "_S3", s3)
     monkeypatch.setattr(app, "_KINESIS", stream)
+    monkeypatch.setattr(app, "_LAMBDA", Lambda())
     monkeypatch.setattr(app, "_URL_OPEN", lambda *_args, **_kwargs: Response(value))
     monkeypatch.setattr(app.operational_evidence, "record_stage", lambda **_kwargs: True)
     monkeypatch.setattr(app.operational_evidence, "record_signal", lambda **_kwargs: "sig-safe")
@@ -115,6 +150,10 @@ def test_acquisition_persists_hashes_deltas_and_stream_event(monkeypatch):
     )
     assert s3.objects[1]["Metadata"]["snapshot-sha256"] == receipt["snapshot_sha256"]
     assert receipt["canonical_object_sha256"] == s3.objects[1]["Metadata"]["sha256"]
+    assert receipt["profile"] == "standard"
+    assert receipt["pages_fetched"] == 1
+    assert receipt["duration_ms"] >= 0
+    assert receipt["review_flag_count"] == 1
     assert len(stream.records) == 1
     stream_event = json.loads(stream.records[0]["Data"])
     assert stream_event["kind"] == "public-feed"
@@ -124,6 +163,30 @@ def test_acquisition_persists_hashes_deltas_and_stream_event(monkeypatch):
     assert "analyst@example.com" not in s3.objects[1]["Body"].decode()
     alias = table.items[(f"ACQUISITION_ALIAS#{app.SOURCE_ID}", "STATE")]
     assert alias["run_id"] == receipt["run_id"]
+
+
+def test_acquisition_invokes_governed_public_narrative_classifier(monkeypatch):
+    _table, _s3, _stream = configure(monkeypatch, source_response())
+    monkeypatch.setenv("PUBLIC_DOCUMENT_ML_FUNCTION", "document-ml")
+
+    receipt = app.run_acquisition(profile="quick")
+
+    assert receipt["classification_status"] == "completed"
+    assert receipt["classification_summary"]["model_version"] == "doc-nb-test"
+    assert app._LAMBDA.invocations[0]["action"] == "classify_public_records"
+    assert app._LAMBDA.invocations[0]["records"][0]["recipient_name"] == "Example Research LLC"
+    assert receipt["watermark"] == "2026-01-10"
+
+
+def test_acquisition_profiles_are_bounded_and_validated():
+    assert app._profile("quick")[1] == {"page_size": 25, "pages": 1}
+    assert app._profile("deep")[1] == {"page_size": 100, "pages": 5}
+    try:
+        app._profile("unbounded")
+    except ValueError as exc:
+        assert "quick, standard, or deep" in str(exc)
+    else:
+        raise AssertionError("expected invalid profile to fail")
 
 
 def test_second_identical_snapshot_reports_unchanged(monkeypatch):
@@ -171,3 +234,76 @@ def test_failure_retains_a_sanitized_failure_receipt(monkeypatch):
     ]
     assert len(failures) == 1
     assert "results" not in json.dumps(failures)
+
+
+def test_grants_source_run_retains_minimized_detail_and_model_receipt(monkeypatch):
+    table, s3, _stream = configure(monkeypatch, source_response())
+    monkeypatch.setenv("PUBLIC_DOCUMENT_ML_FUNCTION", "document-ml")
+    search = {
+        "errorcode": 0,
+        "token": "opaque-session-value-must-not-be-retained",
+        "data": {
+            "hitCount": 1,
+            "oppHits": [
+                {
+                    "id": "362836",
+                    "number": "N0001426SBC11",
+                    "title": "Naval communications research",
+                    "agencyCode": "DOD-ONR",
+                    "agency": "Office of Naval Research",
+                    "openDate": "06/16/2026",
+                    "closeDate": "11/16/2026",
+                    "oppStatus": "posted",
+                    "cfdaList": ["12.300"],
+                }
+            ],
+        },
+    }
+    detail = {
+        "errorcode": 0,
+        "data": {
+            "id": 362836,
+            "opportunityNumber": "N0001426SBC11",
+            "opportunityTitle": "Naval communications research",
+            "owningAgencyCode": "DOD-ONR",
+            "synopsis": {
+                "synopsisDesc": "Develop communications and networking for distributed maritime operations.",
+                "awardCeiling": "500000",
+                "agencyContactEmail": "private.person@example.test",
+                "agencyContactPhone": "703-555-0100",
+            },
+            "agencyDetails": {"agencyName": "Office of Naval Research"},
+            "synopsisAttachmentFolders": [
+                {
+                    "synopsisAttachments": [
+                        {
+                            "id": 353106,
+                            "mimeType": "application/pdf",
+                            "fileName": "N0001426SBC11.POST.pdf",
+                        }
+                    ]
+                }
+            ],
+        },
+    }
+
+    def responder(request, **_kwargs):
+        body = json.loads(request.data or b"{}")
+        return Response(detail if "opportunityId" in body else search)
+
+    monkeypatch.setattr(app, "_URL_OPEN", responder)
+    receipt = app.run_feed_acquisition("grants-gov-onr", profile="quick")
+
+    assert receipt["status"] == "completed"
+    assert receipt["record_count"] == 1
+    assert receipt["record_preview"][0]["source_record_id"] == "N0001426SBC11"
+    assert receipt["record_preview"][0]["document_url"].endswith("/353106")
+    assert receipt["identity_summary"]["governance_owner"] == "Portfolio Data Product Owner"
+    assert receipt["identity_summary"]["governance_steward"] == "Public Evidence Data Steward"
+    assert receipt["classification_status"] == "completed"
+    assert receipt["review_flag_count"] == 1
+    retained = b"\n".join(item["Body"] for item in s3.objects).decode()
+    assert "private.person@example.test" not in retained
+    assert "703-555-0100" not in retained
+    assert "opaque-session-value-must-not-be-retained" not in retained
+    assert table.items[("ACQUISITION_ALIAS#grants-gov-onr", "STATE")]["run_id"] == receipt["run_id"]
