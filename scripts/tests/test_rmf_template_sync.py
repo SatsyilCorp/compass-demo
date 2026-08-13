@@ -41,6 +41,16 @@ def test_satsyil_deploy_preserves_external_public_funding_registry_reference():
     assert "describe-model-package-group" in content
 
 
+def test_operations_topic_policy_is_publish_only():
+    content = SOURCE_TEMPLATE.read_text(encoding="utf-8")
+    start = content.index("  OperationsTopicPolicy:\n")
+    end = content.index("\n  OperationsEmailSubscription:", start)
+    policy = content[start:end]
+
+    assert "Action: sns:*" not in policy
+    assert policy.count("Action: sns:Publish") == 2
+
+
 @pytest.mark.parametrize(
     "entrypoint",
     (

@@ -938,11 +938,11 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - Sid: AccountAdministration
+          - Sid: AccountPublishDelegation
             Effect: Allow
             Principal:
               AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
-            Action: sns:*
+            Action: sns:Publish
             Resource: !Ref OperationsTopic
           - Sid: CloudWatchAlarmPublish
             Effect: Allow
