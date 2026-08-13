@@ -265,7 +265,7 @@ export function ArchitectureExplorer() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Deployed architecture facts">
-        <Fact icon={Activity} value="45" label="protected operations" detail="42 URL paths" />
+        <Fact icon={Activity} value="48" label="protected operations" detail="45 URL paths" />
         <Fact icon={Boxes} value="21" label="service functions" detail="plus one CloudFront edge rewrite" />
         <Fact icon={Network} value="3" label="durable workflows" detail="intake, document ML, and scale" />
         <Fact icon={Database} value="6" label="lake datasets" detail="JSON Lines and Parquet" />

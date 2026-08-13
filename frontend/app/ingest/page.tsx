@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { RoleGate } from "@/components/shell/role-gate";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { ApiError, USE_MOCK, getIngestStatus, postIngestSimulate } from "@/lib/api";
+import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import {
   advanceSimulatedIngest,
   resetIngestReplay,
@@ -98,7 +99,11 @@ export default function IngestPage() {
       return subscribeIngestReplay(() => void refresh({ silent: true }));
     }
     const timer = setInterval(() => void refresh({ silent: true }), STATUS_POLL_MS);
-    return () => clearInterval(timer);
+    const unsubscribe = subscribeLiveDemoStreamTick(() => void refresh({ silent: true }));
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
   }, [refresh]);
 
   useEffect(() => {

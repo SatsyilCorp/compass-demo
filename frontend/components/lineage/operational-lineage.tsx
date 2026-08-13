@@ -28,6 +28,7 @@ import {
   setAuthContext,
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import type {
   OperationsLineageResponse,
   OperationsLineageStage,
@@ -86,7 +87,7 @@ export function OperationalLineage() {
     setAuthContext({ bearerToken: auth.idToken, role: auth.role, orgUnit: auth.orgUnit });
   }, [auth.idToken, auth.orgUnit, auth.role]);
 
-  const loadSummary = useCallback(async (initial = false) => {
+  const loadSummary = useCallback(async (initial = false, followLatest = false) => {
     if (auth.isLoading) return;
     publishAuth();
     if (initial) setSummaryLoading(true);
@@ -95,6 +96,7 @@ export function OperationalLineage() {
       setSummary(response);
       setSummaryError(null);
       setSelectedRunId((current) => {
+        if (followLatest) return response.runs[0]?.run_id ?? current;
         if (current && response.runs.some((run) => run.run_id === current)) return current;
         const requested = requestedRunId();
         if (requested && response.runs.some((run) => run.run_id === requested)) return requested;
@@ -111,7 +113,11 @@ export function OperationalLineage() {
     if (auth.isLoading) return;
     void loadSummary(true);
     const timer = window.setInterval(() => void loadSummary(false), SUMMARY_POLL_MS);
-    return () => window.clearInterval(timer);
+    const unsubscribe = subscribeLiveDemoStreamTick(() => void loadSummary(false, true));
+    return () => {
+      window.clearInterval(timer);
+      unsubscribe();
+    };
   }, [auth.isLoading, loadSummary]);
 
   useEffect(() => {

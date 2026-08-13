@@ -1571,8 +1571,8 @@ Resources:
             Method: GET
             Path: /me
 
-  # --- intake: ingest simulation + status + stream ticker; also the first
-  #     worker of the intake state machine and the scheduled Kinesis producer.
+  # --- intake: ingest simulation, status, ticker, and a bounded accelerated
+  #     synthetic stream; also the first worker of the intake state machine.
   IntakeFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1594,6 +1594,7 @@ Resources:
           # Name-derived ARN (not !Ref) to avoid a circular dependency with
           # the state machine, whose definition references this function.
           INTAKE_STATE_MACHINE_ARN: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-intake"
+          DEMO_STREAM_STATE_MACHINE_ARN: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-demo-stream"
       Policies:
         - Statement:
             - Sid: DbSecretRead
@@ -1623,7 +1624,10 @@ Resources:
               Resource: !GetAtt TickerStream.Arn
             - Sid: WriteOperationalEvidence
               Effect: Allow
-              Action: dynamodb:PutItem
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
               Resource: !GetAtt OperationsTable.Arn
             - Sid: PublishOperationalSignals
               Effect: Allow
@@ -1632,7 +1636,13 @@ Resources:
             - Sid: StartIntakeStateMachine
               Effect: Allow
               Action: states:StartExecution
-              Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-intake"
+              Resource:
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-intake"
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-demo-stream"
+            - Sid: StopDemoStreamExecution
+              Effect: Allow
+              Action: states:StopExecution
+              Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}-demo-stream:*"
             - Sid: BedrockEmbed
               Effect: Allow
               Action: bedrock:InvokeModel
@@ -1657,6 +1667,24 @@ Resources:
             ApiId: !Ref HttpApi
             Method: GET
             Path: /stream/recent
+        DemoStreamStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /demo-stream
+        StartDemoStream:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /demo-stream/start
+        StopDemoStream:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /demo-stream/stop
         StreamTick:
           Type: Schedule
           Properties:
@@ -2090,6 +2118,11 @@ Resources:
       MemorySize: 512
       Timeout: 30
       Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          # The bounded demo stream refreshes on receipt boundaries. A one-second
+          # projection cache keeps those changes visible without disabling caching.
+          DASHBOARD_CACHE_TTL_SECONDS: "1"
       VpcConfig:
         SecurityGroupIds: [!Ref LambdaSecurityGroup]
         SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
@@ -3010,6 +3043,52 @@ Resources:
                 - logs:PutResourcePolicy
                 - logs:DescribeResourcePolicies
                 - logs:DescribeLogGroups
+              Resource: "*"
+
+  DemoStreamStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}-demo-stream"
+      RetentionInDays: 14
+
+  DemoStreamStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-demo-stream"
+      Type: STANDARD
+      DefinitionUri: statemachines/demo_stream.asl.yaml
+      DefinitionSubstitutions:
+        IntakeFunctionArn: !GetAtt IntakeFunction.Arn
+      Logging:
+        Level: ALL
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt DemoStreamStateMachineLogGroup.Arn
+      Tracing:
+        Enabled: true
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref IntakeFunction }
+        - Statement:
+            - Sid: DemoStreamWorkflowLogDelivery
+              Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: "*"
+            - Sid: DemoStreamWorkflowTracing
+              Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+                - xray:GetSamplingRules
+                - xray:GetSamplingTargets
               Resource: "*"
 
   DocumentMlStateMachineLogGroup:

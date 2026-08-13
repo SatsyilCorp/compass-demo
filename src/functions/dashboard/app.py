@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,7 +26,7 @@ from compass_common import db, http
 
 
 CACHE: Dict[str, Dict[str, Any]] = {}
-CACHE_TTL_SECONDS = 60
+CACHE_TTL_SECONDS = max(0, int(os.environ.get("DASHBOARD_CACHE_TTL_SECONDS", "1")))
 
 _BASE_TABLE = "grants_curated"
 _CORP_VIEW = "grants_curated_corp"

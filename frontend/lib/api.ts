@@ -35,6 +35,10 @@ import type {
   IngestStatusResponse,
   LicensesResponse,
   LineageResponse,
+  LiveDemoStreamResponse,
+  LiveDemoStreamStartRequest,
+  LiveDemoStreamStatus,
+  LiveDemoStreamStopRequest,
   MeResponse,
   OpenApiDoc,
   OperationsLineageResponse,
@@ -1202,4 +1206,160 @@ export async function postOperationsSignalAcknowledge(
     acknowledged_at: textValue(response.acknowledged_at, textValue(response.updated_at, new Date().toISOString())),
     acknowledged_by: textValue(response.acknowledged_by, "poweruser"),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Accelerated synthetic demo stream
+// ---------------------------------------------------------------------------
+type DemoStreamReplayState = {
+  sessionId: string;
+  startedAtMs: number;
+  cadenceSeconds: 1 | 2;
+  totalEvents: number;
+  stoppedAtMs: number | null;
+};
+
+let demoStreamReplayState: DemoStreamReplayState | null = null;
+
+function demoStreamStatus(value: unknown): LiveDemoStreamStatus {
+  return ["idle", "running", "completed", "stopped", "failed"].includes(String(value))
+    ? value as LiveDemoStreamStatus
+    : "idle";
+}
+
+function normalizeLiveDemoStream(response: unknown): LiveDemoStreamResponse {
+  if (!isRecord(response)) throw new ApiError(502, response, "demo_stream_response_invalid");
+  const rawSession = isRecord(response.session) ? response.session : {};
+  const cadence = finiteNumber(rawSession.cadence_seconds) === 1 ? 1 : 2;
+  const totalEvents = Math.max(0, Math.trunc(finiteNumber(rawSession.total_events) ?? 0));
+  const emittedEvents = Math.max(
+    0,
+    Math.min(totalEvents, Math.trunc(finiteNumber(rawSession.emitted_events) ?? 0)),
+  );
+  const rawLatest = isRecord(response.latest_event) ? response.latest_event : null;
+  return {
+    contract: "compass.demo-stream.v1",
+    mode: response.mode === "replay" ? "replay" : "live",
+    generated_at: textValue(response.generated_at, new Date().toISOString()),
+    stream_kind: response.stream_kind === "accelerated-synthetic" ? "accelerated-synthetic" : undefined,
+    session: {
+      session_id: nullableText(rawSession.session_id),
+      status: demoStreamStatus(rawSession.status),
+      cadence_seconds: cadence,
+      total_events: totalEvents,
+      emitted_events: emittedEvents,
+      started_at: nullableText(rawSession.started_at),
+      updated_at: nullableText(rawSession.updated_at),
+      completed_at: nullableText(rawSession.completed_at),
+    },
+    latest_event: rawLatest ? {
+      sequence: Math.max(0, Math.trunc(finiteNumber(rawLatest.sequence) ?? emittedEvents)),
+      run_id: nullableText(rawLatest.run_id),
+      event_id: textValue(rawLatest.event_id, `demo-stream-event-${emittedEvents}`),
+      occurred_at: textValue(rawLatest.occurred_at, new Date().toISOString()),
+      message: textValue(rawLatest.message, "Synthetic event accepted by the accelerated demo path."),
+    } : null,
+    disclosure: textValue(
+      response.disclosure,
+      "Accelerated synthetic events use the deployed intake path. Official public-source acquisition retains its own bounded cadence.",
+    ),
+  };
+}
+
+function replayLiveDemoStream(): LiveDemoStreamResponse {
+  const now = Date.now();
+  const state = demoStreamReplayState;
+  if (!state) {
+    return {
+      contract: "compass.demo-stream.v1",
+      mode: "replay",
+      generated_at: new Date(now).toISOString(),
+      session: {
+        session_id: null,
+        status: "idle",
+        cadence_seconds: 2,
+        total_events: 15,
+        emitted_events: 0,
+        started_at: null,
+        updated_at: null,
+        completed_at: null,
+      },
+      latest_event: null,
+      disclosure: "Deterministic browser replay. Live deployment uses the protected AWS intake path.",
+    };
+  }
+  const effectiveNow = state.stoppedAtMs ?? now;
+  const emitted = Math.min(
+    state.totalEvents,
+    Math.max(0, Math.floor((effectiveNow - state.startedAtMs) / (state.cadenceSeconds * 1000))),
+  );
+  const completed = emitted >= state.totalEvents;
+  const status: LiveDemoStreamStatus = state.stoppedAtMs ? "stopped" : completed ? "completed" : "running";
+  const occurredAtMs = emitted > 0
+    ? state.startedAtMs + emitted * state.cadenceSeconds * 1000
+    : state.startedAtMs;
+  return {
+    contract: "compass.demo-stream.v1",
+    mode: "replay",
+    generated_at: new Date(now).toISOString(),
+    session: {
+      session_id: state.sessionId,
+      status,
+      cadence_seconds: state.cadenceSeconds,
+      total_events: state.totalEvents,
+      emitted_events: emitted,
+      started_at: new Date(state.startedAtMs).toISOString(),
+      updated_at: new Date(occurredAtMs).toISOString(),
+      completed_at: status === "running" ? null : new Date(effectiveNow).toISOString(),
+    },
+    latest_event: emitted > 0 ? {
+      sequence: emitted,
+      run_id: `run-${state.sessionId}-${emitted}`,
+      event_id: `${state.sessionId}:${emitted}`,
+      occurred_at: new Date(occurredAtMs).toISOString(),
+      message: `Synthetic event ${emitted} of ${state.totalEvents} accepted by the accelerated demo path.`,
+    } : null,
+    disclosure: "Deterministic browser replay. Live deployment uses the protected AWS intake path.",
+  };
+}
+
+export async function getLiveDemoStream(): Promise<LiveDemoStreamResponse> {
+  if (USE_MOCK) return replayLiveDemoStream();
+  return normalizeLiveDemoStream(
+    await fetchJson<unknown>("/demo-stream", { cache: "no-store" }),
+  );
+}
+
+export async function postLiveDemoStreamStart(
+  request: LiveDemoStreamStartRequest,
+): Promise<LiveDemoStreamResponse> {
+  if (USE_MOCK) {
+    demoStreamReplayState = {
+      sessionId: `demo-${Date.now().toString(36)}`,
+      startedAtMs: Date.now(),
+      cadenceSeconds: request.cadence_seconds,
+      totalEvents: request.total_events,
+      stoppedAtMs: null,
+    };
+    return replayLiveDemoStream();
+  }
+  return normalizeLiveDemoStream(await fetchJson<unknown>("/demo-stream/start", {
+    method: "POST",
+    body: JSON.stringify(request),
+  }));
+}
+
+export async function postLiveDemoStreamStop(
+  request: LiveDemoStreamStopRequest,
+): Promise<LiveDemoStreamResponse> {
+  if (USE_MOCK) {
+    if (demoStreamReplayState?.sessionId === request.session_id) {
+      demoStreamReplayState.stoppedAtMs = Date.now();
+    }
+    return replayLiveDemoStream();
+  }
+  return normalizeLiveDemoStream(await fetchJson<unknown>("/demo-stream/stop", {
+    method: "POST",
+    body: JSON.stringify(request),
+  }));
 }

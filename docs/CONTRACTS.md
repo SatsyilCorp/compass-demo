@@ -58,7 +58,7 @@ Core relations:
 
 ## 3. Identity and HTTP contract
 
-All 45 method-and-path operations across 42 URL paths use the Cognito JWT
+All 48 method-and-path operations across 45 URL paths use the Cognito JWT
 authorizer by default when the Scale Run feature is enabled. No application
 operation is intentionally public. The eight Scale Run operations also require
 the corporate poweruser persona.
@@ -94,6 +94,9 @@ viewer.
 | 4 | POST | `/ingest/simulate` | Poweruser trigger for a sanitized drop | 3 |
 | 5 | GET | `/ingest/status` | Batch, rule, quality, and disposition status | 3 |
 | 6 | GET | `/stream/recent` | Ordered governed activity projection with merged recent Kinesis transport receipts | 3 |
+| 6a | GET | `/demo-stream` | Current bounded accelerated synthetic stream session and latest receipt | 3 |
+| 6b | POST | `/demo-stream/start` | Start 1 to 60 synthetic S3 drops at a one-second or two-second cadence | 3 |
+| 6c | POST | `/demo-stream/stop` | Stop the current bounded accelerated synthetic stream | 3 |
 | 7 | POST | `/analytics/run` | Execute a governed topic-model run | 5 |
 | 8 | GET | `/analytics/{run_id}` | Topics, trends, metrics, and recommendation | 5 |
 | 9 | GET | `/dashboard` | Persona-scoped KPIs and chart series | 6 |

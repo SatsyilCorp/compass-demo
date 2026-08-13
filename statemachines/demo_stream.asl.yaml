@@ -1,0 +1,66 @@
+Comment: Bounded accelerated synthetic demo stream through the real S3 event path.
+StartAt: Emit
+
+States:
+  Emit:
+    Type: Task
+    Comment: Land one synthetic record and publish its immediate transport receipt.
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: $.Payload
+    Parameters:
+      FunctionName: ${IntakeFunctionArn}
+      Payload.$: $
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 1
+        MaxAttempts: 3
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        ResultPath: $.error
+        Next: RecordFailure
+    Next: Continue
+
+  Continue:
+    Type: Choice
+    Choices:
+      - Variable: $.continue
+        BooleanEquals: true
+        Next: WaitForCadence
+    Default: Complete
+
+  WaitForCadence:
+    Type: Wait
+    SecondsPath: $.cadence_seconds
+    Next: Emit
+
+  RecordFailure:
+    Type: Task
+    Resource: arn:aws:states:::lambda:invoke
+    Parameters:
+      FunctionName: ${IntakeFunctionArn}
+      Payload:
+        action: demo_stream_fail
+        session_id.$: $.session_id
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 1
+        MaxAttempts: 2
+        BackoffRate: 2
+    Next: Failed
+
+  Failed:
+    Type: Fail
+    Error: CompassDemoStreamFailed
+    Cause: Accelerated synthetic demo stream failed.
+
+  Complete:
+    Type: Succeed

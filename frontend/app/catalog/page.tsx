@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Database, TriangleAlert } from "lucide-react";
 import { AppShell } from "@/components/shell/app-shell";
 import { PageHeader } from "@/components/shell/page-header";
 import { CatalogTable } from "@/components/catalog/catalog-table";
 import { getCatalog, ApiError } from "@/lib/api";
+import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import type { CatalogResponse } from "@/lib/types";
 
 /**
@@ -18,20 +19,20 @@ export default function CatalogPage() {
   const [data, setData] = useState<CatalogResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getCatalog()
-      .then((res) => {
-        if (!cancelled) setData(res);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        setError(e instanceof ApiError ? `API error ${e.status}` : e instanceof Error ? e.message : "Failed to load catalog");
-      });
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    try {
+      const response = await getCatalog();
+      setData(response);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? `API error ${cause.status}` : cause instanceof Error ? cause.message : "Failed to load catalog");
+    }
   }, []);
+
+  useEffect(() => {
+    void load();
+    return subscribeLiveDemoStreamTick(() => void load());
+  }, [load]);
 
   return (
     <AppShell>

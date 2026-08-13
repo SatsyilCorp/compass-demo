@@ -26,6 +26,7 @@ import {
   setAuthContext,
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import type {
   OperationsSignal,
   OperationsSignalDelivery,
@@ -96,7 +97,11 @@ export function NotificationCenter() {
     if (auth.isLoading) return;
     void load(true);
     const timer = window.setInterval(() => void load(false), POLL_MS);
-    return () => window.clearInterval(timer);
+    const unsubscribe = subscribeLiveDemoStreamTick(() => void load(false));
+    return () => {
+      window.clearInterval(timer);
+      unsubscribe();
+    };
   }, [auth.isLoading, load]);
 
   useEffect(() => {

@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 API_TITLE = "Compass | S&T Portfolio Intelligence API"
-API_VERSION = "1.6.0"
+API_VERSION = "1.7.0"
 
 # Strings reused across operations.
 _ERR = {"$ref": "#/components/responses/Error"}
@@ -331,6 +331,59 @@ def _schemas() -> dict[str, Any]:
             "type": "object",
             "required": ["records"],
             "properties": {"records": {"type": "array", "items": _ref("StreamRecord")}},
+        },
+        "DemoStreamStartRequest": {
+            "type": "object",
+            "required": ["cadence_seconds", "total_events"],
+            "properties": {
+                "cadence_seconds": {"type": "integer", "enum": [1, 2]},
+                "total_events": {"type": "integer", "minimum": 1, "maximum": 60},
+            },
+        },
+        "DemoStreamStopRequest": {
+            "type": "object",
+            "required": ["session_id"],
+            "properties": {"session_id": {"type": "string"}},
+        },
+        "DemoStreamEvent": {
+            "type": ["object", "null"],
+            "properties": {
+                "sequence": {"type": "integer"},
+                "run_id": {"type": "string"},
+                "event_id": {"type": "string"},
+                "occurred_at": {"type": "string", "format": "date-time"},
+                "message": {"type": "string"},
+            },
+        },
+        "DemoStreamSession": {
+            "type": "object",
+            "required": ["status", "cadence_seconds", "total_events", "emitted_events"],
+            "properties": {
+                "session_id": {"type": ["string", "null"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["idle", "running", "completed", "stopped", "failed"],
+                },
+                "cadence_seconds": {"type": "integer", "enum": [1, 2]},
+                "total_events": {"type": "integer", "minimum": 0, "maximum": 60},
+                "emitted_events": {"type": "integer", "minimum": 0, "maximum": 60},
+                "started_at": {"type": ["string", "null"], "format": "date-time"},
+                "updated_at": {"type": ["string", "null"], "format": "date-time"},
+                "completed_at": {"type": ["string", "null"], "format": "date-time"},
+            },
+        },
+        "DemoStreamResponse": {
+            "type": "object",
+            "required": ["contract", "mode", "generated_at", "stream_kind", "session", "disclosure"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.demo-stream.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "stream_kind": {"type": "string", "const": "accelerated-synthetic"},
+                "session": _ref("DemoStreamSession"),
+                "latest_event": _ref("DemoStreamEvent"),
+                "disclosure": {"type": "string"},
+            },
         },
         "AnalyticsRunRequest": {
             "type": "object",
@@ -2310,6 +2363,43 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 "Recent streamed records for the live ticker",
                 "3 · ingest",
                 _ref("StreamRecentResponse"),
+            )
+        },
+        "/demo-stream": {
+            "get": _op(
+                "getDemoStream",
+                "Read the bounded accelerated synthetic stream session",
+                "3 · ingest",
+                _ref("DemoStreamResponse"),
+                description=(
+                    "Reads the current synthetic demo-stream receipt. The stream is "
+                    "separate from official public-source acquisition cadence."
+                ),
+            )
+        },
+        "/demo-stream/start": {
+            "post": _op(
+                "startDemoStream",
+                "Start one bounded accelerated synthetic stream",
+                "3 · ingest",
+                _ref("DemoStreamResponse"),
+                request_schema=_ref("DemoStreamStartRequest"),
+                success_status="202",
+                success_description="Accepted",
+                description=(
+                    "Starts 1 to 60 synthetic S3 drops at a one-second or two-second cadence. "
+                    "Every drop follows the deployed EventBridge and Step Functions intake path."
+                ),
+            )
+        },
+        "/demo-stream/stop": {
+            "post": _op(
+                "stopDemoStream",
+                "Stop the current accelerated synthetic stream",
+                "3 · ingest",
+                _ref("DemoStreamResponse"),
+                request_schema=_ref("DemoStreamStopRequest"),
+                extra_responses={"404": _ERR},
             )
         },
         "/analytics/run": {

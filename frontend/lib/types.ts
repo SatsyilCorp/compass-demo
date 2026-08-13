@@ -124,6 +124,49 @@ export type StreamRecord = {
 export type StreamRecentResponse = { records: StreamRecord[] };
 
 // ---------------------------------------------------------------------------
+// Accelerated synthetic demo stream
+// ---------------------------------------------------------------------------
+export type LiveDemoStreamStatus = "idle" | "running" | "completed" | "stopped" | "failed";
+
+export type LiveDemoStreamSession = {
+  session_id: string | null;
+  status: LiveDemoStreamStatus;
+  cadence_seconds: 1 | 2;
+  total_events: number;
+  emitted_events: number;
+  started_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+};
+
+export type LiveDemoStreamEvent = {
+  sequence: number;
+  run_id: string | null;
+  event_id: string;
+  occurred_at: string;
+  message: string;
+};
+
+export type LiveDemoStreamResponse = {
+  contract: "compass.demo-stream.v1";
+  mode: "live" | "replay";
+  generated_at: string;
+  stream_kind?: "accelerated-synthetic";
+  session: LiveDemoStreamSession;
+  latest_event: LiveDemoStreamEvent | null;
+  disclosure: string;
+};
+
+export type LiveDemoStreamStartRequest = {
+  cadence_seconds: 1 | 2;
+  total_events: number;
+};
+
+export type LiveDemoStreamStopRequest = {
+  session_id: string;
+};
+
+// ---------------------------------------------------------------------------
 // POST /analytics/run, GET /analytics/{run_id}  (element 5)
 // ---------------------------------------------------------------------------
 export type AnalyticsRunRequest = {

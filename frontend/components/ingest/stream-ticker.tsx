@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getStreamRecent, USE_MOCK } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import type { StreamRecord } from "@/lib/types";
 
 const KIND_ICON: Record<StreamRecord["kind"], LucideIcon> = {
@@ -73,9 +74,11 @@ export function StreamTicker() {
       }
     }
     void poll();
+    const unsubscribe = subscribeLiveDemoStreamTick(() => void poll());
     pollTimer.current = setInterval(poll, POLL_MS);
     return () => {
       cancelled = true;
+      unsubscribe();
       if (pollTimer.current) clearInterval(pollTimer.current);
       if (pulseTimer.current) clearTimeout(pulseTimer.current);
     };

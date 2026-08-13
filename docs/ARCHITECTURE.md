@@ -17,7 +17,7 @@ flowchart LR
   U["User browser"]
   CF["CloudFront and WAF\nPrivate S3 origin through OAC"]
   COG["Cognito hosted UI\npassword-only team access, TOTP presenter, OIDC"]
-  API["HTTP API\n45 JWT-protected operations"]
+  API["HTTP API\n48 JWT-protected operations"]
 
   subgraph VPC["Private application boundary across two AZs"]
     L["Application Lambdas\nShared identity, HTTP, DB, AI, and audit layer"]
@@ -158,7 +158,7 @@ Forward migrations 003 and 004 provide five database safeguards:
 
 ## 5. API and CORS boundary
 
-The 45 method-and-path operations across 42 URL paths are listed in
+The 48 method-and-path operations across 45 URL paths are listed in
 `docs/CONTRACTS.md`. The default JWT authorizer protects every operation,
 including the eight conditional Scale Run operations, OpenAPI document, and
 System Inspector. Scale Run operations apply an additional corporate

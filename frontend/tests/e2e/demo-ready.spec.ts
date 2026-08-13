@@ -62,6 +62,22 @@ test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
 
+test("accelerated synthetic stream exposes bounded one-second receipts", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium", "accelerated stream workflow runs once on desktop");
+
+  await page.goto("/dashboard/");
+  await expect(page.getByText("Accelerated synthetic stream", { exact: true })).toBeVisible();
+  await page.getByLabel("Synthetic stream cadence").selectOption("1");
+  await page.getByRole("button", { name: "Start 15s stream" }).click();
+
+  await expect(page.getByText("Live now", { exact: true })).toBeVisible();
+  await expect(page.getByText(/1\/15 receipts \| 1s cadence/)).toBeVisible({ timeout: 4_000 });
+  await expect(page.getByText(/Latest receipt 1:/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Stop stream" }).click();
+  await expect(page.getByText("stopped", { exact: true })).toBeVisible();
+});
+
 for (const route of ROUTES) {
   test(`${route} has a visible heading, no horizontal overflow, and no serious accessibility defects`, async ({ page }) => {
     await page.goto(route);

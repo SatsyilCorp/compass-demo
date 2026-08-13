@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -16,6 +16,7 @@ import {
 import { getDashboard } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { useMissionDataContext } from "@/lib/mission-data-context";
+import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import { PageHeader } from "@/components/shell/page-header";
 import type { DashboardFilterOptions, DashboardFilters } from "@/lib/types";
 
@@ -74,6 +75,8 @@ function CuratedDashboardView() {
     () => getDashboard(filters),
     queryKey,
   );
+
+  useEffect(() => subscribeLiveDemoStreamTick(reload), [reload]);
 
   const masked = data ? data.kpis.total_funding_usd === null : false;
   const scopeLabel =
