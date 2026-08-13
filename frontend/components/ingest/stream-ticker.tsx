@@ -8,6 +8,7 @@ import {
   Sparkles,
   CheckCircle2,
   DownloadCloud,
+  RadioTower,
   type LucideIcon,
 } from "lucide-react";
 import { getStreamRecent, USE_MOCK } from "@/lib/api";
@@ -21,6 +22,7 @@ const KIND_ICON: Record<StreamRecord["kind"], LucideIcon> = {
   analytics: Sparkles,
   approval: CheckCircle2,
   export: DownloadCloud,
+  "public-feed": RadioTower,
 };
 
 const KIND_TONE: Record<StreamRecord["kind"], string> = {
@@ -30,6 +32,7 @@ const KIND_TONE: Record<StreamRecord["kind"], string> = {
   analytics: "text-info",
   approval: "text-gold-ink",
   export: "text-text-muted",
+  "public-feed": "text-info",
 };
 
 const POLL_MS = 5000;

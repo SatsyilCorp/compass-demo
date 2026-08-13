@@ -24,7 +24,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: InspectionGate
 
   InspectionGate:
@@ -36,7 +36,7 @@ States:
       - Variable: $.gate
         StringEquals: continue
         Next: Quality
-    Default: Failed
+    Default: RecordFailure
 
   Quality:
     Type: Task
@@ -64,7 +64,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: QualityGate
 
   QualityGate:
@@ -76,7 +76,7 @@ States:
       - Variable: $.gate
         StringEquals: quarantine
         Next: Quarantine
-    Default: Failed
+    Default: RecordFailure
 
   Curate:
     Type: Task
@@ -105,7 +105,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     End: true
 
   Quarantine:
@@ -133,8 +133,32 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     End: true
+
+  RecordFailure:
+    Type: Task
+    Comment: Publish a sanitized operational failure receipt before failing closed.
+    Resource: arn:aws:states:::lambda:invoke
+    Parameters:
+      FunctionName: ${DocumentMlFunctionArn}
+      Payload:
+        action: workflow_failure
+        failure.$: $
+        execution_id.$: $$.Execution.Name
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 2
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        Next: Failed
+    Next: Failed
 
   Failed:
     Type: Fail

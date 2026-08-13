@@ -5,6 +5,7 @@ import { Menu, Presentation } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { navItemForPath } from "@/lib/nav/sidebar-config";
+import { NotificationCenter } from "@/components/notifications/notification-center";
 import { CompassWordmark } from "./brand";
 import { UserMenu } from "./user-menu";
 
@@ -55,6 +56,7 @@ export function AppHeader({
         </div>
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
+          {role === "poweruser" ? <NotificationCenter /> : null}
           <button
             type="button"
             onClick={onPresenterToggle}

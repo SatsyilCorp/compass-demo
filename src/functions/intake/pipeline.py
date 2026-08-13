@@ -41,10 +41,11 @@ it - which matters, because a demo drops the same file more than once.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from compass_common import audit, config, db
+from compass_common import audit, config, db, operational_evidence
 
 import normalize
 
@@ -202,6 +203,8 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     text = read_object(bucket, key)
+    source_sha256 = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    source_object_version = str(obj.get("version-id") or obj.get("versionId") or "") or None
     logical_source = f"landing://drops/{os.path.basename(key)}"
     envelope = normalize.parse_drop(text, key=key, source_file=logical_source)
     records = normalize.normalize_envelope(envelope)
@@ -233,6 +236,8 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
                         "schema_variant": envelope.schema_variant,
                         "record_count": len(records),
                         "parse_errors": envelope.parse_errors,
+                        "source_sha256": source_sha256,
+                        "source_object_version": source_object_version,
                     },
                 },
                 {
@@ -277,7 +282,50 @@ def fetch_stage(detail: Dict[str, Any]) -> Dict[str, Any]:
         "rows_updated": updated,
         "rows_normalized_clean": normalized_ok,
         "parse_errors": envelope.parse_errors,
+        "source_sha256": source_sha256,
+        "source_object_version": source_object_version,
     }
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="structured-intake",
+        sequence=1,
+        stage_id="source-received",
+        label="Versioned structured source received",
+        status="completed",
+        source=logical_source,
+        source_sha256=source_sha256,
+        actor=PIPELINE_ACTOR,
+        detail={
+            "record_count": len(records),
+            "schema": envelope.schema_variant,
+            "source_object_version": source_object_version,
+        },
+    )
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="structured-intake",
+        sequence=2,
+        stage_id="raw-normalized",
+        label="Raw rows normalized and retained",
+        status="completed",
+        source=logical_source,
+        destination="database://grants_raw",
+        source_sha256=source_sha256,
+        output_sha256=operational_evidence.canonical_digest(raw_envelopes),
+        actor=PIPELINE_ACTOR,
+        detail={
+            "accepted_records": normalized_ok,
+            "record_count": len(records),
+            "rejected_records": len(records) - normalized_ok,
+            "schema": envelope.schema_variant,
+            "field_mapping": {
+                "grant identifier": "grants_raw.normalized.grant_no",
+                "title": "grants_raw.normalized.title",
+                "amount": "grants_raw.normalized.amount_usd",
+                "organization": "grants_raw.normalized.org_unit",
+            },
+        },
+    )
     print(json.dumps({"event_type": "ingest_fetch_complete", **result}, default=str))
     return result
 
@@ -454,5 +502,64 @@ def persist_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
         "duplicates_skipped": duplicates,
         "embedded_rows": embedded,
     }
+    source_sha256 = str(payload.get("source_sha256") or "") or None
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="structured-intake",
+        sequence=4,
+        stage_id="curated-published",
+        label="Quality-approved records published",
+        status="completed",
+        source="database://grants_raw",
+        destination="database://grants_curated",
+        source_sha256=source_sha256,
+        output_sha256=operational_evidence.canonical_digest(
+            {
+                "batch_id": batch_id,
+                "rows_curated": inserted,
+                "duplicates_skipped": duplicates,
+                "embedded_rows": embedded,
+            }
+        ),
+        actor=PIPELINE_ACTOR,
+        detail={
+            "accepted_records": inserted,
+            "record_count": len(rows),
+            "unchanged_records": duplicates,
+            "consumer": "Governed catalog and decision workspace",
+        },
+    )
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="structured-intake",
+        sequence=5,
+        stage_id="consumer-ready",
+        label="Decision workspace projection ready",
+        status="completed",
+        source="database://grants_curated",
+        destination="application://decision-workspace",
+        source_sha256=source_sha256,
+        actor=PIPELINE_ACTOR,
+        detail={
+            "accepted_records": inserted,
+            "consumer": "Authorized portfolio users",
+        },
+    )
+    operational_evidence.record_signal(
+        category="structured-intake",
+        severity="info",
+        title="Structured intake completed",
+        message=(
+            f"The governed intake published {inserted} records and retained "
+            f"{duplicates} duplicate records without creating copies."
+        ),
+        run_id=run_id,
+        evidence_uri="database://grants_curated",
+        detail={
+            "accepted_records": inserted,
+            "record_count": len(rows),
+            "unchanged_records": duplicates,
+        },
+    )
     print(json.dumps({"event_type": "ingest_persist_complete", **result}, default=str))
     return result

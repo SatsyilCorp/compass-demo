@@ -24,6 +24,7 @@ import {
   getDocumentRunApi,
   postDocumentUploadApi,
   putDocumentBytesApi,
+  type DocumentRunRecord,
 } from "@/lib/api";
 import {
   DOCUMENT_MEDIA_TYPES,
@@ -62,6 +63,7 @@ export function DocumentDropZone() {
   const [receipt, setReceipt] = useState<LocalDocumentReceipt | null>(null);
   const [activeStage, setActiveStage] = useState(-1);
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
+  const [liveRun, setLiveRun] = useState<DocumentRunRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sampleLoading, setSampleLoading] = useState<string | null>(null);
   const [boundary, setBoundary] = useState<InputBoundary>("synthetic-demo");
@@ -73,6 +75,7 @@ export function DocumentDropZone() {
     setReceipt(null);
     setActiveStage(-1);
     setLiveStatus(null);
+    setLiveRun(null);
     setError(null);
     setState("idle");
   }, []);
@@ -97,6 +100,7 @@ export function DocumentDropZone() {
   const pollLiveRun = useCallback(async (runId: string, attempt = 0) => {
     try {
       const run = await getDocumentRunApi(runId);
+      setLiveRun(run);
       setLiveStatus(`${run.status} | ${run.stage}`);
       setActiveStage(liveDocumentStageIndex(run.stage, run.status));
       if (TERMINAL.has(run.status)) {
@@ -152,6 +156,7 @@ export function DocumentDropZone() {
         filename: file.name,
         content_type: mediaType,
         size_bytes: file.size,
+        source_sha256: sha256,
         synthetic_only: requestedBoundary === "synthetic-demo",
         data_classification: requestedBoundary,
         contains_cui: false,
@@ -263,7 +268,7 @@ export function DocumentDropZone() {
           </div>
 
           {error ? <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft p-3 text-xs leading-5 text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}</div> : null}
-          {receipt ? <ReceiptSummary receipt={receipt} liveStatus={liveStatus} /> : null}
+          {receipt ? <ReceiptSummary receipt={receipt} liveStatus={liveStatus} liveRun={liveRun} /> : null}
           {state !== "idle" ? <button type="button" onClick={reset} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-text-muted hover:bg-surface-2"><RotateCcw className="size-3.5" aria-hidden /> Reset intake</button> : null}
         </div>
 
@@ -306,9 +311,13 @@ const PLACEHOLDER_STAGES = [
 
 const STAGE_ICONS: LucideIcon[] = [Fingerprint, UploadCloud, Sparkles, FileArchive, FileSearch, BadgeCheck, FileText, FileSpreadsheet];
 
-function ReceiptSummary({ receipt, liveStatus }: { receipt: LocalDocumentReceipt; liveStatus: string | null }) {
-  const result = receipt.classification;
-  return <div className="mt-4 rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-strong">{receipt.fileName}</p><p className="mt-1 text-[9.5px] text-text-muted">{formatBytes(receipt.sizeBytes)} | {receipt.shape}</p></div><span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase ${result.reviewRequired ? "border-warn/30 bg-warn-soft text-warn" : "border-success/30 bg-success-soft text-success"}`}>{result.reviewRequired ? "Human review" : "Auto accepted"}</span></div><div className="mt-3 grid gap-2 sm:grid-cols-2"><Metric label="Predicted class" value={result.displayLabel} /><Metric label="Confidence" value={`${Math.round(result.confidence * 100)}%`} /></div><div className="mt-3 flex items-center gap-2 rounded-md bg-surface-2 px-2.5 py-2"><Fingerprint className="size-3.5 shrink-0 text-gov-primary" aria-hidden /><code className="truncate text-[9px] text-text-muted" title={receipt.sha256}>{receipt.sha256}</code></div>{liveStatus ? <p className="mt-2 text-[9.5px] font-semibold text-info">Live receipt: {liveStatus}</p> : null}</div>;
+function ReceiptSummary({ receipt, liveStatus, liveRun }: { receipt: LocalDocumentReceipt; liveStatus: string | null; liveRun: DocumentRunRecord | null }) {
+  const localResult = receipt.classification;
+  const terminalLiveResult = !USE_MOCK && liveRun?.status === "completed" && typeof liveRun.document_class === "string";
+  const displayClass = USE_MOCK ? localResult.displayLabel : terminalLiveResult ? String(liveRun.document_class).replaceAll("_", " ") : "Awaiting server result";
+  const confidence = USE_MOCK ? localResult.confidence : terminalLiveResult && typeof liveRun.confidence === "number" ? liveRun.confidence : null;
+  const reviewRequired = USE_MOCK ? localResult.reviewRequired : terminalLiveResult ? Boolean(liveRun.review_required) : true;
+  return <div className="mt-4 rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-strong">{receipt.fileName}</p><p className="mt-1 text-[9.5px] text-text-muted">{formatBytes(receipt.sizeBytes)} | {receipt.shape}</p></div><span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase ${terminalLiveResult && !reviewRequired ? "border-success/30 bg-success-soft text-success" : "border-warn/30 bg-warn-soft text-warn"}`}>{terminalLiveResult || USE_MOCK ? reviewRequired ? "Human review" : "Auto accepted" : "Processing"}</span></div><div className="mt-3 grid gap-2 sm:grid-cols-2"><Metric label="Predicted class" value={displayClass} /><Metric label="Confidence" value={confidence === null ? "Pending" : `${Math.round(confidence * 100)}%`} /></div><div className="mt-3 flex items-center gap-2 rounded-md bg-surface-2 px-2.5 py-2"><Fingerprint className="size-3.5 shrink-0 text-gov-primary" aria-hidden /><code className="truncate text-[9px] text-text-muted" title={receipt.sha256}>{receipt.sha256}</code></div>{liveStatus ? <p className="mt-2 text-[9.5px] font-semibold text-info">Live receipt: {liveStatus}</p> : null}{liveRun?.model_version ? <p className="mt-1 text-[9.5px] text-text-muted">Model version: <span className="font-mono">{liveRun.model_version}</span></p> : null}{liveRun?.run_id ? <a href="/admin/lineage/" className="mt-2 inline-flex min-h-9 items-center gap-1 text-[10px] font-bold text-gov-primary hover:underline">Open authoritative stage lineage <ArrowRight className="size-3" aria-hidden /></a> : null}</div>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

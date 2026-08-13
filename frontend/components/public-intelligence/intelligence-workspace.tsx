@@ -30,9 +30,12 @@ import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis
 import { PageHeader } from "@/components/shell/page-header";
 import {
   getPublicModelExecutionsApi,
+  getPublicAcquisitionsApi,
   getPublicIntelligenceSnapshotApi,
+  postPublicAcquisitionRunApi,
   postPublicIntelligenceExplainApi,
   USE_MOCK,
+  type PublicAcquisitionList,
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import type { PublicModelExecutionReceipt } from "@/lib/mlops/model-execution";
@@ -956,6 +959,7 @@ function SourcesView({ snapshot }: { snapshot: IntelligenceSnapshot }) {
   );
   return (
     <div className="space-y-4">
+      <LiveAcquisitionPanel />
       <SourceAcquisitionInventory persistedRecords={persistedRecords} />
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
       <div className="border-b border-border px-5 py-4">
@@ -976,6 +980,93 @@ function SourcesView({ snapshot }: { snapshot: IntelligenceSnapshot }) {
       </section>
     </div>
   );
+}
+
+function LiveAcquisitionPanel() {
+  const [data, setData] = useState<PublicAcquisitionList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await getPublicAcquisitionsApi();
+      setData(next);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The public acquisition receipt is unavailable.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  const runNow = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await postPublicAcquisitionRunApi();
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The public acquisition run failed.");
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh]);
+
+  const latest = data?.acquisitions[0] ?? null;
+  const completed = latest?.status === "completed";
+  return (
+    <section className="overflow-hidden rounded-xl border border-gov-primary/25 bg-surface shadow-card" aria-labelledby="live-acquisition-title">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border bg-gov-primary-lighter/45 px-5 py-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${data?.mode === "live" ? "border-success/30 bg-success-soft text-success" : "border-info/30 bg-info-soft text-info"}`}>{data?.mode === "live" ? "Live scheduled acquisition" : "Replay only"}</span>
+            <span className="rounded-full border border-border bg-white px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-text-muted">{data?.schedule ?? "Loading schedule"}</span>
+          </div>
+          <h2 id="live-acquisition-title" className="mt-2 text-lg font-bold text-text-strong">USAspending change acquisition</h2>
+          <p className="mt-1 max-w-4xl text-xs leading-5 text-text-muted">Compass polls the official public API as a bounded micro-batch. It versions the raw response, canonicalizes a PII-minimized projection, compares stable record hashes, advances an accepted watermark, and emits one PII-minimized Kinesis envelope for each added or changed record. Unchanged records emit no event.</p>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => void refresh()} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-text-muted hover:bg-surface-2"><RefreshCw className="size-3.5" aria-hidden /> Refresh receipt</button>
+          <button type="button" onClick={() => void runNow()} disabled={busy || data?.mode !== "live"} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-gov-primary px-3 text-xs font-bold text-white hover:bg-gov-primary-dark disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Activity className="size-3.5" aria-hidden />} Run bounded poll</button>
+        </div>
+      </div>
+      {error ? <div role="alert" className="m-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft p-3 text-xs leading-5 text-danger"><AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}</div> : null}
+      {latest ? (
+        <div className="p-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <AcquisitionMetric label="State" value={latest.status} tone={completed ? "success" : "attention"} />
+            <AcquisitionMetric label="Records" value={String(latest.record_count ?? 0)} />
+            <AcquisitionMetric label="Added" value={String(latest.added_records ?? 0)} />
+            <AcquisitionMetric label="Changed" value={String(latest.changed_records ?? 0)} />
+            <AcquisitionMetric label="Unchanged" value={String(latest.unchanged_records ?? 0)} />
+            <AcquisitionMetric label="Watermark" value={latest.watermark || "No source date"} />
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div className="min-w-0 rounded-lg border border-border bg-surface-2 p-3">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-text-subtle">Latest immutable receipt</p>
+              <p className="mt-1 text-xs font-bold text-text-strong">{latest.run_id}</p>
+              <code className="mt-1 block truncate text-[9px] text-text-muted" title={latest.snapshot_sha256}>{latest.snapshot_sha256 ?? "Snapshot digest unavailable for this receipt"}</code>
+              <p className="mt-2 text-[10px] leading-4 text-text-muted">{latest.scope_disclosure}</p>
+            </div>
+            <a href="/admin/lineage/" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-gov-primary px-4 text-xs font-bold text-gov-primary hover:bg-gov-primary-lighter">Open stage lineage <ArrowUpRight className="size-3.5" aria-hidden /></a>
+          </div>
+        </div>
+      ) : (
+        <div className="grid min-h-36 place-items-center p-5 text-center">
+          <div><Wifi className="mx-auto size-6 text-text-subtle" aria-hidden /><p className="mt-2 text-xs font-bold text-text-strong">No accepted live acquisition receipt yet</p><p className="mt-1 text-[10px] text-text-muted">A scheduled or manual run will create the first immutable watermark.</p></div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AcquisitionMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "success" | "attention" }) {
+  const color = tone === "success" ? "text-success" : tone === "attention" ? "text-warn" : "text-text-strong";
+  return <div className="rounded-lg border border-border bg-white p-3"><p className="text-[8.5px] font-bold uppercase tracking-wide text-text-subtle">{label}</p><p className={`mt-2 truncate text-sm font-bold ${color}`} title={value}>{value}</p></div>;
 }
 
 function SourceAcquisitionInventory({ persistedRecords }: { persistedRecords: number }) {

@@ -382,6 +382,46 @@ def test_get_execution_completes_with_prediction_receipt(configured):
     assert fake_sm.deleted
 
 
+def test_terminal_operational_evidence_is_stable_across_reconciliation_reads(
+    monkeypatch,
+):
+    stage_calls = []
+    signal_calls = []
+    monkeypatch.setattr(
+        execution.operational_evidence,
+        "record_stage",
+        lambda **kwargs: stage_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        execution.operational_evidence,
+        "record_signal",
+        lambda **kwargs: signal_calls.append(kwargs),
+    )
+    receipt = {
+        "executionId": "sbir-batch-20260812T120000-abcdef12",
+        "status": "COMPLETED",
+        "createdAt": "2026-08-12T12:00:00+00:00",
+        "updatedAt": "2026-08-12T12:02:00+00:00",
+        "completedAt": "2026-08-12T12:01:30+00:00",
+        "model": {"packageVersion": 2},
+        "input": {"sha256": "1" * 64, "recordCount": 25},
+        "output": {"sha256": "2" * 64, "predictionCount": 25},
+        "provenance": {"candidatePoolSha256": "3" * 64},
+    }
+
+    execution._record_terminal_evidence(receipt)
+    first_stages = [dict(call) for call in stage_calls]
+    first_signal = dict(signal_calls[0])
+    execution._record_terminal_evidence(receipt)
+
+    assert stage_calls[3:] == first_stages
+    assert signal_calls[1] == first_signal
+    assert first_stages[0]["occurred_at"] == receipt["createdAt"]
+    assert first_stages[1]["occurred_at"] == receipt["completedAt"]
+    assert first_stages[2]["occurred_at"] == receipt["completedAt"]
+    assert first_signal["occurred_at"] == receipt["completedAt"]
+
+
 def test_list_executions_returns_latest_durable_receipt(configured):
     started = execution.start_execution(
         sample_size=1, request_id="request-1", actor_role="poweruser"

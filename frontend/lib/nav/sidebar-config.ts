@@ -41,6 +41,7 @@ export const SIDEBAR_SECTIONS: NavSection[] = [
     roles: ["poweruser"],
     items: [
       { href: "/admin/requirements/", label: "Demo command center", shortLabel: "Demo", icon: "clipboard-check", element: 1 },
+      { href: "/admin/lineage/", label: "Operational lineage", shortLabel: "Lineage", icon: "workflow", element: 3 },
       { href: "/admin/architecture/", label: "Architecture", shortLabel: "Architecture", icon: "workflow", element: 7 },
       { href: "/admin/scale/", label: "Workload evidence lab", shortLabel: "Scale", icon: "radio-tower", element: 3 },
       { href: "/admin/pipeline/", label: "Mission control", shortLabel: "System", icon: "settings-2", element: 7 },

@@ -1,52 +1,74 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { REQUIREMENTS, REQUIREMENT_SECTIONS, countByStatus } from "./model";
+import {
+  PRESENTER_SEQUENCE,
+  REQUIREMENTS,
+  STATUS_META,
+  TRACE_STATUSES,
+  countByStatus,
+} from "./model";
 
-test("requirements trace has unique, complete, presenter-ready entries", () => {
+const EXACT_DEMO_ASKS = [
+  "Governed intake and quality",
+  "Catalog and metadata",
+  "Lineage",
+  "Decision analytics",
+  "Real model lifecycle",
+  "Drift and monitoring",
+  "Alerts and notifications",
+  "Continuous public acquisition",
+  "DevSecOps and IaC",
+  "Identity and access",
+  "Controlled release and API",
+  "IL4/IL5 target",
+];
+
+test("requirements proof contains exactly the meeting demo asks", () => {
+  assert.deepEqual(REQUIREMENTS.map((item) => item.title), EXACT_DEMO_ASKS);
   assert.equal(new Set(REQUIREMENTS.map((item) => item.id)).size, REQUIREMENTS.length);
-  assert.ok(REQUIREMENTS.length >= 20);
+});
 
+test("every ask contains action, live evidence, implementation locators, differentiator, and caveat", () => {
   for (const item of REQUIREMENTS) {
-    assert.ok(item.title.length > 3, item.id);
-    assert.ok(item.requirement.length > 20, item.id);
-    assert.ok(item.capability.length > 20, item.id);
-    assert.match(item.demoPath, /^\/.+\/$/, item.id);
-    assert.ok(item.workflow.length >= 2, item.id);
-    assert.ok(item.proof.length >= 2, item.id);
-    assert.ok(item.evidence.length >= 1, item.id);
-    assert.ok(item.gap.length > 20, item.id);
+    assert.ok(item.intent.length > 30, item.id);
+    assert.ok(item.userAction.length > 30, item.id);
+    assert.ok(item.liveEvidence.length > 0, item.id);
+    assert.ok(item.liveEvidence.some((target) => target.kind === "screen" || target.kind === "api"), item.id);
+    assert.ok(item.locators.source.length > 0, `${item.id}: source`);
+    assert.ok(item.locators.tests.length > 0, `${item.id}: tests`);
+    assert.ok(item.locators.iac.length > 0, `${item.id}: iac`);
+    assert.ok(item.differentiator.length > 30, item.id);
+    assert.ok(item.caveat.length > 30, item.id);
   }
 });
 
-test("requirements trace covers every selected PWS section and delivery state", () => {
-  const sections = new Set(REQUIREMENTS.map((item) => item.section));
-  for (const section of REQUIREMENT_SECTIONS) assert.ok(sections.has(section), section);
-
-  const counts = countByStatus();
-  assert.ok(counts.demonstrated > 0);
-  assert.ok(counts.partial > 0);
-  assert.ok(counts.roadmap > 0);
-  assert.equal(counts.demonstrated + counts.partial + counts.roadmap, REQUIREMENTS.length);
+test("all five evidence states are explicit and represented", () => {
+  const totals = countByStatus();
+  for (const status of TRACE_STATUSES) {
+    assert.ok(STATUS_META[status].label.length > 0, status);
+    assert.ok(totals[status] > 0, status);
+  }
+  assert.equal(Object.values(totals).reduce((sum, value) => sum + value, 0), REQUIREMENTS.length);
 });
 
-test("production authorization remains roadmap while MLOps evidence stays partial", () => {
-  const accreditation = REQUIREMENTS.find((item) => item.id === "fedramp-il5-ato");
-  const mlops = REQUIREMENTS.find((item) => item.id === "mlops");
-  const compliance = REQUIREMENTS.find((item) => item.id === "compliance-stig-vulnerability");
-
-  assert.equal(accreditation?.status, "roadmap");
-  assert.equal(mlops?.status, "partial");
-  assert.equal(compliance?.status, "roadmap");
-  assert.match(accreditation?.gap ?? "", /not FedRAMP High authorized/i);
-  assert.match(mlops?.gap ?? "", /not demonstrated/i);
+test("presenter sequence covers each demo ask exactly once", () => {
+  const sequenced = PRESENTER_SEQUENCE.flatMap((step) => step.requirementIds);
+  assert.deepEqual([...sequenced].sort(), REQUIREMENTS.map((item) => item.id).sort());
+  assert.equal(new Set(sequenced).size, REQUIREMENTS.length);
+  assert.deepEqual(PRESENTER_SEQUENCE.map((step) => step.order), [1, 2, 3, 4, 5]);
+  for (const step of PRESENTER_SEQUENCE) {
+    assert.match(step.href, /^\/.+\/$/);
+    assert.ok(step.instruction.length > 30);
+  }
 });
 
-test("source acquisition requirement maps to the explicit evidence boundary", () => {
-  const acquisition = REQUIREMENTS.find((item) => item.id === "diverse-st-sources");
+test("continuous acquisition and IL4 or IL5 stay conservative without live proof", () => {
+  const acquisition = REQUIREMENTS.find((item) => item.id === "continuous-public-acquisition");
+  const ilTarget = REQUIREMENTS.find((item) => item.id === "il4-il5-target");
 
-  assert.equal(acquisition?.demoPath, "/intelligence/");
-  assert.equal(acquisition?.demoLabel, "Source ledger");
-  assert.match(acquisition?.capability ?? "", /177,503.*12 public source families/i);
-  assert.match(acquisition?.gap ?? "", /Advana, Pulse.*protected opportunity documents/i);
+  assert.equal(acquisition?.status, "not-yet-implemented");
+  assert.match(acquisition?.caveat ?? "", /live API.*watermark/i);
+  assert.equal(ilTarget?.status, "target-architecture");
+  assert.match(ilTarget?.caveat ?? "", /not IL4 or IL5 authorized/i);
 });

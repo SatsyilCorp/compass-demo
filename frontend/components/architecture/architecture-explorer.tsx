@@ -49,6 +49,7 @@ import {
   type ArchitectureView,
   type ScaleProfile,
 } from "./model";
+import { ArchitectureBriefing } from "./architecture-briefing";
 
 type DiagramNodeData = {
   component: ArchitectureComponent;
@@ -227,6 +228,19 @@ export function ArchitectureExplorer() {
 
   return (
     <div className="mt-6 space-y-6">
+      <ArchitectureBriefing />
+
+      <details className="group overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+        <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 bg-white px-5 py-4 marker:hidden hover:bg-surface-2">
+          <span>
+            <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-gold-ink">Detailed component explorer</span>
+            <span className="mt-1 block text-sm font-bold text-text-strong">Open the full deployed topology, scale playback, and component inventory</span>
+          </span>
+          <span className="rounded-full border border-border bg-surface-2 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-gov-primary group-open:bg-gov-primary group-open:text-white">
+            Inspect all boxes
+          </span>
+        </summary>
+        <div className="space-y-6 border-t border-border bg-bg p-4 sm:p-5">
       <section className="overflow-hidden rounded-xl border border-gov-primary/20 bg-gov-primary text-white shadow-card" aria-label="Architecture scope statement">
         <div className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] lg:px-6">
           <div>
@@ -251,11 +265,11 @@ export function ArchitectureExplorer() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Deployed architecture facts">
-        <Fact icon={Activity} value="38" label="protected operations" detail="35 URL paths" />
-        <Fact icon={Boxes} value="18" label="Lambda functions" detail="mission, document, and scale" />
+        <Fact icon={Activity} value="45" label="protected operations" detail="42 URL paths" />
+        <Fact icon={Boxes} value="21" label="service functions" detail="plus one CloudFront edge rewrite" />
         <Fact icon={Network} value="3" label="durable workflows" detail="intake, document ML, and scale" />
         <Fact icon={Database} value="6" label="lake datasets" detail="JSON Lines and Parquet" />
-        <Fact icon={ShieldCheck} value="13" label="health alarms" detail="all critical seams" />
+        <Fact icon={ShieldCheck} value="18" label="health alarms" detail="all critical seams" />
         <Fact icon={Layers3} value="2 AZ" label="HA database" detail="private writer and reader" />
       </section>
 
@@ -400,6 +414,8 @@ export function ArchitectureExplorer() {
           })}
         </div>
       </section>
+        </div>
+      </details>
     </div>
   );
 }

@@ -61,7 +61,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: FetchGate
 
   FetchGate:
@@ -74,7 +74,7 @@ States:
       - Variable: $.status
         StringEquals: ok
         Next: Validate
-    Default: Failed
+    Default: RecordFailure
 
   # --- Run the rules, score the batch, mark the rows -----------------------
   Validate:
@@ -89,6 +89,8 @@ States:
         batch_id.$: $.batch_id
         run_id.$: $.run_id
         source_file.$: $.source_file
+        source_sha256.$: $.source_sha256
+        source_object_version.$: $.source_object_version
         checked_at.$: $$.State.EnteredTime
     Retry:
       - ErrorEquals:
@@ -106,7 +108,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: QualityGate
 
   QualityGate:
@@ -122,7 +124,7 @@ States:
       - Variable: $.gate
         StringEquals: fail
         Next: Quarantine
-    Default: Failed
+    Default: RecordFailure
 
   # --- Curate the approved rows -------------------------------------------
   Persist:
@@ -139,6 +141,8 @@ States:
         source_file.$: $.source_file
         rows_passed.$: $.rows_passed
         overall_score.$: $.overall_score
+        source_sha256.$: $.source_sha256
+        source_object_version.$: $.source_object_version
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException
@@ -155,7 +159,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: Curated
 
   # --- Hold the batch ------------------------------------------------------
@@ -175,6 +179,8 @@ States:
         rows_failed.$: $.rows_failed
         overall_score.$: $.overall_score
         threshold.$: $.threshold
+        source_sha256.$: $.source_sha256
+        source_object_version.$: $.source_object_version
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException
@@ -187,7 +193,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: Quarantined
 
   # --- Terminal states -----------------------------------------------------
@@ -202,6 +208,30 @@ States:
   Skipped:
     Type: Succeed
     Comment: The S3 object was not an ingest drop.
+
+  RecordFailure:
+    Type: Task
+    Comment: Publish a sanitized operational failure receipt before failing closed.
+    Resource: arn:aws:states:::lambda:invoke
+    Parameters:
+      FunctionName: ${QualityGateFunctionArn}
+      Payload:
+        action: workflow_failure
+        failure.$: $
+        execution_id.$: $$.Execution.Name
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 2
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        Next: Failed
+    Next: Failed
 
   Failed:
     Type: Fail

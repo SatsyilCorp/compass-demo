@@ -33,9 +33,10 @@ class FakeKinesis:
 
     def get_records(self, **_kwargs):
         records = [
-            {"id": "same", "org_unit": "Code-30", "at": "2026-08-10T13:00:03Z"},
-            {"id": "other", "org_unit": "Code-31", "at": "2026-08-10T13:00:02Z"},
-            {"id": "unbound", "org_unit": None, "at": "2026-08-10T13:00:01Z"},
+            {"id": "same", "org_unit": "Code-30", "at": "2026-08-10T13:00:03Z", "kind": "ingest", "message": "Scoped ingest"},
+            {"id": "other", "org_unit": "Code-31", "at": "2026-08-10T13:00:02Z", "kind": "quality", "message": "Other quality"},
+            {"id": "unbound", "org_unit": None, "at": "2026-08-10T13:00:01Z", "kind": "public-feed", "message": "Public record changed"},
+            {"id": "unknown", "org_unit": None, "at": "2026-08-10T13:00:00Z", "kind": "not-supported", "message": "Ignore me"},
         ]
         return {
             "Records": [

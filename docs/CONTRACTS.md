@@ -58,7 +58,7 @@ Core relations:
 
 ## 3. Identity and HTTP contract
 
-All 38 method-and-path operations across 35 URL paths use the Cognito JWT
+All 45 method-and-path operations across 42 URL paths use the Cognito JWT
 authorizer by default when the Scale Run feature is enabled. No application
 operation is intentionally public. The eight Scale Run operations also require
 the corporate poweruser persona.
@@ -126,11 +126,20 @@ viewer.
 | 36 | GET | `/public-intelligence/model-executions` | Read the newest durable, governed public-model execution receipts | 5 and cross-cutting |
 | 37 | POST | `/public-intelligence/model-executions` | Start one bounded public SBIR candidate Batch Transform run | 5 |
 | 38 | GET | `/public-intelligence/model-executions/{executionId}` | Reconcile one Batch Transform run to its terminal receipt | 5 and cross-cutting |
+| 39 | GET | `/public-intelligence/acquisitions` | List scheduled USAspending acquisition watermarks and change receipts | 3, 4, and cross-cutting |
+| 40 | POST | `/public-intelligence/acquisitions/run` | Start one bounded public-source micro-batch poll | 3 and cross-cutting |
+| 41 | GET | `/operations/signals` | Read safe in-app and SNS delivery evidence for operational events | Cross-cutting |
+| 42 | POST | `/operations/signals/{eventId}/acknowledge` | Record a poweruser acknowledgement without deleting the signal | Cross-cutting |
+| 43 | GET | `/operations/lineage` | List recent cross-workflow run projections | 3, 4, 5, and cross-cutting |
+| 44 | GET | `/operations/lineage/{runId}` | Read ordered stage receipts, hashes, model, and consumer for one run | 3, 4, 5, and cross-cutting |
+| 45 | GET | `/operations/summary` | Read the current operational scorecard and public-source watermark | Cross-cutting |
 
 The document upload request accepts either `synthetic-demo` input or a
 PII-minimized `public` document. A public upload must explicitly declare
 `contains_cui=false` and `pii_minimized=true`; any other classification is
-rejected before a presigned upload is issued. This is an admission assertion,
+rejected before a presigned upload is issued. Every request must also declare
+the browser-computed `source_sha256`; server inspection recomputes the digest
+from the retrieved object and quarantines a mismatch. This is an admission assertion,
 not automated content accreditation, so quality and sensitive-pattern checks
 still run after landing.
 

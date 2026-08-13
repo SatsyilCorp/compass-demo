@@ -78,9 +78,22 @@ class AwsRepository:
         response = self.s3.get_object(Bucket=self.bucket, Key=key)
         return json.loads(response["Body"].read())
 
-    def get_bytes(self, bucket: str, key: str) -> tuple[bytes, Dict[str, Any]]:
+    def get_bytes(
+        self, bucket: str, key: str, *, maximum_bytes: int
+    ) -> tuple[bytes, Dict[str, Any]]:
         response = self.s3.get_object(Bucket=bucket, Key=key)
-        return response["Body"].read(), response
+        content_length = int(response.get("ContentLength") or 0)
+        if content_length > maximum_bytes:
+            response["Body"].close()
+            raise ValueError("uploaded object exceeds the enforced size limit")
+        body = response["Body"]
+        try:
+            payload = body.read(maximum_bytes + 1)
+        finally:
+            body.close()
+        if len(payload) > maximum_bytes:
+            raise ValueError("uploaded object exceeds the enforced size limit")
+        return payload, response
 
     def copy_object(
         self, source_bucket: str, source_key: str, destination_key: str
@@ -94,13 +107,22 @@ class AwsRepository:
         return f"lake://{destination_key}"
 
     def presign_upload(
-        self, key: str, content_type: str, *, expires_in: int = 900
-    ) -> str:
-        return self.s3.generate_presigned_url(
-            "put_object",
-            Params={"Bucket": self.bucket, "Key": key, "ContentType": content_type},
+        self,
+        key: str,
+        content_type: str,
+        *,
+        maximum_bytes: int,
+        expires_in: int = 900,
+    ) -> Dict[str, Any]:
+        return self.s3.generate_presigned_post(
+            Bucket=self.bucket,
+            Key=key,
+            Fields={"Content-Type": content_type},
+            Conditions=[
+                {"Content-Type": content_type},
+                ["content-length-range", 1, maximum_bytes],
+            ],
             ExpiresIn=expires_in,
-            HttpMethod="PUT",
         )
 
     def put_record(

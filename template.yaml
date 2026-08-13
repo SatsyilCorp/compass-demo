@@ -87,6 +87,29 @@ Parameters:
       publish synthetic ticker records onto the Kinesis stream. DISABLED
       switches the ticker off between demos.
 
+  PublicAcquisitionState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: >
+      Five-minute, bounded USAspending public-source poll. Accepted deltas are
+      published onto Kinesis with source, hash, quality, and lineage receipts.
+
+  PublicAcquisitionChangeAlertThreshold:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 100
+    Description: Added or changed records that trigger an analyst-review signal.
+
+  NotificationEmail:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    Description: >
+      Optional operational notification email. AWS sends a confirmation request;
+      email delivery is active only after the recipient confirms the subscription.
+
   DeploySecurityBaseline:
     Type: String
     Default: "false"
@@ -225,6 +248,7 @@ Conditions:
   EnableDatabaseHa: !Equals [!Ref DatabaseResilienceMode, ha]
   EnableScaleFeature: !Equals [!Ref ScaleFeatureEnabled, "true"]
   CreatePublicFundingModelPackageGroup: !Equals [!Ref ExistingPublicFundingModelPackageGroupArn, ""]
+  HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, ""]]
 
 # -----------------------------------------------------------------------------
 # Globals - every Lambda: python3.11 on arm64, X-Ray on, DB contract env vars
@@ -404,6 +428,22 @@ Resources:
       SubnetId: !Ref PrivateSubnetB
       RouteTableId: !Ref PrivateRouteTable
 
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref PrivateRouteTable]
+
+  DynamoDbGatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref PrivateRouteTable]
+
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -460,6 +500,19 @@ Resources:
             Principal:
               Service: cloudfront.amazonaws.com
             Action: kms:Decrypt
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AllowOperationalMessaging
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudwatch.amazonaws.com
+                - sns.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
             Resource: "*"
             Condition:
               StringEquals:
@@ -734,8 +787,8 @@ Resources:
           EventBridgeEnabled: true
       CorsConfiguration:
         CorsRules:
-          - AllowedHeaders: [Content-Type]
-            AllowedMethods: [PUT]
+          - AllowedHeaders: ["*"]
+            AllowedMethods: [POST, PUT]
             AllowedOrigins:
               - http://localhost:3000
               - http://127.0.0.1:3000
@@ -788,6 +841,12 @@ Resources:
             ExpirationInDays: !Ref ModelExecutionDataRetentionDays
             NoncurrentVersionExpiration:
               NoncurrentDays: 1
+          - Id: expire-public-acquisition-payloads
+            Status: Enabled
+            Prefix: public-intelligence/acquisitions/
+            ExpirationInDays: 30
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
 
   TickerStream:
     Type: AWS::Kinesis::Stream
@@ -830,6 +889,77 @@ Resources:
       Tags:
         - { Key: compass:data-classification, Value: synthetic-demo }
         - { Key: compass:component, Value: document-ml }
+
+  OperationsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${AWS::StackName}-operations"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: by-type
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt AppKey.Arn
+      Tags:
+        - { Key: compass:data-classification, Value: operational-metadata }
+        - { Key: compass:component, Value: operational-evidence }
+
+  OperationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-operations"
+      DisplayName: Compass operations
+      KmsMasterKeyId: !Ref AppKey
+      Tags:
+        - { Key: compass:data-classification, Value: operational-metadata }
+        - { Key: compass:component, Value: notifications }
+
+  OperationsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref OperationsTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: sns:*
+            Resource: !Ref OperationsTopic
+          - Sid: CloudWatchAlarmPublish
+            Effect: Allow
+            Principal: { Service: cloudwatch.amazonaws.com }
+            Action: sns:Publish
+            Resource: !Ref OperationsTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  OperationsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasNotificationEmail
+    Properties:
+      TopicArn: !Ref OperationsTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
 
   DocumentModelPackageGroup:
     Type: AWS::SageMaker::ModelPackageGroup
@@ -1459,6 +1589,8 @@ Resources:
         Variables:
           RAW_BUCKET: !Ref RawBucket
           STREAM_NAME: !Ref TickerStream
+          OPERATIONS_TABLE: !Ref OperationsTable
+          OPERATIONS_TOPIC_ARN: !Ref OperationsTopic
           # Name-derived ARN (not !Ref) to avoid a circular dependency with
           # the state machine, whose definition references this function.
           INTAKE_STATE_MACHINE_ARN: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-intake"
@@ -1489,6 +1621,14 @@ Resources:
                 - kinesis:DescribeStreamSummary
                 - kinesis:ListShards
               Resource: !GetAtt TickerStream.Arn
+            - Sid: WriteOperationalEvidence
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt OperationsTable.Arn
+            - Sid: PublishOperationalSignals
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref OperationsTopic
             - Sid: StartIntakeStateMachine
               Effect: Allow
               Action: states:StartExecution
@@ -1541,6 +1681,8 @@ Resources:
         Variables:
           DOCUMENT_LAKE_BUCKET: !Ref RawBucket
           DOCUMENT_ML_TABLE: !Ref DocumentMlTable
+          OPERATIONS_TABLE: !Ref OperationsTable
+          OPERATIONS_TOPIC_ARN: !Ref OperationsTopic
           MLOPS_MODE: !Ref MlOpsMode
           SAGEMAKER_EXECUTION_ROLE_ARN: !GetAtt DocumentSageMakerExecutionRole.Arn
           SAGEMAKER_TRAINING_IMAGE: !Ref SageMakerTrainingImage
@@ -1580,6 +1722,14 @@ Resources:
               Resource:
                 - !GetAtt DocumentMlTable.Arn
                 - !Sub "${DocumentMlTable.Arn}/index/by-type"
+            - Sid: WriteOperationalEvidence
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt OperationsTable.Arn
+            - Sid: PublishOperationalSignals
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref OperationsTopic
             - Sid: SubmitBoundedDocumentTraining
               Effect: Allow
               Action:
@@ -1650,6 +1800,151 @@ Resources:
             Method: GET
             Path: /ml/ops/evidence
 
+  # --- public_acquisition: bounded USAspending scheduled micro-batch. The
+  #     accepted snapshot is public-only, digest-bound, versioned, and projected
+  #     into the operational lineage ledger before a small Kinesis delta event.
+  PublicAcquisitionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-public-acquisition"
+      CodeUri: src/functions/public_acquisition/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 60
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          OPERATIONS_TABLE: !Ref OperationsTable
+          OPERATIONS_TOPIC_ARN: !Ref OperationsTopic
+          PUBLIC_ACQUISITION_BUCKET: !Ref RawBucket
+          PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD: !Ref PublicAcquisitionChangeAlertThreshold
+          STREAM_NAME: !Ref TickerStream
+      Policies:
+        - Statement:
+            - Sid: RetainPublicAcquisition
+              Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${RawBucket.Arn}/public-intelligence/acquisitions/*"
+            - Sid: EncryptPublicAcquisition
+              Effect: Allow
+              Action: [kms:Encrypt, kms:GenerateDataKey]
+              Resource: !GetAtt AppKey.Arn
+            - Sid: PublicAcquisitionLedger
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query]
+              Resource:
+                - !GetAtt OperationsTable.Arn
+                - !Sub "${OperationsTable.Arn}/index/by-type"
+            - Sid: PublishOperationalSignals
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref OperationsTopic
+            - Sid: PublishPublicChangeEvent
+              Effect: Allow
+              Action: [kinesis:PutRecord, kinesis:PutRecords]
+              Resource: !GetAtt TickerStream.Arn
+      Events:
+        ListPublicAcquisitions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /public-intelligence/acquisitions
+        RunPublicAcquisition:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /public-intelligence/acquisitions/run
+        ScheduledPublicAcquisition:
+          Type: Schedule
+          Properties:
+            Name: !Sub "${AWS::StackName}-public-acquisition"
+            Description: Five-minute bounded USAspending public evidence poll.
+            Schedule: rate(5 minutes)
+            State: !Ref PublicAcquisitionState
+            Input: '{"action":"poll"}'
+            RetryPolicy:
+              MaximumEventAgeInSeconds: 3600
+              MaximumRetryAttempts: 2
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: PublicAcquisitionScheduleDeadLetterQueue
+
+  PublicAcquisitionScheduleDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-public-acquisition-schedule-dlq"
+      AlarmDescription: Scheduled public-source deliveries exhausted their bounded retry policy.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt PublicAcquisitionScheduleDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
+
+  # --- operations: protected read and acknowledgement surface for the compact
+  #     lineage and notification projection. It never reads raw source records.
+  OperationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-operations"
+      CodeUri: src/functions/operations/
+      Handler: app.handler
+      MemorySize: 512
+      Timeout: 30
+      Layers: [!Ref CommonLayer]
+      Environment:
+        Variables:
+          OPERATIONS_TABLE: !Ref OperationsTable
+      Policies:
+        - Statement:
+            - Sid: ReadAndAcknowledgeOperationalEvidence
+              Effect: Allow
+              Action: [dynamodb:Query, dynamodb:UpdateItem]
+              Resource:
+                - !GetAtt OperationsTable.Arn
+                - !Sub "${OperationsTable.Arn}/index/by-type"
+      Events:
+        ListOperationalSignals:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /operations/signals
+        AcknowledgeOperationalSignal:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /operations/signals/{eventId}/acknowledge
+        ListOperationalLineage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /operations/lineage
+        GetOperationalLineage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /operations/lineage/{runId}
+        GetOperationalSummary:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /operations/summary
+
   # --- quality_gate: rule engine invoked by the intake state machine; writes
   #     grant_quality + lineage. Not routed on the API.
   QualityGateFunction:
@@ -1667,6 +1962,8 @@ Resources:
       Environment:
         Variables:
           RAW_BUCKET: !Ref RawBucket
+          OPERATIONS_TABLE: !Ref OperationsTable
+          OPERATIONS_TOPIC_ARN: !Ref OperationsTopic
       Policies:
         - Statement:
             - Sid: DbSecretRead
@@ -1683,6 +1980,14 @@ Resources:
               Resource:
                 - !GetAtt RawBucket.Arn
                 - !Sub "${RawBucket.Arn}/*"
+            - Sid: WriteOperationalEvidence
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt OperationsTable.Arn
+            - Sid: PublishOperationalSignals
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref OperationsTopic
             - Sid: BedrockEmbed
               Effect: Allow
               Action: bedrock:InvokeModel
@@ -1925,6 +2230,8 @@ Resources:
           PUBLIC_SBIR_RECONCILIATION_FUNCTION_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-public-intelligence"
           PUBLIC_SBIR_RECONCILIATION_DLQ_ARN: !GetAtt PublicSbirReconciliationDeadLetterQueue.Arn
           PUBLIC_SBIR_M5_LARGE_PRICE_USD_HOUR: "0.115"
+          OPERATIONS_TABLE: !Ref OperationsTable
+          OPERATIONS_TOPIC_ARN: !Ref OperationsTopic
       Policies:
         - Statement:
             - Sid: ReadVerifiedPublicEvidence
@@ -1998,6 +2305,14 @@ Resources:
               Action: bedrock:InvokeModel
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0"
+            - Sid: WritePublicModelOperationalEvidence
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt OperationsTable.Arn
+            - Sid: PublishPublicModelSignals
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref OperationsTopic
       Events:
         GetPublicIntelligenceSnapshot:
           Type: HttpApi
@@ -2821,11 +3136,53 @@ Resources:
   #      source-controlled CloudWatch dashboard for live rehearsal checks.
   # ===========================================================================
 
+  PublicAcquisitionFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-public-acquisition-errors"
+      AlarmDescription: Scheduled or manually requested public acquisition failed.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PublicAcquisitionFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  OperationsFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-operations-errors"
+      AlarmDescription: Operational lineage or notification projection could not be read.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref OperationsFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
   DocumentMlFunctionErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: !Sub "${AWS::StackName}-document-ml-function-errors"
       AlarmDescription: Document intake or MLOps control returned one or more Lambda errors in five minutes.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/Lambda
       MetricName: Errors
       Dimensions:
@@ -2844,6 +3201,8 @@ Resources:
     Properties:
       AlarmName: !Sub "${AWS::StackName}-public-intelligence-function-errors"
       AlarmDescription: Public evidence, cited intelligence, or scheduled model reconciliation reported a Lambda error.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/Lambda
       MetricName: Errors
       Dimensions:
@@ -2862,6 +3221,8 @@ Resources:
     Properties:
       AlarmName: !Sub "${AWS::StackName}-sbir-reconciliation-dlq"
       AlarmDescription: A scheduled public SBIR reconciliation exhausted its retry policy.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/SQS
       MetricName: ApproximateNumberOfMessagesVisible
       Dimensions:
@@ -2880,6 +3241,8 @@ Resources:
     Properties:
       AlarmName: !Sub "${AWS::StackName}-document-ml-workflow-failures"
       AlarmDescription: Document inspect, quality, curate, or quarantine workflow failed.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/States
       MetricName: ExecutionsFailed
       Dimensions:
@@ -2898,6 +3261,8 @@ Resources:
     Properties:
       AlarmName: !Sub "${AWS::StackName}-api-server-errors"
       AlarmDescription: Protected API returned one or more server errors in five minutes.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/ApiGateway
       MetricName: 5xx
       Dimensions:
@@ -2918,6 +3283,8 @@ Resources:
     Properties:
       AlarmName: !Sub "${AWS::StackName}-intake-errors"
       AlarmDescription: Intake function reported an invocation error.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/Lambda
       MetricName: Errors
       Dimensions:
@@ -2936,6 +3303,8 @@ Resources:
     Properties:
       AlarmName: !Sub "${AWS::StackName}-evidence-errors"
       AlarmDescription: System Inspector evidence projection reported an invocation error.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/Lambda
       MetricName: Errors
       Dimensions:
@@ -2954,6 +3323,8 @@ Resources:
     Properties:
       AlarmName: !Sub "${AWS::StackName}-workflow-failures"
       AlarmDescription: Intake state machine reported a failed execution.
+      AlarmActions: [!Ref OperationsTopic]
+      OKActions: [!Ref OperationsTopic]
       Namespace: AWS/States
       MetricName: ExecutionsFailed
       Dimensions:
@@ -3568,6 +3939,15 @@ Outputs:
   DocumentMlTableName:
     Description: Durable document run, model registry, deployment, and drift receipt ledger.
     Value: !Ref DocumentMlTable
+  OperationsTableName:
+    Description: Durable operational stage, public acquisition, and notification receipt ledger.
+    Value: !Ref OperationsTable
+  OperationsTopicArn:
+    Description: Encrypted operational alert topic. Email delivery requires a confirmed subscription.
+    Value: !Ref OperationsTopic
+  PublicAcquisitionFunctionName:
+    Description: Scheduled, bounded USAspending public evidence acquisition function.
+    Value: !Ref PublicAcquisitionFunction
   DocumentModelPackageGroupName:
     Description: SageMaker Model Registry group reserved for approved document model packages.
     Value: !Ref DocumentModelPackageGroup

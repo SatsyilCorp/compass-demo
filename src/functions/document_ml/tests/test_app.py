@@ -20,6 +20,7 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC and SPEC.loader
 app = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(app)
+SOURCE_SHA256 = "a" * 64
 
 
 class FakeRepository:
@@ -31,10 +32,18 @@ class FakeRepository:
         self.records = {}
         self.aliases = {}
 
-    def presign_upload(self, key, content_type, *, expires_in):
+    def presign_upload(self, key, content_type, *, maximum_bytes, expires_in):
         assert key.startswith("documents/incoming/doc-")
         assert expires_in == 900
-        return "https://upload.example.test/signed"
+        assert maximum_bytes == app.MAX_UPLOAD_BYTES
+        return {
+            "url": "https://upload.example.test/signed",
+            "fields": {
+                "Content-Type": content_type,
+                "key": key,
+                "policy": "bounded-test-policy",
+            },
+        }
 
     def put_json(self, key, value, *, metadata=None):
         self.objects[key] = json.loads(json.dumps(value, default=str))
@@ -43,9 +52,16 @@ class FakeRepository:
     def get_json(self, key):
         return self.objects[key]
 
-    def get_bytes(self, bucket, key):
+    def get_bytes(self, bucket, key, *, maximum_bytes):
         payload, content_type = self.source_objects[(bucket, key)]
-        return payload, {"Body": io.BytesIO(payload), "ContentType": content_type}
+        if len(payload) > maximum_bytes:
+            raise ValueError("uploaded object exceeds the enforced size limit")
+        return payload, {
+            "Body": io.BytesIO(payload),
+            "ContentType": content_type,
+            "ContentLength": len(payload),
+            "VersionId": "source-version-1",
+        }
 
     def copy_object(self, source_bucket, source_key, destination_key):
         self.objects[destination_key] = {
@@ -111,6 +127,7 @@ def test_browser_upload_contract_and_poweruser_gate(monkeypatch):
                 "filename": "research-summary.txt",
                 "content_type": "text/plain",
                 "size_bytes": 120,
+                "source_sha256": SOURCE_SHA256,
             },
         )
     )
@@ -118,8 +135,9 @@ def test_browser_upload_contract_and_poweruser_gate(monkeypatch):
 
     assert response["statusCode"] == 201
     assert payload["status"] == "awaiting-upload"
-    assert payload["upload"]["method"] == "PUT"
+    assert payload["upload"]["method"] == "POST"
     assert payload["upload"]["url"] == "https://upload.example.test/signed"
+    assert payload["upload"]["fields"]["Content-Type"] == "text/plain"
     assert "physical-bucket-hidden" not in response["body"]
 
     denied = app.handler(
@@ -146,6 +164,7 @@ def test_browser_jsonl_media_type_is_accepted(monkeypatch):
                 "filename": "research-records.jsonl",
                 "content_type": "application/x-ndjson",
                 "size_bytes": 120,
+                "source_sha256": SOURCE_SHA256,
             },
         )
     )
@@ -169,6 +188,7 @@ def test_public_upload_requires_explicit_public_boundary(monkeypatch):
                 "synthetic_only": False,
                 "data_classification": "public",
                 "contains_cui": False,
+                "source_sha256": SOURCE_SHA256,
             },
         )
     )
@@ -186,6 +206,7 @@ def test_public_upload_requires_explicit_public_boundary(monkeypatch):
                 "data_classification": "public",
                 "contains_cui": False,
                 "pii_minimized": True,
+                "source_sha256": SOURCE_SHA256,
             },
         )
     )
@@ -231,6 +252,70 @@ def test_drop_runs_bronze_quality_silver_gold_and_exposes_lineage(monkeypatch):
         "gold",
     ]
     assert fake.records[("run", run_id)]["stage"] == "gold-published"
+
+
+def test_public_upload_with_detected_sensitive_patterns_is_quarantined(monkeypatch):
+    fake = FakeRepository()
+    monkeypatch.setattr(app, "_REPOSITORY", fake)
+    run_id = "doc-sensitive-public"
+    source_key = f"documents/incoming/{run_id}/public-note.txt"
+    payload = b"Public note. Contact analyst@example.test for details."
+    fake.source_objects[("input-bucket", source_key)] = (payload, "text/plain")
+    fake.put_record(
+        "run",
+        run_id,
+        {
+            "run_id": run_id,
+            "source_sha256": app.engine.sha256_bytes(payload),
+            "expected_bytes": len(payload),
+            "data_boundary": {"classification": "public", "pii_minimized": True},
+        },
+    )
+
+    inspected = app.inspect_stage(
+        {
+            "detail": {
+                "bucket": {"name": "input-bucket"},
+                "object": {"key": source_key, "size": len(payload)},
+            }
+        }
+    )
+
+    assert inspected["status"] == "quarantined"
+    assert inspected["gate"] == "quarantine"
+    assert "sensitive patterns" in inspected["reason"]
+    assert not any(key.startswith("documents/bronze/") for key in fake.objects)
+
+
+def test_declared_upload_size_mismatch_is_quarantined(monkeypatch):
+    fake = FakeRepository()
+    monkeypatch.setattr(app, "_REPOSITORY", fake)
+    run_id = "doc-size-mismatch"
+    source_key = f"documents/incoming/{run_id}/report.txt"
+    payload = b"A compact technical report with measured results."
+    fake.source_objects[("input-bucket", source_key)] = (payload, "text/plain")
+    fake.put_record(
+        "run",
+        run_id,
+        {
+            "run_id": run_id,
+            "source_sha256": app.engine.sha256_bytes(payload),
+            "expected_bytes": len(payload) + 1,
+            "data_boundary": {"classification": "synthetic-demo"},
+        },
+    )
+
+    inspected = app.inspect_stage(
+        {
+            "detail": {
+                "bucket": {"name": "input-bucket"},
+                "object": {"key": source_key, "size": len(payload)},
+            }
+        }
+    )
+
+    assert inspected["status"] == "quarantined"
+    assert "declared upload size" in inspected["reason"]
 
 
 def test_training_registry_deployment_and_drift_are_real_state_changes(monkeypatch):

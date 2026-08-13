@@ -19,6 +19,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
+from compass_common import operational_evidence
+
 
 CONTRACT = "compass.public-intelligence.model-execution.v1"
 CANDIDATE_POOL_CONTRACT = "compass.public-intelligence.inference-candidates.v1"
@@ -784,6 +786,133 @@ def _is_missing_transform(exc: Exception, transform_name: str) -> bool:
     )
 
 
+def _record_terminal_evidence(receipt: Mapping[str, Any]) -> None:
+    execution_id = str(receipt.get("executionId") or "")
+    if not execution_id:
+        return
+    status = str(receipt.get("status") or "FAILED")
+    completed = status == "COMPLETED"
+    model = receipt.get("model") if isinstance(receipt.get("model"), Mapping) else {}
+    input_state = receipt.get("input") if isinstance(receipt.get("input"), Mapping) else {}
+    output = receipt.get("output") if isinstance(receipt.get("output"), Mapping) else {}
+    provenance = (
+        receipt.get("provenance")
+        if isinstance(receipt.get("provenance"), Mapping)
+        else {}
+    )
+    model_version = f"package-{model.get('packageVersion', 'candidate')}"
+    source_sha256 = str(provenance.get("candidatePoolSha256") or "") or None
+    input_sha256 = str(input_state.get("sha256") or "") or None
+    output_sha256 = str(output.get("sha256") or "") or None
+    record_count = input_state.get("recordCount")
+    created_at = str(
+        receipt.get("createdAt")
+        or receipt.get("updatedAt")
+        or operational_evidence.utc_now()
+    )
+    terminal_at = str(
+        receipt.get("completedAt") or receipt.get("updatedAt") or created_at
+    )
+    # Recreate the complete evidence chain while reconciling a terminal run.
+    # This also backfills historical governed executions created before the
+    # operational projection was introduced, using only their signed receipt.
+    operational_evidence.record_stage(
+        run_id=execution_id,
+        run_kind="sagemaker-batch-inference",
+        sequence=1,
+        stage_id="input-sealed",
+        label="Current public scoring cohort sealed",
+        status="completed",
+        source="public-evidence://navy-sbir-current-phase-i-public-scoring",
+        destination=f"model-execution://public-sbir-transition/{execution_id}/input",
+        source_sha256=source_sha256,
+        output_sha256=input_sha256,
+        actor="sagemaker-reconciler",
+        occurred_at=created_at,
+        detail={
+            "record_count": record_count,
+            "model_version": model_version,
+            "evidence_class": "public-observed",
+        },
+    )
+    operational_evidence.record_stage(
+        run_id=execution_id,
+        run_kind="sagemaker-batch-inference",
+        sequence=2,
+        stage_id="batch-transform",
+        label=(
+            "Network-isolated SageMaker Batch Transform completed"
+            if completed
+            else "Network-isolated SageMaker Batch Transform failed"
+        ),
+        status="completed" if completed else "failed",
+        source=f"model-execution://public-sbir-transition/{execution_id}/input",
+        destination=f"model-execution://public-sbir-transition/{execution_id}/output",
+        input_sha256=input_sha256,
+        output_sha256=output_sha256,
+        actor="sagemaker-reconciler",
+        occurred_at=terminal_at,
+        detail={
+            "record_count": record_count,
+            "model_version": model_version,
+            "consumer": "SageMaker reconciliation control",
+        },
+    )
+    operational_evidence.record_stage(
+        run_id=execution_id,
+        run_kind="sagemaker-batch-inference",
+        sequence=3,
+        stage_id="prediction-reconciled" if completed else "prediction-failed",
+        label=(
+            "SageMaker predictions validated and reconciled"
+            if completed
+            else "SageMaker prediction run failed closed"
+        ),
+        status="completed" if completed else "failed",
+        source="model-registry://public-sbir-transition/candidate",
+        destination=(
+            "mission-workspace://public-intelligence/model-signals"
+            if completed
+            else "model-operations://review-queue"
+        ),
+        source_sha256=source_sha256,
+        input_sha256=input_sha256,
+        output_sha256=output_sha256,
+        actor="sagemaker-reconciler",
+        occurred_at=terminal_at,
+        detail={
+            "accepted_records": output.get("predictionCount") if completed else 0,
+            "failed_records": 0 if completed else input_state.get("recordCount"),
+            "model_version": model_version,
+            "record_count": record_count,
+            "consumer": "Public Intelligence review queue",
+        },
+    )
+    operational_evidence.record_signal(
+        category="model-execution",
+        severity="info" if completed else "high",
+        title=(
+            "SageMaker batch predictions completed"
+            if completed
+            else "SageMaker batch prediction failed"
+        ),
+        message=(
+            "The bounded public cohort was scored and its prediction output passed receipt validation."
+            if completed
+            else "The bounded model run failed closed. The candidate approval state and prior evidence remain unchanged."
+        ),
+        run_id=execution_id,
+        evidence_uri=f"model-execution://public-sbir-transition/{execution_id}",
+        occurred_at=terminal_at,
+        detail={
+            "accepted_records": output.get("predictionCount") if completed else 0,
+            "failed_records": 0 if completed else record_count,
+            "model_version": model_version,
+            "record_count": record_count,
+        },
+    )
+
+
 def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> dict[str, Any]:
     if not _execution_enabled():
         raise ExecutionError(
@@ -878,6 +1007,25 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
             "disclosure": "Current public post-cutoff cohort scoring only. This run produces review-only transition signals for newer public Navy Phase I records. It does not approve the candidate and does not predict ONR mission success.",
         }
         _write_receipt(receipt, create=True)
+        operational_evidence.record_stage(
+            run_id=execution_id,
+            run_kind="sagemaker-batch-inference",
+            sequence=1,
+            stage_id="input-sealed",
+            label="Current public scoring cohort sealed",
+            status="completed",
+            source="public-evidence://navy-sbir-current-phase-i-public-scoring",
+            destination=f"model-execution://public-sbir-transition/{execution_id}/input",
+            source_sha256=pool_provenance["sha256"],
+            output_sha256=input_sha,
+            actor=_clean_text(actor_role, max_chars=32),
+            occurred_at=created_at,
+            detail={
+                "record_count": len(selected),
+                "model_version": f"package-{model['packageVersion']}",
+                "evidence_class": "public-observed",
+            },
+        )
         _, _, _, receipt_etag = _read_receipt_with_etag(execution_id)
         _sagemaker_client().create_model(
             ModelName=model_name,
@@ -945,6 +1093,24 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
         )
         receipt["execution"]["transformJobArn"] = response["TransformJobArn"]
         receipt["updatedAt"] = _timestamp()
+        operational_evidence.record_stage(
+            run_id=execution_id,
+            run_kind="sagemaker-batch-inference",
+            sequence=2,
+            stage_id="batch-transform",
+            label="Network-isolated SageMaker Batch Transform",
+            status="running",
+            source=f"model-execution://public-sbir-transition/{execution_id}/input",
+            destination=f"model-execution://public-sbir-transition/{execution_id}/output",
+            input_sha256=input_sha,
+            actor=_clean_text(actor_role, max_chars=32),
+            occurred_at=receipt["updatedAt"],
+            detail={
+                "record_count": len(selected),
+                "model_version": f"package-{model['packageVersion']}",
+                "consumer": "SageMaker reconciliation control",
+            },
+        )
         try:
             return _write_receipt(receipt, expected_etag=receipt_etag)
         except ReceiptWriteConflict:
@@ -971,6 +1137,7 @@ def start_execution(*, sample_size: int, request_id: str, actor_role: str) -> di
                 _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
             except ExecutionNotFound:
                 pass
+            _record_terminal_evidence(receipt)
         if receipt is None or cleanup_status == "DELETED":
             _release_lock(execution_id)
             if schedule_created:
@@ -1107,9 +1274,11 @@ def get_execution(execution_id: str) -> dict[str, Any]:
             if cleanup_status != "DELETED":
                 return _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
             result = _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+            _record_terminal_evidence(result)
             _release_lock(execution_id)
             return result
         _release_lock(execution_id)
+        _record_terminal_evidence(receipt)
         return _receipt_for_response(receipt, raw, version)
     transform_name = receipt["execution"]["transformJobName"]
     try:
@@ -1132,6 +1301,7 @@ def get_execution(execution_id: str) -> dict[str, Any]:
             "message": "The durable submission receipt has no matching SageMaker transform job.",
         }
         result = _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+        _record_terminal_evidence(result)
         if (
             result.get("execution", {}).get("temporaryModelCleanupStatus")
             == "DELETED"
@@ -1212,6 +1382,7 @@ def get_execution(execution_id: str) -> dict[str, Any]:
         )
         receipt["execution"]["temporaryModelCleanupStatus"] = cleanup_status
         result = _write_reconciled_receipt(receipt, expected_etag=receipt_etag)
+        _record_terminal_evidence(result)
         if cleanup_status == "DELETED":
             _release_lock(execution_id)
         return result

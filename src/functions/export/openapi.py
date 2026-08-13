@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 API_TITLE = "Compass | S&T Portfolio Intelligence API"
-API_VERSION = "1.5.0"
+API_VERSION = "1.6.0"
 
 # Strings reused across operations.
 _ERR = {"$ref": "#/components/responses/Error"}
@@ -980,6 +980,122 @@ def _schemas() -> dict[str, Any]:
             },
             "additionalProperties": False,
         },
+        "PublicAcquisition": {
+            "type": "object",
+            "required": ["contract", "run_id", "source_id", "status", "stage", "started_at", "updated_at"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.public-acquisition.v1"},
+                "run_id": {"type": "string"},
+                "source_id": {"type": "string", "const": "usaspending-onr-grants"},
+                "status": {"type": "string", "enum": ["completed", "failed", "running"]},
+                "stage": {"type": "string"},
+                "started_at": {"type": "string", "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+                "watermark": {"type": ["string", "null"]},
+                "snapshot_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "source_response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "canonical_object_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "record_count": {"type": "integer", "minimum": 0},
+                "added_records": {"type": "integer", "minimum": 0},
+                "changed_records": {"type": "integer", "minimum": 0},
+                "unchanged_records": {"type": "integer", "minimum": 0},
+                "not_observed_records": {"type": "integer", "minimum": 0},
+                "poll_mode": {"type": "string", "const": "scheduled-micro-batch"},
+                "scope_disclosure": {"type": "string"},
+                "failure_code": {"type": "string"},
+            },
+            "additionalProperties": True,
+        },
+        "PublicAcquisitionList": {
+            "type": "object",
+            "required": ["contract", "mode", "generated_at", "schedule", "source_transport", "acquisitions"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.public-acquisition-list.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "schedule": {"type": "string", "const": "rate(5 minutes)"},
+                "source_transport": {"type": "string"},
+                "acquisitions": {"type": "array", "maxItems": 50, "items": _ref("PublicAcquisition")},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalSignal": {
+            "type": "object",
+            "required": ["contract", "event_id", "category", "severity", "title", "message", "status"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-signal.v1"},
+                "event_id": {"type": "string"},
+                "category": {"type": "string"},
+                "severity": {"type": "string", "enum": ["info", "low", "medium", "high", "critical"]},
+                "title": {"type": "string"},
+                "message": {"type": "string"},
+                "status": {"type": "string", "enum": ["open", "acknowledged"]},
+                "run_id": {"type": ["string", "null"]},
+                "evidence_uri": {"type": ["string", "null"]},
+                "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "delivery": {"type": "object", "additionalProperties": True},
+            },
+            "additionalProperties": True,
+        },
+        "OperationalSignals": {
+            "type": "object",
+            "required": ["contract", "mode", "generated_at", "signals", "unacknowledged"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-signals.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "signals": {"type": "array", "maxItems": 100, "items": _ref("OperationalSignal")},
+                "unacknowledged": {"type": "integer", "minimum": 0},
+                "delivery_disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalLineage": {
+            "type": "object",
+            "required": ["contract", "mode", "run_id", "run_kind", "status", "stages", "edges", "generated_at"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-lineage.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "run_id": {"type": "string"},
+                "run_kind": {"type": "string"},
+                "status": {"type": "string"},
+                "source": {"type": ["string", "null"]},
+                "source_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+                "model": {"type": ["string", "null"]},
+                "consumer": {"type": ["string", "null"]},
+                "stages": {"type": "array", "maxItems": 100, "items": {"type": "object", "additionalProperties": True}},
+                "edges": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "generated_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalLineageList": {
+            "type": "object",
+            "required": ["contract", "mode", "generated_at", "runs"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-lineage-list.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "runs": {"type": "array", "maxItems": 100, "items": {"type": "object", "additionalProperties": True}},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalSummary": {
+            "type": "object",
+            "required": ["contract", "mode", "generated_at", "counts", "runs", "proof", "disclosure"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-summary.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+                "runs": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "latest_public_acquisition": {"oneOf": [_ref("PublicAcquisition"), {"type": "null"}]},
+                "latest_public_acquisition_attempt": {"oneOf": [_ref("PublicAcquisition"), {"type": "null"}]},
+                "proof": {"type": "object", "additionalProperties": {"type": "string"}},
+                "disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
         "Anomaly": {
             "type": "object",
             "properties": {
@@ -1755,6 +1871,7 @@ def _schemas() -> dict[str, Any]:
                 "filename",
                 "content_type",
                 "size_bytes",
+                "source_sha256",
                 "synthetic_only",
                 "data_classification",
                 "contains_cui",
@@ -1768,6 +1885,7 @@ def _schemas() -> dict[str, Any]:
                     "minimum": 1,
                     "maximum": 15728640,
                 },
+                "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "synthetic_only": {"type": "boolean", "default": True},
                 "data_classification": {
                     "type": "string",
@@ -1822,14 +1940,14 @@ def _schemas() -> dict[str, Any]:
                     "required": [
                         "method",
                         "url",
-                        "headers",
+                        "fields",
                         "expires_in_seconds",
                         "maximum_bytes",
                     ],
                     "properties": {
-                        "method": {"type": "string", "const": "PUT"},
+                        "method": {"type": "string", "const": "POST"},
                         "url": {"type": "string", "format": "uri"},
-                        "headers": {
+                        "fields": {
                             "type": "object",
                             "additionalProperties": {"type": "string"},
                         },
@@ -1966,7 +2084,7 @@ def _schemas() -> dict[str, Any]:
             "properties": {
                 "documents": {
                     "type": "array",
-                    "minItems": 1,
+                    "minItems": 5,
                     "maxItems": 200,
                     "items": {"type": "string", "minLength": 20},
                 },
@@ -2211,7 +2329,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("AnalyticsRunDetail"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2345,6 +2463,101 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 extra_responses={"404": _ERR, "503": _ERR},
             )
         },
+        "/public-intelligence/acquisitions": {
+            "get": _op(
+                "listPublicAcquisitions",
+                "List scheduled USAspending acquisition and change receipts",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionList"),
+                description=(
+                    "Returns bounded public-source micro-batch receipts, accepted "
+                    "watermarks, immutable snapshot digests, and hash-derived changes."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/run": {
+            "post": _op(
+                "runPublicAcquisition",
+                "Run one bounded USAspending public-source poll",
+                "9 · public intelligence",
+                _ref("PublicAcquisition"),
+                request_schema={"type": "object", "maxProperties": 0},
+                success_status="201",
+                success_description="Accepted snapshot",
+                description=(
+                    "Corporate poweruser control for the same bounded acquisition used "
+                    "by the five-minute schedule. A failure leaves the prior accepted "
+                    "snapshot active."
+                ),
+                extra_responses={"502": _ERR},
+            )
+        },
+        "/operations/signals": {
+            "get": _op(
+                "listOperationalSignals",
+                "Read safe operational signals and delivery evidence",
+                "10 · operations evidence",
+                _ref("OperationalSignals"),
+                description="Corporate poweruser-only in-app and encrypted SNS signal projection.",
+            )
+        },
+        "/operations/signals/{eventId}/acknowledge": {
+            "post": _op(
+                "acknowledgeOperationalSignal",
+                "Acknowledge one retained operational signal",
+                "10 · operations evidence",
+                _ref("OperationalSignal"),
+                request_schema={"type": "object", "maxProperties": 0},
+                parameters=[
+                    {
+                        "name": "eventId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string", "pattern": "^sig-[A-Za-z0-9._:-]+$"},
+                    }
+                ],
+                description="Records actor and acknowledgement time without deleting the signal.",
+                extra_responses={"404": _ERR},
+            )
+        },
+        "/operations/lineage": {
+            "get": _op(
+                "listOperationalLineage",
+                "List recent cross-workflow run projections",
+                "10 · operations evidence",
+                _ref("OperationalLineageList"),
+            )
+        },
+        "/operations/lineage/{runId}": {
+            "get": _op(
+                "getOperationalLineage",
+                "Read ordered stage receipts for one run",
+                "10 · operations evidence",
+                _ref("OperationalLineage"),
+                parameters=[
+                    {
+                        "name": "runId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string", "maxLength": 180},
+                    }
+                ],
+                description=(
+                    "Returns logical locators, counts, hashes, model version, consumer, "
+                    "actor, and receipt timestamps. Raw records and physical cloud "
+                    "identifiers are excluded."
+                ),
+                extra_responses={"404": _ERR},
+            )
+        },
+        "/operations/summary": {
+            "get": _op(
+                "getOperationalSummary",
+                "Read the current cross-workflow operational scorecard",
+                "10 · operations evidence",
+                _ref("OperationalSummary"),
+            )
+        },
         "/anomalies": {
             "get": _op(
                 "getAnomalies",
@@ -2472,7 +2685,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("DocumentRun"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2626,7 +2839,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("ScaleRun"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2649,7 +2862,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 request_schema=_ref("ScaleCancelRequest"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2675,7 +2888,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 success_description="Export job accepted",
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2698,7 +2911,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("ScaleExportReceipt"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},

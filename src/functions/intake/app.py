@@ -352,12 +352,37 @@ def _activity_from_kinesis(identity: Identity, limit: int) -> List[Dict[str, Any
                         item = json.loads(rec["Data"].decode("utf-8"))
                     except (ValueError, UnicodeDecodeError):
                         continue
+                    if not isinstance(item, dict):
+                        continue
+                    kind = str(item.get("kind") or "")
+                    if kind not in {
+                        "ingest",
+                        "quality",
+                        "anomaly",
+                        "export",
+                        "approval",
+                        "analytics",
+                        "public-feed",
+                    }:
+                        continue
+                    item_id = str(item.get("id") or "")[:240]
+                    message = " ".join(str(item.get("message") or "").split())[:500]
+                    event_at = str(item.get("at") or "")[:40]
+                    if not item_id or not message or not event_at:
+                        continue
+                    item = {
+                        "id": item_id,
+                        "at": event_at,
+                        "kind": kind,
+                        "message": message,
+                        "grant_no": str(item.get("grant_no") or "")[:160] or None,
+                        "org_unit": str(item.get("org_unit") or "")[:80] or None,
+                    }
                     # Kinesis has no row-level security. A missing scope is
                     # corporate-only, never a wildcard for a unit viewer.
                     if not _visible_to(identity, item.get("org_unit")):
                         continue
-                    if item.get("id"):
-                        seen[item["id"]] = item
+                    seen[item["id"]] = item
                 it = resp.get("NextShardIterator")
                 if not resp.get("Records"):
                     break

@@ -38,7 +38,7 @@ def openapi_routes() -> set[tuple[str, str]]:
 def test_openapi_matches_every_deployed_application_route():
     deployed = template_routes()
     served = openapi_routes()
-    assert len(deployed) == 38
+    assert len(deployed) == 45
     assert served == deployed
 
 

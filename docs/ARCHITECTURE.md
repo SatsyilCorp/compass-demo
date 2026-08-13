@@ -17,7 +17,7 @@ flowchart LR
   U["User browser"]
   CF["CloudFront and WAF\nPrivate S3 origin through OAC"]
   COG["Cognito hosted UI\npassword-only team access, TOTP presenter, OIDC"]
-  API["HTTP API\n38 JWT-protected operations"]
+  API["HTTP API\n45 JWT-protected operations"]
 
   subgraph VPC["Private application boundary across two AZs"]
     L["Application Lambdas\nShared identity, HTTP, DB, AI, and audit layer"]
@@ -33,6 +33,9 @@ flowchart LR
   PI["Public intelligence Lambda\nManifest verification and cited retrieval"]
   PUB[("KMS-encrypted public evidence\nImmutable source snapshots and serving index")]
   CW["CloudWatch logs, alarms, dashboard, and X-Ray"]
+  OPS["Operations evidence\nDynamoDB stage ledger and encrypted SNS"]
+  USA["USAspending public API\nFive-minute bounded poll"]
+  ACQ["Public acquisition Lambda\nversion, minimize, hash, compare"]
 
   U -->|"HTTPS"| CF
   U -->|"OIDC"| COG
@@ -47,6 +50,14 @@ flowchart LR
   API --> CW
   L --> CW
   SFN --> CW
+  USA -->|"bounded HTTPS request"| ACQ
+  ACQ --> RAW
+  ACQ -->|"change events"| KIN
+  L --> OPS
+  SFN --> OPS
+  PI --> OPS
+  ACQ --> OPS
+  API --> OPS
 ```
 
 ## 2. Deployable inventory
@@ -55,33 +66,40 @@ The template provisions:
 
 - A VPC with two public and two private subnets across two availability zones
 - One NAT gateway for the cost-controlled demonstration mode
+- S3 and DynamoDB gateway endpoints for private application service traffic
 - A customer-managed KMS key with rotation enabled
 - An Aurora Serverless v2 PostgreSQL 16.9 cluster and managed master secret
 - Cognito with password-only team accounts, a dedicated TOTP presenter,
   admin-created users, and poweruser and viewer groups
 - An HTTP API with the JWT authorizer as its default
-- Sixteen core Lambda functions and one shared Lambda layer
+- Eighteen core application Lambda functions, one CloudFront path rewrite
+  function, and one shared Lambda layer
 - A KMS-encrypted raw S3 bucket with EventBridge notifications
 - An on-demand Kinesis stream
+- A five-minute bounded USAspending acquisition with immutable snapshots,
+  watermarks, hash-based deltas, and Kinesis change events
+- A KMS-encrypted operational stage and signal table plus encrypted SNS topic
 - An Express Step Functions intake workflow
 - A private S3 web bucket, CloudFront OAC, path rewrite function, and WAF
 - Explicit 14-day API and centralized Lambda log groups
-- Eight service alarms and one CloudWatch operations dashboard
+- Eleven service alarms and one CloudWatch operations dashboard
 - Optional account-level GuardDuty, Security Hub, and Macie resources
 
 When `ScaleFeatureEnabled=true`, the same template adds three Lambda functions,
 one Standard Step Functions workflow, one DynamoDB run and partition ledger,
 one encrypted Scale Run S3 lake, worker and Export Job SQS queues with dead
 letter queues, six Glue tables, one bounded Athena workgroup, scale-specific
-alarms, and scale dashboard widgets. The enabled stack therefore has nineteen
-functions, fifteen alarms, and two dashboards. These resources are conditional
+alarms, and scale dashboard widgets. The enabled stack therefore has twenty-one
+application functions, one edge rewrite function, eighteen alarms, and two
+dashboards. These resources are conditional
 and their presence in source does not establish that a live deployment or
 measured Scale Run exists.
 
-The sixteen core functions are authorizer, intake, quality gate, catalog,
+The eighteen core functions are authorizer, intake, quality gate, catalog,
 analytics, dashboard, summarize, RAG chat, approvals, license, export, evidence,
-RMF artifact, migrator, document ML, and public intelligence. The three scale
-functions are scale control, scale worker, and scale export.
+RMF artifact, migrator, document ML, public intelligence, public acquisition,
+and operations. The three scale functions are scale control, scale worker, and
+scale export.
 
 ## 3. Record life cycle
 
@@ -140,7 +158,7 @@ Forward migrations 003 and 004 provide five database safeguards:
 
 ## 5. API and CORS boundary
 
-The 38 method-and-path operations across 35 URL paths are listed in
+The 45 method-and-path operations across 42 URL paths are listed in
 `docs/CONTRACTS.md`. The default JWT authorizer protects every operation,
 including the eight conditional Scale Run operations, OpenAPI document, and
 System Inspector. Scale Run operations apply an additional corporate
@@ -161,6 +179,23 @@ manifests. The accepted S3 serving manifest binds a compact index by SHA-256.
 record, and `POST /public-intelligence/explain` retrieves only from that
 verified index. Unsupported questions produce an explicit refusal. The full
 source snapshots never pass through the browser.
+
+Every processing path publishes a compact, safe projection after its
+authoritative domain write. The operations table keys each stage by run,
+sequence, and stage identifier. It retains logical source and destination
+locators, SHA-256 digests, counts, model version, consumer, actor, status, and
+receipt time. The protected operations API lists recent runs, renders one
+directed stage chain, exposes source watermarks, and supports append-preserving
+signal acknowledgement. Operational signals are always visible in the
+application and can also be published to the encrypted SNS topic. Email is
+active only after the named recipient confirms the subscription.
+
+USAspending is not a streaming source. The public acquisition function sends a
+bounded request every five minutes, retains the raw response and PII-minimized
+canonical records as versioned objects, compares stable record hashes with the
+previous accepted snapshot, advances a watermark, and emits only the accepted
+change summary to Kinesis. A source or processing failure creates a failed run
+and signal while the prior accepted snapshot remains active.
 
 The same isolated function exposes a cost-bounded public model execution
 Adapter. It selects only from a digest-bound, PII-minimized current public
