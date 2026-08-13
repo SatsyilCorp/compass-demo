@@ -1150,7 +1150,7 @@ function normalizeLiveLineage(response: unknown, expectedRunId: string): Operati
 
 export async function getOperationsSignals(): Promise<OperationsSignalsResponse> {
   if (USE_MOCK) return replaySignalList();
-  const response = await fetchJson<unknown>("/operations/signals", { cache: "no-store" });
+  const response = await fetchJson<unknown>("/operations/signals?limit=100", { cache: "no-store" });
   return normalizeLiveSignals(response);
 }
 

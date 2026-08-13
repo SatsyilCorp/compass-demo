@@ -278,7 +278,7 @@ def handler(event, context=None):
         if method == "GET" and path.endswith("/operations/signals"):
             params = http.query_params(event)
             try:
-                limit = int(params.get("limit", "50"))
+                limit = int(params.get("limit", str(MAX_SIGNALS)))
             except (TypeError, ValueError):
                 limit = 50
             return http.ok(list_signals(limit))

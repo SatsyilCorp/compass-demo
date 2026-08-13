@@ -150,6 +150,20 @@ def test_signal_count_excludes_routine_and_resolved_activity(monkeypatch):
     assert result["unacknowledged"] == 2
 
 
+def test_signal_handler_uses_the_full_bounded_window_by_default(monkeypatch):
+    requested_limits = []
+    monkeypatch.setattr(
+        app,
+        "_query_index",
+        lambda _kind, limit: requested_limits.append(limit) or [],
+    )
+
+    response = app.handler(event("GET", "/operations/signals"))
+
+    assert response["statusCode"] == 200
+    assert requested_limits == [app.MAX_SIGNALS]
+
+
 def test_summary_preserves_last_accepted_snapshot_after_failed_attempt(monkeypatch):
     table = Table()
     table.acquisitions = [

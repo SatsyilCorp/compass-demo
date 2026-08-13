@@ -42,7 +42,7 @@ PROBES = (
     Probe("/documents/uploads", "POST"),
     Probe("/documents/runs", "GET"),
     Probe("/documents/runs/cors-contract-run", "GET"),
-    Probe("/operations/signals", "GET"),
+    Probe("/operations/signals?limit=100", "GET"),
     Probe("/operations/signals/cors-contract-signal/acknowledge", "POST"),
     Probe("/operations/lineage", "GET"),
     Probe("/operations/lineage/cors-contract-run", "GET"),
