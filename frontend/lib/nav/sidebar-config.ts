@@ -16,38 +16,38 @@ export type NavSection = {
   collapsed?: boolean;
 };
 
-/** Keep the main product workflow small. Detailed proof remains available on demand. */
+/** Keep the scored demonstration sequence visible while secondary proof stays collapsible. */
 export const SIDEBAR_SECTIONS: NavSection[] = [
   {
-    label: "Workspace",
+    label: "Demonstration sequence",
     items: [
-      { href: "/dashboard/", label: "Overview", shortLabel: "Overview", icon: "layout-dashboard", element: 6 },
-      { href: "/ingest/", label: "Bring in data", shortLabel: "Ingest", icon: "upload-cloud", element: 3 },
-      { href: "/catalog/", label: "Trusted data", shortLabel: "Catalog", icon: "database", element: 4 },
-      { href: "/intelligence/", label: "Intelligence", shortLabel: "Intelligence", icon: "radar", element: 5 },
-      { href: "/export/", label: "Share results", shortLabel: "Export", icon: "download", element: 7 },
+      { href: "/admin/delivery/", label: "IaC and DevSecOps", shortLabel: "Delivery", icon: "workflow", stage: "02", element: 2 },
+      { href: "/ingest/", label: "Ingestion and DataOps", shortLabel: "Ingest", icon: "upload-cloud", stage: "03", element: 3 },
+      { href: "/catalog/", label: "Governance and catalog", shortLabel: "Govern", icon: "database", stage: "04", element: 4 },
+      { href: "/admin/mlops/", label: "Decision analytics and MLOps", shortLabel: "Model", icon: "network", stage: "05", element: 5 },
+      { href: "/intelligence/", label: "Public portfolio intelligence", shortLabel: "Intelligence", icon: "radar", stage: "05A", element: 5 },
+      { href: "/dashboard/", label: "Unified decision workspace", shortLabel: "Decide", icon: "layout-dashboard", stage: "06", element: 6 },
+      { href: "/export/", label: "Interoperability and export", shortLabel: "Release", icon: "download", stage: "07", element: 7 },
     ],
   },
   {
-    label: "Analysis tools",
+    label: "Supporting evidence",
     collapsed: true,
     items: [
-      { href: "/analytics/", label: "Topic analysis", shortLabel: "Topics", icon: "network", element: 5 },
-      { href: "/licenses/", label: "Data sources and licenses", shortLabel: "Sources", icon: "key-round", element: 4 },
+      { href: "/analytics/", label: "Topic intelligence", shortLabel: "Topics", icon: "network", element: 5 },
+      { href: "/licenses/", label: "Data vendor lifecycle", shortLabel: "Vendors", icon: "key-round", element: 4 },
     ],
   },
   {
-    label: "Demo evidence",
+    label: "Demo package",
     roles: ["poweruser"],
     collapsed: true,
     items: [
-      { href: "/admin/requirements/", label: "Demo guide", shortLabel: "Demo", icon: "clipboard-check", element: 1 },
-      { href: "/admin/mlops/", label: "Models and MLOps", shortLabel: "Models", icon: "network", element: 5 },
-      { href: "/admin/delivery/", label: "Delivery and security", shortLabel: "Delivery", icon: "workflow", element: 2 },
-      { href: "/admin/lineage/", label: "Run history and lineage", shortLabel: "Lineage", icon: "workflow", element: 3 },
+      { href: "/admin/requirements/", label: "Demo requirements trace", shortLabel: "Demo", icon: "clipboard-check", stage: "01", element: 1 },
+      { href: "/admin/lineage/", label: "Operational lineage", shortLabel: "Lineage", icon: "workflow", element: 3 },
       { href: "/admin/architecture/", label: "Architecture", shortLabel: "Architecture", icon: "workflow", element: 7 },
-      { href: "/admin/scale/", label: "Scale testing", shortLabel: "Scale", icon: "radio-tower", element: 3 },
-      { href: "/admin/pipeline/", label: "System health", shortLabel: "System", icon: "settings-2", element: 7 },
+      { href: "/admin/scale/", label: "Workload evidence lab", shortLabel: "Scale", icon: "radio-tower", element: 3 },
+      { href: "/admin/pipeline/", label: "Mission control", shortLabel: "System", icon: "settings-2", element: 7 },
     ],
   },
 ];

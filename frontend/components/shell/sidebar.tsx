@@ -203,6 +203,11 @@ function NavItems({
               <span aria-hidden className={`absolute inset-y-2 left-0 w-[3px] rounded-full ${active ? "bg-gold-light" : "bg-transparent"}`} />
               <Icon className={`size-[17px] shrink-0 ${active ? "text-gold-light" : "text-white/45 group-hover:text-white/75"}`} aria-hidden />
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.stage ? (
+                <span className={`font-mono text-[10px] ${active ? "text-white/60" : "text-white/30"}`}>
+                  {item.stage}
+                </span>
+              ) : null}
             </Link>
           </li>
         );

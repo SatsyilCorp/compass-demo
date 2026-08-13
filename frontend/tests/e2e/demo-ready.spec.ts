@@ -45,7 +45,7 @@ test("Scale Lab previews, launches, proves, and exports a bounded workload", asy
   await page.getByRole("button", { name: /Quality and quarantine/ }).click();
   await expect(page.getByText("Every rejected record is counted and quarantined with rule-level reasons.", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("link", { name: "Unified decision workspace", exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard\/$/);
   await expect(page.getByText("Scale run decision context", { exact: true })).toBeVisible();
   await expect(page.getByText("10,000 synthetic records", { exact: true })).toBeVisible();
@@ -53,8 +53,8 @@ test("Scale Lab previews, launches, proves, and exports a bounded workload", asy
   await expect(page.getByText("400 grants across 8 program areas", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Use curated baseline" }).first().click();
-  await expect(page.getByText("Live demo data", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What is happening now" })).toBeVisible();
+  await expect(page.getByText("Curated demo", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Decision workspace" })).toBeVisible();
   await expect(page.getByText("Scale run decision context", { exact: true })).toHaveCount(0);
 });
 
@@ -66,7 +66,7 @@ test("continuous synthetic ingestion advances until the operator stops it", asyn
   test.skip(testInfo.project.name !== "desktop-chromium", "continuous stream workflow runs once on desktop");
 
   await page.goto("/dashboard/");
-  await expect(page.getByText("Live demo data", { exact: true })).toBeVisible();
+  await expect(page.getByText("Curated demo", { exact: true })).toBeVisible();
   await page.getByLabel("Synthetic stream cadence").selectOption("1");
   await page.getByRole("button", { name: "Start live updates" }).click();
 
@@ -77,16 +77,18 @@ test("continuous synthetic ingestion advances until the operator stops it", asyn
   await expect(page.getByText("Updates stopped", { exact: true })).toBeVisible();
 });
 
-test("the primary experience is simple and alerts use the full viewport", async ({ page }, testInfo) => {
+test("the demo sequence stays explicit and alerts use the full viewport", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-chromium", "desktop navigation and alert drawer run once");
 
   await page.goto("/dashboard/");
   const navigation = page.getByRole("navigation");
-  for (const label of ["Overview", "Bring in data", "Trusted data", "Intelligence", "Share results"]) {
-    await expect(navigation.getByRole("link", { name: label, exact: true })).toBeVisible();
+  for (const label of ["IaC and DevSecOps", "Ingestion and DataOps", "Governance and catalog", "Decision analytics and MLOps", "Unified decision workspace", "Interoperability and export"]) {
+    await expect(navigation.getByRole("link", { name: label, exact: false })).toBeVisible();
   }
   await expect(navigation.getByRole("link", { name: "Architecture", exact: true })).toBeHidden();
-  await expect(page.getByText("Explore supporting analysis", { exact: true })).toBeVisible();
+  await expect(page.getByText("Demo package", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Demo evidence and supporting analysis", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Demo requirements", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Items needing review" })).toBeVisible();
   await expect(page.getByText("An anomaly is a record that looks different from similar records.", { exact: false })).toBeVisible();
 
@@ -215,7 +217,7 @@ test("dashboard filters and viewer scope change the decision projection", async 
   test.skip(testInfo.project.name !== "desktop-chromium", "full workflow runs once on desktop");
 
   await page.goto("/dashboard/");
-  await page.getByText("Explore supporting analysis", { exact: true }).click();
+  await page.getByText("Demo evidence and supporting analysis", { exact: true }).click();
   await page.getByLabel("Search portfolio").fill("hypersonic");
   await page.getByRole("button", { name: "Apply view" }).click();
   await expect(page.getByText(/3 grants across 2 program areas/i)).toBeVisible();

@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ClipboardCheck,
   DollarSign,
   FileStack,
   Gauge,
@@ -87,20 +89,29 @@ function CuratedDashboardView() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        kicker="Portfolio overview"
-        title="What is happening now"
+        kicker="Element 6 of 7 | Unified Dashboard and Process Automation"
+        title="Decision workspace"
         icon={<Radar className="size-5" aria-hidden />}
-        lead="See where the money is going, what changed, and what needs a person to review."
+        lead="See where the money is going, what changed, and what needs a person to review, with each result linked to the demo evidence chain."
         actions={
-          <button
-            type="button"
-            onClick={reload}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-semibold text-text shadow-soft transition-colors hover:bg-surface-2 disabled:cursor-wait disabled:opacity-50"
-          >
-            <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} aria-hidden />
-            Refresh
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/admin/requirements/"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-gov-primary/25 bg-gov-primary-lighter px-4 text-sm font-semibold text-gov-primary hover:bg-gov-primary hover:text-white"
+            >
+              <ClipboardCheck className="size-4" aria-hidden />
+              Demo requirements
+            </Link>
+            <button
+              type="button"
+              onClick={reload}
+              disabled={loading}
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-semibold text-text shadow-soft transition-colors hover:bg-surface-2 disabled:cursor-wait disabled:opacity-50"
+            >
+              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} aria-hidden />
+              Refresh intelligence
+            </button>
+          </div>
         }
       />
 
@@ -118,6 +129,7 @@ function CuratedDashboardView() {
       ) : data ? (
         <>
           <DecisionBrief data={data} />
+          <DocumentDecisionEvidence />
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
@@ -168,8 +180,8 @@ function CuratedDashboardView() {
           <details className="group overflow-hidden rounded-lg border border-border bg-white shadow-soft">
             <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 px-5 py-3 [&::-webkit-details-marker]:hidden">
               <div>
-                <p className="text-sm font-bold text-text-strong">Explore supporting analysis</p>
-                <p className="mt-0.5 text-xs text-text-muted">Filters, source evidence, AI summary, topics, organizations, and data-quality history.</p>
+                <p className="text-sm font-bold text-text-strong">Demo evidence and supporting analysis</p>
+                <p className="mt-0.5 text-xs text-text-muted">Filters, access scope, AI summary, topics, organizations, and data-quality history.</p>
               </div>
               <span className="rounded-full border border-border bg-surface-2 px-3 py-1 text-[10px] font-bold text-text-muted group-open:hidden">Show details</span>
               <span className="hidden rounded-full border border-border bg-surface-2 px-3 py-1 text-[10px] font-bold text-text-muted group-open:inline">Hide details</span>
@@ -195,7 +207,6 @@ function CuratedDashboardView() {
                   {masked ? "Funding values protected" : "Funding values available"}
                 </span>
               </div>
-              <DocumentDecisionEvidence />
               <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
                 <ExecSummary data={data} />
                 <AskCompass scopeLabel={scopeLabel} />

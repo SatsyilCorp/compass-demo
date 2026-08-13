@@ -150,7 +150,7 @@ export function LiveDemoStreamBar() {
 
   return (
     <section
-      aria-label="Live demo data"
+      aria-label="Active demo package"
       aria-live="polite"
       className={`border-b px-4 py-2.5 sm:px-6 xl:px-8 ${
         running ? "border-info/35 bg-info-soft" : "border-border bg-white"
@@ -171,7 +171,10 @@ export function LiveDemoStreamBar() {
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-bold text-text-strong">{scaleSelected ? "Scale test selected" : "Live demo data"}</p>
+              <span className="rounded-full bg-gov-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                Demo package
+              </span>
+              <p className="text-xs font-bold text-text-strong">{scaleSelected ? "Selected scale run" : "Curated demo"}</p>
               {!scaleSelected ? <StatusBadge status={status} /> : null}
               <span className="rounded-full border border-success/30 bg-success-soft px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-success">Safe synthetic data</span>
             </div>
@@ -179,10 +182,10 @@ export function LiveDemoStreamBar() {
               {scaleSelected
                 ? `Viewing ${selection.runId}. Return to the demo portfolio to use live updates.`
                 : running
-                  ? `${session?.emitted_events.toLocaleString() ?? 0} new ${session?.emitted_events === 1 ? "record" : "records"} | every ${session?.cadence_seconds ?? cadence} ${session?.cadence_seconds === 1 ? "second" : "seconds"} | live for ${elapsed}`
+                  ? `Element 3 live ingestion | ${session?.emitted_events.toLocaleString() ?? 0} new ${session?.emitted_events === 1 ? "record" : "records"} | every ${session?.cadence_seconds ?? cadence} ${session?.cadence_seconds === 1 ? "second" : "seconds"} | live for ${elapsed}`
                   : session && session.emitted_events > 0
-                    ? `Last session added ${session.emitted_events.toLocaleString()} records. Start again to keep the portfolio changing.`
-                    : "Adds one sample research award at a time and updates the dashboard, trusted data, and history."}
+                    ? `Element 3 live ingestion last added ${session.emitted_events.toLocaleString()} records. Start again to keep the portfolio changing.`
+                    : "Element 3 live ingestion adds one sample research award at a time and updates catalog, lineage, and decisions."}
             </p>
           </div>
         </div>
@@ -238,7 +241,7 @@ export function LiveDemoStreamBar() {
             </button>
           ) : null}
           <Link href="/ingest/" className="inline-flex min-h-10 items-center rounded-md px-2 text-[10px] font-bold text-gov-primary hover:bg-gov-primary-lighter">
-            See how data moves
+            Open Element 3
           </Link>
         </div>
       </div>
