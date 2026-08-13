@@ -100,6 +100,45 @@ FORMULA_NOTE = (
     "un-run gate is not a pass."
 )
 
+DATA_DICTIONARY = [
+    {
+        "field": "grant_no",
+        "data_type": "text",
+        "definition": "Source award or grant identifier used for reconciliation and citations.",
+        "security": "Visible within the caller's row-level scope.",
+    },
+    {
+        "field": "title",
+        "data_type": "text",
+        "definition": "Normalized project or award title supplied by the accepted source.",
+        "security": "Visible within the caller's row-level scope.",
+    },
+    {
+        "field": "program_area",
+        "data_type": "text",
+        "definition": "Governed portfolio category used for filtering and aggregation.",
+        "security": "Visible within the caller's row-level scope.",
+    },
+    {
+        "field": "amount_usd",
+        "data_type": "numeric",
+        "definition": "Normalized obligated or awarded funding amount in US dollars.",
+        "security": "Column-level security masks this field for non-entitled roles.",
+    },
+    {
+        "field": "org_unit",
+        "data_type": "text",
+        "definition": "Organization scope that drives the database access policy.",
+        "security": "PostgreSQL row-level security enforces this boundary.",
+    },
+    {
+        "field": "classification_band",
+        "data_type": "text",
+        "definition": "Demonstration handling label attached during curation.",
+        "security": "Mock labels only. Government markings require an authorized policy source.",
+    },
+]
+
 
 def _rule_score(row: Dict[str, Any]) -> Optional[float]:
     """Stored score, or the formula applied to the row counts."""
@@ -342,7 +381,9 @@ def list_catalog(conn, role: str) -> Dict[str, Any]:
                 "classification_band": b["classification_band"],
                 "ingested_at": _iso(b["first_seen"]),
                 "last_row_at": _iso(b["last_seen"]),
-                "owner": "Compass Ingest Pipeline",
+                "owner": "Portfolio Data Product Owner (demo role)",
+                "steward": "Data Quality Steward (demo role)",
+                "data_dictionary": DATA_DICTIONARY,
             }
         )
 

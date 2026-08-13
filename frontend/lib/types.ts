@@ -25,6 +25,13 @@ export type QualityRuleResult = {
   details?: Record<string, unknown>;
 };
 
+export type CatalogFieldDefinition = {
+  field: string;
+  data_type: string;
+  definition: string;
+  security: string;
+};
+
 // ---------------------------------------------------------------------------
 // GET /me  (element 1)
 // ---------------------------------------------------------------------------
@@ -58,6 +65,8 @@ export type CatalogEntry = {
   classification_band: string;
   ingested_at: string; // ISO 8601
   owner: string;
+  steward: string;
+  data_dictionary: CatalogFieldDefinition[];
 };
 export type CatalogResponse = { datasets: CatalogEntry[] };
 
