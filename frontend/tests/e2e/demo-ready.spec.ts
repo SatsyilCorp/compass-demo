@@ -98,6 +98,14 @@ test("architecture explorer maps services and explains production scale flow", a
 
   await page.goto("/admin/architecture/");
   await expect(page.getByRole("heading", { name: "Architecture Explorer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Five views. One accountable system." })).toBeVisible();
+  await page.getByRole("tab", { name: "IL4/IL5 target boundary" }).click();
+  await expect(page.getByRole("heading", { name: "Government boundary services surround a private mission enclave" })).toBeVisible();
+  await expect(page.getByText("Target architecture only.", { exact: false }).first()).toBeVisible();
+  await page.getByRole("tab", { name: "Data lineage" }).click();
+  await expect(page.getByRole("heading", { name: "Every accepted record keeps its origin and every rejected record keeps its reason" })).toBeVisible();
+
+  await page.getByText("Open the full deployed topology, scale playback, and component inventory", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "Deployed AWS-native proving prototype" })).toBeVisible();
   await expect(page.getByText("This is not a FedRAMP High, IL5, ATO, or Government production authorization.", { exact: false })).toBeVisible();
   await expect(page.getByText(/boxes mapped/)).toBeVisible();
@@ -124,17 +132,19 @@ test("demo command center walks the scored sequence and strategic prompts", asyn
   test.skip(testInfo.project.name !== "desktop-chromium", "interactive command center flow runs once on desktop");
 
   await page.goto("/admin/requirements/");
-  await expect(page.getByRole("heading", { name: "Technical Demonstration Command Center" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Seven demonstration elements" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Five mandatory strategic prompts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Requirement proof and presenter path" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tell one evidence chain in 18 minutes" })).toBeVisible();
+  await expect(page.getByText("5 stops | 12 asks", { exact: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: /Element 5 Model and decide/ }).click();
-  await expect(page.getByRole("heading", { name: "Decision-Support Analytics and Modeling" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open Model operations" })).toBeVisible();
-  await expect(page.getByText("The classifier uses sanitized synthetic documents", { exact: false })).toBeVisible();
+  await page.getByPlaceholder("Search an ask, screen, API, source, or caveat").fill("Real model lifecycle");
+  await expect(page.getByRole("heading", { name: "Real model lifecycle" })).toBeVisible();
+  await expect(page.getByText("1 of 12 shown", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Model operations/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Zero Trust and Cybersecurity Compliance" }).click();
-  await expect(page.getByText("Continuously evaluate source, dependencies, IaC, STIG policy", { exact: false })).toBeVisible();
+  await page.getByLabel("Evidence state").selectOption("target-architecture");
+  await expect(page.getByText("No matching demo ask", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page.getByRole("heading", { name: "IL4/IL5 target" })).toBeVisible();
 });
 
 test("model operations refuses to present replay or registry evidence as an execution", async ({ page }) => {

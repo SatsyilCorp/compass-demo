@@ -109,7 +109,7 @@ def event(method: str, path: str, role: str = "poweruser"):
 def test_lineage_returns_directed_server_receipts(monkeypatch):
     table = Table()
     monkeypatch.setattr(app, "_TABLE", table)
-    monkeypatch.setattr("boto3.dynamodb.conditions.Key", lambda _name: KeyExpr())
+    monkeypatch.setattr(app, "_key", lambda _name: KeyExpr())
     response = app.handler(event("GET", "/operations/lineage/doc-safe"))
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
@@ -151,7 +151,7 @@ def test_summary_preserves_last_accepted_snapshot_after_failed_attempt(monkeypat
         },
     ]
     monkeypatch.setattr(app, "_TABLE", table)
-    monkeypatch.setattr("boto3.dynamodb.conditions.Key", lambda _name: KeyExpr())
+    monkeypatch.setattr(app, "_key", lambda _name: KeyExpr())
 
     response = app.handler(event("GET", "/operations/summary"))
     body = json.loads(response["body"])

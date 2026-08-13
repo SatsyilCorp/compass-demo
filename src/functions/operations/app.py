@@ -21,6 +21,13 @@ MAX_STAGES = 100
 _TABLE = None
 
 
+def _key(name: str):
+    """Load the DynamoDB condition builder only in the AWS-backed adapter."""
+    from boto3.dynamodb.conditions import Key
+
+    return Key(name)
+
+
 def _table():
     global _TABLE
     if _TABLE is None:
@@ -53,11 +60,9 @@ def _public(item: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 def _query_index(kind: str, *, limit: int) -> List[Dict[str, Any]]:
-    from boto3.dynamodb.conditions import Key
-
     response = _table().query(
         IndexName="by-type",
-        KeyConditionExpression=Key("gsi1pk").eq(kind),
+        KeyConditionExpression=_key("gsi1pk").eq(kind),
         ScanIndexForward=False,
         Limit=max(1, min(MAX_SIGNALS, int(limit))),
     )
@@ -65,10 +70,8 @@ def _query_index(kind: str, *, limit: int) -> List[Dict[str, Any]]:
 
 
 def _query_run(run_id: str) -> List[Dict[str, Any]]:
-    from boto3.dynamodb.conditions import Key
-
     response = _table().query(
-        KeyConditionExpression=Key("pk").eq(f"RUN#{run_id}"),
+        KeyConditionExpression=_key("pk").eq(f"RUN#{run_id}"),
         ScanIndexForward=True,
         Limit=MAX_STAGES,
     )

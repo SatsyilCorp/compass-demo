@@ -160,7 +160,12 @@ function ArchitectureLaneView({ lane }: { lane: BriefingLane }) {
         ) : null}
       </div>
 
-      <div className="mt-3 overflow-x-auto pb-2">
+      <div
+        className="mt-3 overflow-x-auto pb-2"
+        role="region"
+        aria-label={`${lane.label} architecture flow`}
+        tabIndex={0}
+      >
         <div className="flex min-w-max items-stretch">
           {lane.nodes.map((item, index) => (
             <div key={item.id} className="contents">
