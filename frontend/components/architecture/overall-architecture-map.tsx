@@ -221,7 +221,7 @@ export function OverallArchitectureMap() {
               <TargetBoundary />
 
               <div className="grid gap-2 lg:grid-cols-3" aria-label="Architecture truth notes">
-                <TruthNote title="Source cadence truth" detail="The operations display updates every second. USAspending, Grants.gov, Crossref, and Federal Register are independent scheduled HTTPS polls at responsible cadences. SBIR uses its public monthly snapshot while its API is degraded. Synthetic pulse data is isolated as load-test evidence." />
+                <TruthNote title="Source cadence truth" detail="The browser periodically refreshes retained receipts without calling a public authority. USAspending, Grants.gov, Crossref, and Federal Register are independent scheduled HTTPS polls at responsible cadences. SBIR uses its public monthly snapshot while its API is degraded. Synthetic pulse data is isolated as load-test evidence." />
                 <TruthNote title="VPC truth" detail="Thirteen database-facing Lambda adapters and Aurora span two private subnets. Eight other Lambda adapters run in the regional managed service plane. One NAT gateway is the current demonstration-cost tradeoff. S3 and DynamoDB gateway endpoints keep those private-subnet service routes off the internet path." />
                 <TruthNote title="Authorization truth" detail="The IL4/IL5 lane is the proposed target. The current commercial deployment is not an ATO, FedRAMP High authorization, or completed Government integration." />
               </div>

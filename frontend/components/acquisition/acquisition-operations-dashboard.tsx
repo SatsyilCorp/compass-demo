@@ -40,6 +40,7 @@ import {
   buildAcquisitionDemoSignals,
   DEMO_FAILURE_SOURCE_ID,
 } from "@/lib/acquisition/demo-replay";
+import { pipelineStepIndex } from "@/lib/acquisition/run-progress";
 import type { OperationsSignalsResponse } from "@/lib/types";
 
 type Profile = "quick" | "standard" | "deep";
@@ -183,7 +184,9 @@ export function AcquisitionOperationsDashboard() {
   const decision = useMemo(() => buildDecisionSummary(latestBySource), [latestBySource]);
   const healthy = sourceHealth.filter((source) => source.status === "healthy").length;
   const latestRun = data?.acquisitions[0] ?? null;
-  const busyStep = busyStartedAt === null ? null : Math.floor((now.getTime() - busyStartedAt) / 1_100) % PIPELINE_STEPS.length;
+  const busyStep = busyStartedAt === null
+    ? null
+    : pipelineStepIndex(now.getTime(), busyStartedAt, PIPELINE_STEPS.length);
 
   return (
     <div className="space-y-5">

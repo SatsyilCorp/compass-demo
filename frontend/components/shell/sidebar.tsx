@@ -16,6 +16,7 @@ import {
   Settings2,
   UploadCloud,
   Workflow,
+  Map,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -35,6 +36,7 @@ const ICONS: Record<string, LucideIcon> = {
   workflow: Workflow,
   "clipboard-check": ClipboardCheck,
   radar: Network,
+  map: Map,
 };
 
 type SidebarProps = {

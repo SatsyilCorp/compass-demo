@@ -6,21 +6,18 @@ import { ChevronDown } from "lucide-react";
 export function GovBanner() {
   const [open, setOpen] = useState(false);
   const contentId = useId();
-  const replay = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
 
   return (
     <section aria-label="Environment status and prototype disclosure" className="relative z-40 border-b border-border bg-surface-2">
       <div className="mx-auto flex min-h-11 max-w-[1480px] items-center gap-2 px-4 text-xs text-text-muted sm:gap-3 sm:px-6 xl:px-8">
         <span
           aria-hidden
-          className={`size-2 shrink-0 rounded-full ring-4 ${
-            replay ? "bg-gold ring-gold-soft" : "bg-success ring-success-soft"
-          }`}
+          className="size-2 shrink-0 rounded-full bg-gov-primary ring-4 ring-gov-primary-lighter"
         />
         <p className="min-w-0 flex-1 truncate">
-          <strong className="text-text-strong">{replay ? "Replay mode" : "Live services"}</strong>
+          <strong className="text-text-strong">Satsyil prototype</strong>
           <span className="mx-2 text-border-strong" aria-hidden>|</span>
-          Technical prototype using public and synthetic data
+          Every screen identifies its source and evidence class
         </p>
         <button
           type="button"

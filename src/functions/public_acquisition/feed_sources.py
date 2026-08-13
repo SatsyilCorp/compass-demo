@@ -335,7 +335,6 @@ def _federal_register(open_json: JsonOpen, profile: str) -> Dict[str, Any]:
 
 
 def _crossref(open_json: JsonOpen, profile: str) -> Dict[str, Any]:
-    spec = SOURCE_REGISTRY["crossref-onr"]
     limit = _profile_limit(profile)
     from_date = (datetime.now(timezone.utc) - timedelta(days=550)).date().isoformat()
     exact_endpoint = "https://api.crossref.org/v1/funders/100000006/works"

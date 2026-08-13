@@ -9,7 +9,7 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { AppFooter } from "@/components/shell/app-footer";
 import type { AppRole } from "@/lib/auth/use-app-auth";
 import { PresenterGuide } from "@/components/presenter/presenter-guide";
-import { LiveDemoStreamBar } from "@/components/shell/live-demo-stream-bar";
+import { ScreenContextBar } from "@/components/shell/screen-context-bar";
 
 export function AppShell({
   children,
@@ -50,7 +50,7 @@ export function AppShell({
             presenterOpen={presenterOpen}
             onPresenterToggle={togglePresenter}
           />
-          <LiveDemoStreamBar />
+          <ScreenContextBar />
           <main
             id="main-content"
             tabIndex={-1}
