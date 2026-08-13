@@ -1358,6 +1358,185 @@ def _source_health(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return health
 
 
+_LINK_STOP_WORDS = {
+    "agency",
+    "award",
+    "based",
+    "both",
+    "department",
+    "federal",
+    "from",
+    "funded",
+    "funder",
+    "naval",
+    "navy",
+    "office",
+    "opportunity",
+    "program",
+    "project",
+    "public",
+    "research",
+    "that",
+    "these",
+    "this",
+    "through",
+    "using",
+    "will",
+    "with",
+}
+
+
+def _link_tokens(record: Mapping[str, Any]) -> set[str]:
+    values = [
+        record.get("title"),
+        record.get("description"),
+        record.get("recipient_name"),
+        *(record.get("organizations") or []),
+        *(record.get("topics") or []),
+    ]
+    text = " ".join(str(value or "") for value in values)
+    return {
+        token.lower()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9-]{3,}", text)
+        if token.lower() not in _LINK_STOP_WORDS
+    }
+
+
+def _thread_fact(
+    run: Mapping[str, Any],
+    record: Mapping[str, Any],
+) -> Dict[str, Any]:
+    prediction = next(
+        (
+            item
+            for item in ((run.get("classification_summary") or {}).get("preview") or [])
+            if item.get("source_record_id") == record.get("source_record_id")
+        ),
+        None,
+    )
+    return {
+        "source_id": run.get("source_id"),
+        "source_label": run.get("source_label") or run.get("source_id"),
+        "run_id": run.get("run_id"),
+        "record_id": record.get("source_record_id"),
+        "record_type": record.get("record_type") or "record",
+        "title": record.get("title")
+        or str(record.get("description") or "")[:160]
+        or record.get("source_record_id"),
+        "source_url": record.get("source_url"),
+        "document_url": record.get("document_url"),
+        "model_version": (run.get("classification_summary") or {}).get("model_version"),
+        "document_class": (prediction or {}).get("document_class"),
+    }
+
+
+def _build_evidence_threads(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    latest: Dict[str, Dict[str, Any]] = {}
+    for run in records:
+        source_id = str(run.get("source_id") or "")
+        if run.get("status") == "completed" and source_id and source_id not in latest:
+            latest[source_id] = run
+
+    indexed: List[tuple[Dict[str, Any], Dict[str, Any], set[str]]] = []
+    exact: Dict[str, List[Dict[str, Any]]] = {}
+    for run in latest.values():
+        for record in run.get("record_preview") or []:
+            fact = _thread_fact(run, record)
+            indexed.append((run, record, _link_tokens(record)))
+            for identity in record.get("identity_keys") or []:
+                if str(identity).startswith(("AWARD#", "DOI#")):
+                    exact.setdefault(str(identity), []).append(fact)
+
+    threads: List[Dict[str, Any]] = []
+    exact_record_pairs: set[tuple[str, str]] = set()
+    for key, facts in exact.items():
+        if len({fact["source_id"] for fact in facts}) < 2:
+            continue
+        for left_index, left in enumerate(facts):
+            for right in facts[left_index + 1 :]:
+                exact_record_pairs.add(
+                    tuple(sorted((str(left["record_id"]), str(right["record_id"]))))
+                )
+        threads.append(
+            {
+                "thread_id": f"exact-{hashlib.sha256(key.encode()).hexdigest()[:12]}",
+                "match_type": "exact-identity",
+                "identity_key": key,
+                "match_score": 1.0,
+                "review_status": "verified-key",
+                "explanation": "Two accepted source records carry the same exact governed identity key.",
+                "shared_terms": [],
+                "owner": "Portfolio Data Product Owner",
+                "steward": "Public Evidence Data Steward",
+                "facts": facts,
+            }
+        )
+
+    candidates: List[Dict[str, Any]] = []
+    for index, (left_run, left_record, left_tokens) in enumerate(indexed):
+        for right_run, right_record, right_tokens in indexed[index + 1 :]:
+            if left_run.get("source_id") == right_run.get("source_id"):
+                continue
+            record_pair = tuple(
+                sorted(
+                    (
+                        str(left_record.get("source_record_id") or ""),
+                        str(right_record.get("source_record_id") or ""),
+                    )
+                )
+            )
+            if record_pair in exact_record_pairs:
+                continue
+            shared = sorted(left_tokens & right_tokens)
+            if len(shared) < 3:
+                continue
+            overlap = len(shared) / max(1, min(len(left_tokens), len(right_tokens)))
+            if overlap < 0.18:
+                continue
+            stable_pair = "|".join(
+                sorted(
+                    (
+                        f"{left_run.get('source_id')}:{left_record.get('source_record_id')}",
+                        f"{right_run.get('source_id')}:{right_record.get('source_record_id')}",
+                    )
+                )
+            )
+            candidates.append(
+                {
+                    "thread_id": f"candidate-{hashlib.sha256(stable_pair.encode()).hexdigest()[:12]}",
+                    "match_type": "explainable-candidate",
+                    "identity_key": None,
+                    "match_score": round(overlap, 4),
+                    "review_status": "analyst-review",
+                    "explanation": (
+                        "The records share specific normalized terms. This is a candidate relationship, "
+                        "not a verified identity match."
+                    ),
+                    "shared_terms": shared[:8],
+                    "owner": "Portfolio Data Product Owner",
+                    "steward": "Public Evidence Data Steward",
+                    "facts": [
+                        _thread_fact(left_run, left_record),
+                        _thread_fact(right_run, right_record),
+                    ],
+                }
+            )
+
+    candidates.sort(
+        key=lambda item: (item["match_score"], len(item["shared_terms"])),
+        reverse=True,
+    )
+    threads.extend(candidates[:12])
+    threads.sort(
+        key=lambda item: (
+            item["match_type"] == "exact-identity",
+            item["match_score"],
+        ),
+        reverse=True,
+    )
+    return threads[:16]
+
+
 def list_acquisitions(limit: int = 50) -> Dict[str, Any]:
     from boto3.dynamodb.conditions import Key
 
@@ -1381,6 +1560,7 @@ def list_acquisitions(limit: int = 50) -> Dict[str, Any]:
         "source_transport": "source-specific bounded HTTPS polling, then accepted Kinesis change events",
         "display_refresh": "one-second operational projection",
         "source_health": _source_health(records),
+        "evidence_threads": _build_evidence_threads(records),
         "acquisitions": records,
     }
 

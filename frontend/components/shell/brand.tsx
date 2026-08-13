@@ -87,7 +87,7 @@ export function TrustIndicator({
       title={
         replay
           ? "Deterministic replay environment using synthetic demonstration data."
-          : "Connected service environment using synthetic demonstration data."
+          : "Connected service environment using public and synthetic demonstration data."
       }
     >
       <span
@@ -96,7 +96,7 @@ export function TrustIndicator({
       />
       {replay ? "Replay mode" : "Live services"}
       <span aria-hidden className={tone === "dark" ? "text-white/35" : "text-text-subtle"}>•</span>
-      <span className={tone === "dark" ? "text-white/60" : "text-text-muted"}>Synthetic data</span>
+      <span className={tone === "dark" ? "text-white/60" : "text-text-muted"}>{replay ? "Synthetic data" : "Public and synthetic data"}</span>
     </span>
   );
 }

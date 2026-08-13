@@ -20,7 +20,7 @@ export function GovBanner() {
         <p className="min-w-0 flex-1 truncate">
           <strong className="text-text-strong">{replay ? "Replay mode" : "Live services"}</strong>
           <span className="mx-2 text-border-strong" aria-hidden>|</span>
-          Technical prototype using synthetic data
+          Technical prototype using public and synthetic data
         </p>
         <button
           type="button"
@@ -45,8 +45,9 @@ export function GovBanner() {
             is not deployed, operated, or endorsed by the U.S. Navy, ONR, or any federal agency.
           </p>
           <p>
-            Every grant, amount, dataset, and identity shown here is synthetically generated. No
-            screen reflects a real program, awardee, or funding decision.
+            Live source operations use bounded, PII-minimized records from named public APIs.
+            Seeded mission workflows remain synthetic. No screen represents an authoritative ONR
+            inventory or an approved government funding decision.
           </p>
         </div>
       </div>

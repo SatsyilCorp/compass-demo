@@ -27,6 +27,7 @@ import {
   postPublicSourceRunApi,
   type PublicAcquisitionList,
   type PublicAcquisitionRecord,
+  type PublicEvidenceThread,
   type PublicSourceHealth,
 } from "@/lib/api";
 import type { OperationsSignalsResponse } from "@/lib/types";
@@ -97,7 +98,7 @@ export function AcquisitionOperationsDashboard() {
 
   const sourceHealth = data?.source_health ?? [];
   const latestBySource = useMemo(() => latestAcceptedBySource(data?.acquisitions ?? []), [data]);
-  const evidenceThreads = useMemo(() => buildEvidenceThreads(latestBySource), [latestBySource]);
+  const evidenceThreads = data?.evidence_threads ?? [];
   const decision = useMemo(() => buildDecisionSummary(latestBySource), [latestBySource]);
   const healthy = sourceHealth.filter((source) => source.status === "healthy").length;
   const latestRun = data?.acquisitions[0] ?? null;
@@ -165,10 +166,10 @@ export function AcquisitionOperationsDashboard() {
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-xl border border-border bg-white p-5 shadow-card">
-          <SectionHeading kicker="Intelligence layer" title="Cross-source evidence threads" detail="Exact award number is used first. Other matching methods remain reviewable and are never hidden." />
+          <SectionHeading kicker="Intelligence layer" title="Cross-source evidence threads" detail="Exact governed keys are verified first. Explainable candidates are separately scored, owned, and held for analyst review." />
           <div className="mt-4 space-y-3">
-            {evidenceThreads.length ? evidenceThreads.slice(0, 8).map((thread) => <EvidenceThreadCard key={thread.key} thread={thread} />) : (
-              <EmptyPanel title="No exact shared key in the current bounded pages" detail="The system retains candidate identifiers and will create a thread when an exact award number appears in two accepted source pages. The larger governed corpus remains available in Public Portfolio Intelligence." actionHref="/intelligence/" actionLabel="Open governed intelligence" />
+            {evidenceThreads.length ? evidenceThreads.slice(0, 8).map((thread) => <EvidenceThreadCard key={thread.thread_id} thread={thread} />) : (
+              <EmptyPanel title="No cross-source relationship in the current bounded pages" detail="Exact identities and reviewable candidate relationships are recalculated whenever a source page is accepted. The larger governed corpus remains available in Public Portfolio Intelligence." actionHref="/intelligence/" actionLabel="Open governed intelligence" />
             )}
           </div>
         </div>
@@ -289,34 +290,12 @@ function RunHistory({ acquisitions }: { acquisitions: PublicAcquisitionRecord[] 
   return <section className="overflow-hidden rounded-xl border border-border bg-white shadow-card"><div className="p-5"><SectionHeading kicker="Operations ledger" title="Recent acquisition receipts" detail="Every row is a durable source attempt. A failure leaves the prior accepted snapshot active." /></div><div className="overflow-x-auto"><table className="min-w-full text-left"><thead className="border-y border-border bg-surface-2 text-[9px] uppercase tracking-wide text-text-subtle"><tr><th className="px-4 py-3">Source</th><th className="px-4 py-3">State</th><th className="px-4 py-3">Records</th><th className="px-4 py-3">Change</th><th className="px-4 py-3">Pages</th><th className="px-4 py-3">Latency</th><th className="px-4 py-3">Model</th><th className="px-4 py-3">Evidence</th></tr></thead><tbody className="divide-y divide-border">{acquisitions.slice(0, 24).map((run) => <tr key={run.run_id} className="text-xs"><td className="px-4 py-3"><p className="font-bold text-text-strong">{run.source_label ?? run.source_id}</p><p className="mt-1 font-mono text-[8px] text-text-muted">{run.updated_at}</p></td><td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-[8px] font-bold uppercase ${run.status === "completed" ? "border-success/30 bg-success-soft text-success" : "border-danger/30 bg-danger-soft text-danger"}`}>{run.status}</span></td><td className="px-4 py-3 font-bold text-text-strong">{(run.record_count ?? 0).toLocaleString("en-US")}</td><td className="px-4 py-3 text-text-muted">+{run.added_records ?? 0} | {run.changed_records ?? 0} changed</td><td className="px-4 py-3 text-text-muted">{run.pages_fetched ?? 1}{run.has_more_source_pages ? "+" : ""}</td><td className="px-4 py-3 text-text-muted">{run.duration_ms == null ? "Pending" : `${(run.duration_ms / 1000).toFixed(1)}s`}</td><td className="px-4 py-3 text-text-muted">{run.classification_summary?.model_version ?? run.classification_status ?? "Not run"}</td><td className="px-4 py-3"><Link href={`/admin/lineage/?run=${encodeURIComponent(run.run_id)}`} className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2 font-bold text-gov-primary hover:bg-gov-primary-lighter">Trace <ArrowRight className="size-3" aria-hidden /></Link></td></tr>)}</tbody></table></div></section>;
 }
 
-type ThreadRecord = { source: string; recordId: string; title: string; url?: string; type: string };
-type EvidenceThread = { key: string; records: ThreadRecord[] };
-
-function buildEvidenceThreads(latest: Map<string, PublicAcquisitionRecord>): EvidenceThread[] {
-  const keys = new Map<string, ThreadRecord[]>();
-  for (const run of latest.values()) {
-    for (const record of run.record_preview ?? []) {
-      const identities = new Set<string>();
-      for (const value of [record.source_record_id, ...(record.award_ids ?? [])]) {
-        const normalized = normalizeAwardKey(value);
-        if (normalized.startsWith("N00014") && normalized.length >= 10) identities.add(normalized);
-      }
-      for (const key of identities) {
-        const existing = keys.get(key) ?? [];
-        existing.push({ source: run.source_label ?? run.source_id, recordId: record.source_record_id, title: record.title ?? record.description?.slice(0, 120) ?? record.source_record_id, url: record.source_url, type: record.record_type ?? "record" });
-        keys.set(key, existing);
-      }
-    }
-  }
-  return [...keys.entries()].filter(([, records]) => new Set(records.map((record) => record.source)).size > 1).map(([key, records]) => ({ key, records })).sort((left, right) => right.records.length - left.records.length);
-}
-
-function EvidenceThreadCard({ thread }: { thread: EvidenceThread }) {
-  return <article className="rounded-lg border border-success/25 bg-success-soft/35 p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-[9px] font-bold uppercase tracking-wide text-success">Exact award key</p><p className="mt-1 font-mono text-xs font-bold text-text-strong">{thread.key}</p></div><span className="rounded-full border border-success/25 bg-white px-2 py-1 text-[8px] font-bold text-success">{thread.records.length} linked facts</span></div><div className="mt-3 space-y-2">{thread.records.map((record) => <div key={`${record.source}-${record.recordId}`} className="flex items-start justify-between gap-3 rounded-md border border-border bg-white p-2"><div><p className="text-[9px] font-bold text-gov-primary">{record.source} | {record.type.replaceAll("_", " ")}</p><p className="mt-1 text-[10px] leading-4 text-text-muted">{record.title}</p></div>{record.url ? <a href={record.url} target="_blank" rel="noreferrer" className="grid size-8 shrink-0 place-items-center rounded-md border border-border text-gov-primary"><ExternalLink className="size-3" aria-hidden /></a> : null}</div>)}</div></article>;
+function EvidenceThreadCard({ thread }: { thread: PublicEvidenceThread }) {
+  const exact = thread.match_type === "exact-identity";
+  return <article className={`rounded-lg border p-3 ${exact ? "border-success/25 bg-success-soft/35" : "border-info/25 bg-info-soft/35"}`}><div className="flex items-start justify-between gap-3"><div><p className={`text-[9px] font-bold uppercase tracking-wide ${exact ? "text-success" : "text-info"}`}>{exact ? "Verified exact identity" : "Explainable candidate link"}</p><p className="mt-1 font-mono text-xs font-bold text-text-strong">{thread.identity_key ?? thread.thread_id}</p><p className="mt-1 text-[9px] leading-4 text-text-muted">{thread.explanation}</p></div><span className={`shrink-0 rounded-full border bg-white px-2 py-1 text-[8px] font-bold ${exact ? "border-success/25 text-success" : "border-info/25 text-info"}`}>{exact ? "100% key match" : `${Math.round(thread.match_score * 100)}% term overlap`}</span></div>{thread.shared_terms.length ? <div className="mt-2 flex flex-wrap gap-1">{thread.shared_terms.map((term) => <span key={term} className="rounded-full border border-info/20 bg-white px-2 py-1 text-[8px] font-bold text-info">{term}</span>)}</div> : null}<div className="mt-3 space-y-2">{thread.facts.map((record) => <div key={`${record.source_id}-${record.record_id}`} className="flex items-start justify-between gap-3 rounded-md border border-border bg-white p-2"><div><p className="text-[9px] font-bold text-gov-primary">{record.source_label} | {record.record_type.replaceAll("_", " ")}</p><p className="mt-1 text-[10px] leading-4 text-text-muted">{record.title}</p><p className="mt-1 text-[8px] text-text-subtle">{record.document_class?.replaceAll("_", " ") ?? "Full artifact classification"} | {record.model_version ?? "model receipt pending"}</p></div>{record.source_url ? <a href={record.source_url} target="_blank" rel="noreferrer" className="grid size-8 shrink-0 place-items-center rounded-md border border-border text-gov-primary" aria-label={`Open linked source ${record.record_id}`}><ExternalLink className="size-3" aria-hidden /></a> : null}</div>)}</div><div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-[8px] text-text-muted"><span>Owner: {thread.owner} | Steward: {thread.steward}</span><span className="font-bold uppercase">{exact ? "Verified key" : "Analyst review required"}</span></div></article>;
 }
 
 function latestAcceptedBySource(acquisitions: PublicAcquisitionRecord[]): Map<string, PublicAcquisitionRecord> { const map = new Map<string, PublicAcquisitionRecord>(); for (const run of acquisitions) if (run.status === "completed" && !map.has(run.source_id)) map.set(run.source_id, run); return map; }
-function normalizeAwardKey(value: string): string { return value.toUpperCase().replace(/[^A-Z0-9]/g, ""); }
 function buildDecisionSummary(latest: Map<string, PublicAcquisitionRecord>) { const records = [...latest.values()]; const previews = records.flatMap((run) => run.record_preview ?? []); return { observedFunding: previews.reduce((sum, record) => sum + (record.award_amount_usd ?? 0), 0), openOpportunities: previews.filter((record) => record.record_type === "funding_opportunity" && record.status === "posted").length, publications: previews.filter((record) => record.record_type === "publication").length, notices: previews.filter((record) => record.record_type === "regulatory_notice").length, reviewFlags: records.reduce((sum, run) => sum + (run.review_flag_count ?? 0), 0) }; }
 function formatCurrency(value: number): string { if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`; if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`; if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`; return `$${Math.round(value).toLocaleString("en-US")}`; }
 function formatCadence(seconds: number): string { if (seconds >= 3600) return `${seconds / 3600} hour`; if (seconds >= 60) return `${seconds / 60} min`; return `${seconds} sec`; }

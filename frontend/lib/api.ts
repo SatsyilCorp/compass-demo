@@ -695,6 +695,30 @@ export type PublicSourceHealth = {
   has_more_source_pages?: boolean;
 };
 
+export type PublicEvidenceThread = {
+  thread_id: string;
+  match_type: "exact-identity" | "explainable-candidate";
+  identity_key?: string | null;
+  match_score: number;
+  review_status: "verified-key" | "analyst-review";
+  explanation: string;
+  shared_terms: string[];
+  owner: string;
+  steward: string;
+  facts: Array<{
+    source_id: string;
+    source_label: string;
+    run_id: string;
+    record_id: string;
+    record_type: string;
+    title: string;
+    source_url?: string;
+    document_url?: string;
+    model_version?: string;
+    document_class?: string;
+  }>;
+};
+
 export type PublicAcquisitionList = {
   contract: "compass.public-acquisition-list.v1";
   mode: "live" | "replay";
@@ -703,6 +727,7 @@ export type PublicAcquisitionList = {
   source_transport: string;
   display_refresh?: string;
   source_health?: PublicSourceHealth[];
+  evidence_threads?: PublicEvidenceThread[];
   acquisitions: PublicAcquisitionRecord[];
 };
 

@@ -312,3 +312,66 @@ def test_grants_source_run_retains_minimized_detail_and_model_receipt(monkeypatc
     assert "703-555-0100" not in retained
     assert "opaque-session-value-must-not-be-retained" not in retained
     assert table.items[("ACQUISITION_ALIAS#grants-gov-onr", "STATE")]["run_id"] == receipt["run_id"]
+
+
+def test_evidence_threads_distinguish_exact_keys_from_reviewable_candidates():
+    records = [
+        {
+            "run_id": "run-awards",
+            "source_id": "usaspending-onr-grants",
+            "source_label": "USAspending awards",
+            "status": "completed",
+            "classification_summary": {
+                "model_version": "doc-nb-test",
+                "preview": [
+                    {
+                        "source_record_id": "award-1",
+                        "document_class": "technical_report",
+                    }
+                ],
+            },
+            "record_preview": [
+                {
+                    "source_record_id": "award-1",
+                    "record_type": "award",
+                    "title": "Dual-use maritime autonomy sensor development",
+                    "identity_keys": ["AWARD#N000142600001"],
+                }
+            ],
+        },
+        {
+            "run_id": "run-opportunities",
+            "source_id": "grants-gov-onr",
+            "source_label": "Grants.gov opportunities",
+            "status": "completed",
+            "classification_summary": {
+                "model_version": "doc-nb-test",
+                "preview": [],
+            },
+            "record_preview": [
+                {
+                    "source_record_id": "opportunity-1",
+                    "record_type": "funding_opportunity",
+                    "title": "Dual-use maritime autonomy technology development",
+                    "identity_keys": ["AWARD#N000142600001"],
+                },
+                {
+                    "source_record_id": "opportunity-2",
+                    "record_type": "funding_opportunity",
+                    "title": "Dual-use maritime autonomy sensor challenge",
+                    "identity_keys": [],
+                },
+            ],
+        },
+    ]
+
+    threads = app._build_evidence_threads(records)
+
+    assert threads[0]["match_type"] == "exact-identity"
+    assert threads[0]["identity_key"] == "AWARD#N000142600001"
+    assert threads[0]["review_status"] == "verified-key"
+    candidate = next(
+        item for item in threads if item["match_type"] == "explainable-candidate"
+    )
+    assert candidate["review_status"] == "analyst-review"
+    assert set(candidate["shared_terms"]) >= {"autonomy", "dual-use", "maritime"}
