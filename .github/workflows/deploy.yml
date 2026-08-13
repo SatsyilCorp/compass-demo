@@ -321,7 +321,9 @@ jobs:
 
       - name: Publish immutable frontend build
         run: |
-          aws s3 sync frontend/out "s3://${WEB_BUCKET}" --delete --only-show-errors
+          aws s3 sync frontend/out "s3://${WEB_BUCKET}" --delete --only-show-errors \
+            --exclude ".DS_Store" \
+            --exclude "*/.DS_Store"
           aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' >/dev/null
 
       - name: Verify public and protected boundaries

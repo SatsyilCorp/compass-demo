@@ -1827,7 +1827,7 @@ Resources:
               Resource: !Sub "${RawBucket.Arn}/public-intelligence/acquisitions/*"
             - Sid: EncryptPublicAcquisition
               Effect: Allow
-              Action: [kms:Encrypt, kms:GenerateDataKey]
+              Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey, kms:DescribeKey]
               Resource: !GetAtt AppKey.Arn
             - Sid: PublicAcquisitionLedger
               Effect: Allow
@@ -1907,6 +1907,10 @@ Resources:
           OPERATIONS_TABLE: !Ref OperationsTable
       Policies:
         - Statement:
+            - Sid: UseOperationalEvidenceKey
+              Effect: Allow
+              Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey, kms:DescribeKey]
+              Resource: !GetAtt AppKey.Arn
             - Sid: ReadAndAcknowledgeOperationalEvidence
               Effect: Allow
               Action: [dynamodb:Query, dynamodb:UpdateItem]
