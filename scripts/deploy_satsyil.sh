@@ -44,6 +44,7 @@ EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN="${EXISTING_PUBLIC_FUNDING_MODEL
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 config="$repo/samconfig-satsyil.toml"
+build_config="$repo/infra/sam-build-serial.toml"
 cd "$repo"
 
 require_clean_source_tree() {
@@ -288,11 +289,10 @@ echo "==> Building Linux ARM Lambda packages"
 sam build \
   --use-container \
   --no-cached \
-  --no-parallel \
   --region "$AWS_REGION" \
   --profile "$REQUIRED_AWS_PROFILE" \
-  --config-file "$config" \
-  --config-env satsyil
+  --config-file "$build_config" \
+  --config-env serial
 
 deploy_pass() {
   local identity_domain="${1:-}"

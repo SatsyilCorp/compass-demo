@@ -1,0 +1,9 @@
+version = 0.1
+
+# Keep container builds sequential. Docker clients commonly expose a pool of
+# ten connections, while this stack contains more than ten Lambda artifacts.
+# A parallel build can leave SAM waiting on container streams after all
+# artifacts finish. Deployment speed is less important than reproducibility.
+[serial.build.parameters]
+cached = false
+parallel = false
