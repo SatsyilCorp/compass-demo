@@ -143,6 +143,10 @@ jobs:
 
       - name: Deploy reviewed infrastructure change set
         run: |
+          notification_parameters=()
+          if [ -n "$NOTIFICATION_EMAIL" ]; then
+            notification_parameters+=("NotificationEmail=$NOTIFICATION_EMAIL")
+          fi
           if [ "$STACK_EXISTS" = "true" ]; then
             callback_url="$WEB_CALLBACK_URL"
             logout_url="$WEB_LOGOUT_URL"
@@ -166,7 +170,7 @@ jobs:
               PublicSbirExecutionEnabled="$PUBLIC_SBIR_EXECUTION_ENABLED" \
               PublicAcquisitionState="$PUBLIC_ACQUISITION_STATE" \
               PublicAcquisitionChangeAlertThreshold="$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" \
-              NotificationEmail="$NOTIFICATION_EMAIL" \
+              "${notification_parameters[@]}" \
               WebCallbackUrl="$callback_url" \
               WebLogoutUrl="$logout_url" \
               WebOrigin="$web_origin"
@@ -174,6 +178,10 @@ jobs:
       - name: Complete fresh deployment web identity binding
         if: env.STACK_EXISTS == 'false'
         run: |
+          notification_parameters=()
+          if [ -n "$NOTIFICATION_EMAIL" ]; then
+            notification_parameters+=("NotificationEmail=$NOTIFICATION_EMAIL")
+          fi
           domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue' --output text)
           python - "$domain" "$GITHUB_ENV" <<'PY'
           import re
@@ -202,7 +210,7 @@ jobs:
               PublicSbirExecutionEnabled="$PUBLIC_SBIR_EXECUTION_ENABLED" \
               PublicAcquisitionState="$PUBLIC_ACQUISITION_STATE" \
               PublicAcquisitionChangeAlertThreshold="$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" \
-              NotificationEmail="$NOTIFICATION_EMAIL" \
+              "${notification_parameters[@]}" \
               WebCallbackUrl="${web_origin}/login/" \
               WebLogoutUrl="${web_origin}/login/" \
               WebOrigin="$web_origin"

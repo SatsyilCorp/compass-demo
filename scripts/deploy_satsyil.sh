@@ -312,6 +312,9 @@ deploy_pass() {
       "WebHostedZoneId=$WEB_HOSTED_ZONE_ID"
     )
   fi
+  if [ -n "$NOTIFICATION_EMAIL" ]; then
+    web_parameters+=("NotificationEmail=$NOTIFICATION_EMAIL")
+  fi
   if [ -n "$identity_domain" ]; then
     web_parameters+=(
       "WebCallbackUrl=https://$identity_domain/login/"
@@ -348,7 +351,6 @@ deploy_pass() {
       "PublicSbirExecutionEnabled=$PUBLIC_SBIR_EXECUTION_ENABLED" \
       "PublicAcquisitionState=$PUBLIC_ACQUISITION_STATE" \
       "PublicAcquisitionChangeAlertThreshold=$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" \
-      "NotificationEmail=$NOTIFICATION_EMAIL" \
       "CognitoDomainPrefix=$COGNITO_DOMAIN_PREFIX" \
       "${web_parameters[@]}"
 }

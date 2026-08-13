@@ -143,6 +143,8 @@ else:
     assert "PublicSbirExecutionEnabled=false" in deploy_calls[1]
     assert "CognitoDomainPrefix=satsyil-compass-demo" in deploy_calls[0]
     assert "CognitoDomainPrefix=satsyil-compass-demo" in deploy_calls[1]
+    assert not any(value.startswith("NotificationEmail=") for value in deploy_calls[0])
+    assert not any(value.startswith("NotificationEmail=") for value in deploy_calls[1])
     assert not any(value.startswith("WebOrigin=") for value in deploy_calls[0])
     assert "WebOrigin=https://demo.invalid" in deploy_calls[1]
     assert "WebCallbackUrl=https://compass.example/login/" in deploy_calls[1]
