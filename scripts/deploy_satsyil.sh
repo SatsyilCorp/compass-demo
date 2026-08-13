@@ -288,6 +288,7 @@ echo "==> Building Linux ARM Lambda packages"
 sam build \
   --use-container \
   --no-cached \
+  --no-parallel \
   --region "$AWS_REGION" \
   --profile "$REQUIRED_AWS_PROFILE" \
   --config-file "$config" \
