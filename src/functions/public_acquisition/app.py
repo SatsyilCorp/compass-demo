@@ -297,7 +297,7 @@ def _put_alias(
         "classification_summary": record.get("classification_summary"),
         "updated_at": record["updated_at"],
     }
-    _table().put_item(Item=item)
+    _table().put_item(Item=_decimal_safe(item))
 
 
 def _diff(

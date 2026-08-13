@@ -7,6 +7,8 @@ import os
 import sys
 from pathlib import Path
 
+from boto3.dynamodb.types import TypeSerializer
+
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src" / "common" / "python"))
 sys.path.insert(0, str(ROOT / "src" / "functions" / "public_acquisition"))
@@ -45,6 +47,9 @@ class Table:
         return {"Item": self.items.get((Key["pk"], Key["sk"]))}
 
     def put_item(self, *, Item):
+        serializer = TypeSerializer()
+        for value in Item.values():
+            serializer.serialize(value)
         self.items[(Item["pk"], Item["sk"])] = Item
 
     def query(self, **_kwargs):
