@@ -9,6 +9,7 @@ import {
   GitBranch,
   Info,
   Layers3,
+  Network,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -22,8 +23,10 @@ import {
   type BriefingNode,
   type BriefingViewId,
 } from "./briefing-model";
+import { VpcLayerDiagram } from "./vpc-layer-diagram";
 
 const VIEW_ICONS: Record<BriefingViewId, LucideIcon> = {
+  vpc: Network,
   executive: Layers3,
   il45: ShieldCheck,
   lineage: Database,
@@ -53,7 +56,7 @@ const LANE_STYLES: Record<BriefingLane["tone"], string> = {
 };
 
 export function ArchitectureBriefing() {
-  const [activeId, setActiveId] = useState<BriefingViewId>("executive");
+  const [activeId, setActiveId] = useState<BriefingViewId>("vpc");
   const active = briefingView(activeId);
 
   return (
@@ -62,9 +65,9 @@ export function ArchitectureBriefing() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-gold-light">Architecture at a glance</p>
-            <h2 id="architecture-briefing-title" className="mt-2 text-xl font-bold sm:text-2xl">Five views. One accountable system.</h2>
+            <h2 id="architecture-briefing-title" className="mt-2 text-xl font-bold sm:text-2xl">Six views. One accountable system.</h2>
             <p className="mt-2 max-w-4xl text-xs leading-5 text-white/72 sm:text-sm sm:leading-6">
-              Start with the mission flow, then inspect the target security boundary, record lineage, software delivery, and governed model lifecycle. Every arrow names both its transport and the evidence it leaves behind.
+              Start with the deployed VPC layers, then inspect the mission flow, target security boundary, record lineage, software delivery, and governed model lifecycle. Every arrow names both its transport and the evidence it leaves behind.
             </p>
           </div>
           <div className="max-w-md rounded-lg border border-gold-light/30 bg-black/15 p-4">
@@ -83,7 +86,7 @@ export function ArchitectureBriefing() {
         </div>
       </div>
 
-      <div className="grid border-b border-border bg-surface-2 sm:grid-cols-2 xl:grid-cols-5" role="tablist" aria-label="Architecture briefing views">
+      <div className="grid border-b border-border bg-surface-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" role="tablist" aria-label="Architecture briefing views">
         {BRIEFING_VIEWS.map((view, index) => {
           const Icon = VIEW_ICONS[view.id];
           const selected = view.id === activeId;
@@ -129,7 +132,9 @@ export function ArchitectureBriefing() {
         </div>
 
         <div className="mt-5 space-y-4">
-          {active.lanes.map((lane) => <ArchitectureLaneView key={lane.id} lane={lane} />)}
+          {active.id === "vpc"
+            ? <VpcLayerDiagram />
+            : active.lanes.map((lane) => <ArchitectureLaneView key={lane.id} lane={lane} />)}
         </div>
 
         <div className="mt-5 grid gap-2 lg:grid-cols-3" aria-label={`${active.label} architecture notes`}>

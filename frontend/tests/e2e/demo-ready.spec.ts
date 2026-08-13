@@ -136,8 +136,12 @@ test("architecture explorer maps services and explains production scale flow", a
   test.skip(testInfo.project.name !== "desktop-chromium", "interactive architecture flow runs once on desktop");
 
   await page.goto("/admin/architecture/");
-  await expect(page.getByRole("heading", { name: "Architecture Explorer" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Five views. One accountable system." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AWS architecture and VPC map" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Six views. One accountable system." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "10.42.0.0/16 across two availability zones" })).toBeVisible();
+  await expect(page.getByText("Public subnet A", { exact: true })).toBeVisible();
+  await expect(page.getByText("Private subnet B", { exact: true })).toBeVisible();
+  await expect(page.getByText("TCP 5432 from application SG only", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "IL4/IL5 target boundary" }).click();
   await expect(page.getByRole("heading", { name: "Government boundary services surround a private mission enclave" })).toBeVisible();
   await expect(page.getByText("Target architecture only.", { exact: false }).first()).toBeVisible();

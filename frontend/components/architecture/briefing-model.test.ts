@@ -3,11 +3,22 @@ import test from "node:test";
 
 import { ARCHITECTURE_STATUSES, BRIEFING_VIEWS } from "./briefing-model";
 
-test("briefing exposes the five required one-look views in presenter order", () => {
+test("briefing exposes the six required one-look views in presenter order", () => {
   assert.deepEqual(
     BRIEFING_VIEWS.map((view) => view.id),
-    ["executive", "il45", "lineage", "devsecops", "mlops"],
+    ["vpc", "executive", "il45", "lineage", "devsecops", "mlops"],
   );
+});
+
+test("VPC view names the deployed subnet, egress, endpoint, and security boundaries", () => {
+  const view = BRIEFING_VIEWS.find((candidate) => candidate.id === "vpc");
+  assert.ok(view);
+  const ids = view.lanes.flatMap((lane) => lane.nodes.map((item) => item.id));
+  for (const required of ["vpc-igw", "vpc-public-subnets", "vpc-nat", "vpc-private-subnets", "vpc-lambda-sg", "vpc-db-sg", "vpc-gateway-endpoints"]) {
+    assert.ok(ids.includes(required), required);
+  }
+  assert.match(view.truth, /two public and two private subnets/i);
+  assert.match(view.truth, /one NAT gateway/i);
 });
 
 test("every directed edge names a protocol and retained receipt", () => {

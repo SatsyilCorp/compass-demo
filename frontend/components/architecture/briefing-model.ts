@@ -1,4 +1,4 @@
-export type BriefingViewId = "executive" | "il45" | "lineage" | "devsecops" | "mlops";
+export type BriefingViewId = "vpc" | "executive" | "il45" | "lineage" | "devsecops" | "mlops";
 
 export type ArchitectureStatus = "Running now" | "Configured" | "Target control" | "External dependency";
 
@@ -54,6 +54,69 @@ export const ARCHITECTURE_STATUSES: ArchitectureStatus[] = [
 ];
 
 export const BRIEFING_VIEWS: BriefingView[] = [
+  {
+    id: "vpc",
+    label: "VPC and network layers",
+    eyebrow: "Deployed network boundary",
+    title: "Public routing, private workloads, and managed AWS services are visibly separated",
+    summary: "This view shows where each service runs, how two availability zones are used, which paths stay private, and where the current cost-controlled NAT design differs from the target Government landing zone.",
+    truth: "Running in Satsyil commercial AWS. The VPC uses two public and two private subnets, one NAT gateway, S3 and DynamoDB gateway endpoints, Lambda and database security groups, and a private two-instance Aurora topology.",
+    lanes: [
+      {
+        id: "vpc-external",
+        label: "Outside the customer VPC",
+        boundary: "AWS edge and regional managed services",
+        tone: "external",
+        outsideProtectedBoundary: true,
+        nodes: [
+          node("vpc-waf-edge", "WAF and CloudFront", "Commercial public edge", "Screens and serves the static application from a private S3 origin.", "Running now"),
+          node("vpc-cognito-api", "Cognito and API Gateway", "Managed identity and API services", "Verifies short-lived claims before private application code runs.", "Running now"),
+          node("vpc-managed-services", "Regional managed services", "Events, queues, storage, models, and operations", "Step Functions, EventBridge, SQS, S3, DynamoDB, Kinesis, Bedrock, SageMaker, KMS, and CloudWatch remain managed service planes.", "Running now"),
+        ],
+        connectors: [
+          connector("HTTPS and OIDC", "edge and authentication receipt"),
+          connector("JWT and AWS service API", "request and workflow receipt"),
+        ],
+      },
+      {
+        id: "vpc-routing",
+        label: "VPC routing layer",
+        boundary: "10.42.0.0/16 across two availability zones",
+        tone: "commercial",
+        nodes: [
+          node("vpc-igw", "Internet gateway", "Public route boundary", "The public route table sends only routing-layer traffic to the attached internet gateway.", "Running now"),
+          node("vpc-public-subnets", "Public subnets A and B", "10.42.0.0/24 and 10.42.1.0/24", "Subnet A hosts the current NAT gateway. Neither subnet hosts application functions or Aurora.", "Running now"),
+          node("vpc-nat", "One NAT gateway", "Cost-controlled private egress", "Private service calls without a configured endpoint leave through the NAT in Availability Zone A.", "Running now"),
+          node("vpc-private-subnets", "Private subnets A and B", "10.42.10.0/24 and 10.42.11.0/24", "Database-touching Lambda interfaces and the Aurora subnet group span both private subnets.", "Running now"),
+        ],
+        connectors: [
+          connector("0.0.0.0/0 public route", "route-table association"),
+          connector("Elastic IP egress", "NAT state and bytes"),
+          connector("0.0.0.0/0 private route", "private route-table association"),
+        ],
+      },
+      {
+        id: "vpc-private-controls",
+        label: "Private workload controls",
+        boundary: "Security groups and gateway endpoints",
+        tone: "evidence",
+        nodes: [
+          node("vpc-lambda-sg", "Application security group", "Lambda network identity", "Database-touching functions use this group in both private subnets.", "Running now"),
+          node("vpc-db-sg", "Database security group", "PostgreSQL 5432 from application SG only", "Aurora rejects every other inbound network source and has no public endpoint.", "Running now"),
+          node("vpc-gateway-endpoints", "S3 and DynamoDB endpoints", "Private route-table gateway endpoints", "High-volume object and ledger traffic stays off the NAT path.", "Running now"),
+        ],
+        connectors: [
+          connector("Security-group reference", "ingress rule evidence"),
+          connector("Private route", "endpoint route evidence"),
+        ],
+      },
+    ],
+    callouts: [
+      "CloudFront, Cognito, API Gateway, S3, and other AWS managed services do not sit inside the customer VPC even when they serve the workload.",
+      "The current single NAT gateway is an explicit demonstration-cost tradeoff and is not presented as the final high-availability design.",
+      "The IL4/IL5 target adds Government boundary services, inspected egress, central flow logs, private or FIPS endpoints, and account-level segmentation.",
+    ],
+  },
   {
     id: "executive",
     label: "Executive flow",
