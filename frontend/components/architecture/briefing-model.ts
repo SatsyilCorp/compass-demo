@@ -339,7 +339,7 @@ export const BRIEFING_VIEWS: BriefingView[] = [
     eyebrow: "Commit to verified release",
     title: "One revision carries code, policy, infrastructure, deployment, and rollback proof",
     summary: "The delivery path fails closed before promotion and uses short-lived AWS identity instead of committed cloud credentials.",
-    truth: "Repository workflows and AWS deployment are active in the commercial prototype. Government runner, registry, signing, and promotion services remain target-environment decisions.",
+    truth: "Repository workflows, policies, and the AWS deployment path are configured in source. Current execution status must come from the exact commit-bound Actions and deployment receipts. Government runner, registry, signing, and promotion services remain target-environment decisions.",
     lanes: [
       {
         id: "devsecops-pipeline",
@@ -347,12 +347,12 @@ export const BRIEFING_VIEWS: BriefingView[] = [
         boundary: "Source and commercial deployment pipeline",
         tone: "commercial",
         nodes: [
-          node("reviewed-change", "Reviewed change", "Pull request and protected branch", "A commit enters only through reviewable source control history.", "Running now"),
-          node("security-gates", "Security gates", "Secrets, SAST, dependencies, SBOM", "Parallel scans stop promotion when a required policy fails.", "Running now"),
-          node("quality-iac", "Quality and IaC gates", "Contracts, tests, SAM, Terraform, STIG policy", "Application behavior and infrastructure intent are validated together.", "Running now"),
+          node("reviewed-change", "Reviewed change", "Pull request and protected branch", "A commit enters only through reviewable source control history.", "Configured"),
+          node("security-gates", "Security gates", "Secrets, SAST, dependencies, SBOM", "Parallel scans stop promotion when a required policy fails.", "Configured"),
+          node("quality-iac", "Quality and IaC gates", "Contracts, tests, SAM, Terraform, STIG policy", "Application behavior and infrastructure intent are validated together.", "Configured"),
           node("approval-oidc", "Approval and OIDC", "Protected environment and short-lived AWS role", "An explicit approval binds the reviewed revision to temporary deployment authority.", "Configured"),
-          node("deploy-verify", "Deploy and verify", "CloudFormation, publication, DAST, smoke", "Deployment is followed by runtime checks against the promoted revision.", "Running now"),
-          node("release-rollback", "Release or rollback", "Immutable receipt and previous known-good revision", "A failed gate stops release and retained revisions support recovery.", "Running now"),
+          node("deploy-verify", "Deploy and verify", "CloudFormation, publication, DAST, smoke", "Deployment is followed by runtime checks against the promoted revision.", "Configured"),
+          node("release-rollback", "Release or rollback", "Immutable receipt and previous known-good revision", "A failed gate stops release and retained revisions support recovery.", "Configured"),
         ],
         connectors: [
           connector("Git commit", "review and provenance receipt"),

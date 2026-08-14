@@ -33,6 +33,9 @@ def test_build_prefers_the_deployed_custom_domain_callback(tmp_path: Path) -> No
 import sys
 
 query = sys.argv[sys.argv.index("--query") + 1]
+if "ParameterKey==`DeployRevision`" in query:
+    print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    raise SystemExit(0)
 outputs = {
     "ApiBaseUrl": "https://api.example/prod",
     "CognitoDomain": "compass.auth.example",
@@ -49,11 +52,27 @@ raise SystemExit(f"unexpected query: {query}")
 """,
     )
     _make_executable(
+        fake_bin / "gh",
+        """#!/usr/bin/env python3
+import json
+
+print(json.dumps([{
+    "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/SatsyilCorp/compass-demo/actions/runs/123",
+}]))
+""",
+    )
+    _make_executable(
         fake_bin / "corepack",
         """#!/usr/bin/env sh
 set -eu
 printf '%s\n' "$NEXT_PUBLIC_COGNITO_REDIRECT_URI" > "$BUILD_ENV_CAPTURE"
 printf '%s\n' "$NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI" >> "$BUILD_ENV_CAPTURE"
+printf '%s\n' "$NEXT_PUBLIC_SOURCE_REVISION" >> "$BUILD_ENV_CAPTURE"
+printf '%s\n' "$NEXT_PUBLIC_QUALITY_STATUS" >> "$BUILD_ENV_CAPTURE"
+printf '%s\n' "$NEXT_PUBLIC_QUALITY_RUN_URL" >> "$BUILD_ENV_CAPTURE"
 """,
     )
     environment = os.environ.copy()
@@ -77,4 +96,7 @@ printf '%s\n' "$NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI" >> "$BUILD_ENV_CAP
     assert capture.read_text(encoding="utf-8").splitlines() == [
         "https://compass.example/login/",
         "https://compass.example/login/",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "success",
+        "https://github.com/SatsyilCorp/compass-demo/actions/runs/123",
     ]

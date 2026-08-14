@@ -62,7 +62,9 @@ test("Scale Lab previews, launches, proves, and exports a bounded workload", asy
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => {
-    window.localStorage.setItem("compass.evidence-mode.v1", "rehearsal");
+    if (window.localStorage.getItem("compass.evidence-mode.v1") === null) {
+      window.localStorage.setItem("compass.evidence-mode.v1", "rehearsal");
+    }
   });
 });
 
@@ -70,10 +72,17 @@ test("live public evidence is the fail-closed default and rehearsal requires sel
   test.skip(testInfo.project.name !== "desktop-chromium", "primary evidence boundary runs once on desktop");
 
   await page.goto("/admin/acquisition/");
-  await page.getByRole("button", { name: "Live public evidence" }).click();
+  const liveMode = page.getByRole("button", { name: "Live public evidence" });
+  await liveMode.click();
+  await expect(liveMode).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveURL(/\/admin\/acquisition\/$/);
   await expect(page.getByText("Live public evidence", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Named public source operations" })).toBeVisible();
+
+  await page.goto("/admin/pipeline/");
+  await expect(page.getByRole("heading", { name: "Live mission and model control" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "One run, every authoritative receipt" })).toBeVisible();
+  await expect(page.getByText("Synthetic portfolio data only", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: /Rehearsal/ }).first().click();
   await expect(page).toHaveURL(/\/rehearsal\/$/);

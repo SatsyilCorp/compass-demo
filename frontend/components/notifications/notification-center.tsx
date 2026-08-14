@@ -147,7 +147,7 @@ export function NotificationCenter() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={unread > 0 ? `Open alerts, ${unread} need attention` : "Open alerts and activity"}
+        aria-label={unread > 0 ? `Open alerts, ${unread} issue ${unread === 1 ? "group" : "groups"} need attention` : "Open alerts and activity"}
         aria-haspopup="dialog"
         aria-expanded={open}
         className={`relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border px-3 font-bold transition-colors ${
@@ -157,7 +157,7 @@ export function NotificationCenter() {
         }`}
       >
         {unread > 0 ? <BellRing className="size-4.5" aria-hidden /> : <Bell className="size-4.5" aria-hidden />}
-        <span className="hidden text-xs sm:inline">{unread > 0 ? `${unread} action${unread === 1 ? "" : "s"}` : "Alerts"}</span>
+        <span className="hidden text-xs sm:inline">{unread > 0 ? `${unread} alert ${unread === 1 ? "group" : "groups"}` : "Alerts"}</span>
         {unread > 0 ? (
           <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-danger px-1 font-mono text-[9px] font-bold text-white sm:hidden">
             {unread > 99 ? "99+" : unread}
@@ -203,7 +203,7 @@ export function NotificationCenter() {
                 </button>
               </div>
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
-                <p className="text-xs font-semibold text-white/75">{unread} need attention | {inbox?.activityTotal ?? 0} recent events</p>
+                <p className="text-xs font-semibold text-white/75">{unread} issue {unread === 1 ? "group" : "groups"} | {inbox?.actionableEventTotal ?? 0} open events | {inbox?.activityTotal ?? 0} routine events</p>
                 <button
                   type="button"
                   onClick={() => void load(false)}
@@ -232,7 +232,7 @@ export function NotificationCenter() {
                     <div className="rounded-lg border border-danger/25 bg-white p-4 shadow-soft">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-danger">Needs action</p>
                       <p className="mt-1 text-2xl font-bold text-text-strong">{unread}</p>
-                      <p className="mt-1 text-xs text-text-muted">Review before relying on affected evidence.</p>
+                      <p className="mt-1 text-xs text-text-muted">{inbox.actionableEventTotal} open events grouped by issue.</p>
                     </div>
                     <div className="rounded-lg border border-border bg-white p-4 shadow-soft">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">System activity</p>
@@ -246,17 +246,18 @@ export function NotificationCenter() {
                         <h3 id="signals-attention-heading" className="text-sm font-bold text-text-strong">Needs your attention</h3>
                         <p className="mt-1 text-xs leading-5 text-text-muted">These items may affect data reliability or a decision. Review the evidence before marking them complete.</p>
                       </div>
-                      <span className="rounded-full border border-danger/20 bg-danger-soft px-2 py-1 font-mono text-[8px] font-bold text-danger">{unread} open</span>
+                      <span className="rounded-full border border-danger/20 bg-danger-soft px-2 py-1 font-mono text-[8px] font-bold text-danger">{unread} {unread === 1 ? "group" : "groups"}</span>
                     </div>
                     {inbox.attention.length > 0 ? (
                       <div className="space-y-3">
-                        {inbox.attention.map((signal) => (
+                        {inbox.attention.map((group) => (
                           <SignalCard
-                            key={signal.event_id}
-                            signal={signal}
-                            pending={acknowledging.has(signal.event_id)}
+                            key={group.signal.event_id}
+                            signal={group.signal}
+                            pending={acknowledging.has(group.signal.event_id)}
                             onAcknowledge={acknowledge}
                             onNavigate={() => setOpen(false)}
+                            occurrenceCount={group.occurrenceCount}
                           />
                         ))}
                       </div>

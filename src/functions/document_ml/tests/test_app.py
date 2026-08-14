@@ -115,6 +115,62 @@ def api_event(method, path, body=None, *, role="poweruser", org_unit="ONR-Corpor
     }
 
 
+def run_public_document_pipeline(monkeypatch):
+    fake = FakeRepository()
+    monkeypatch.setattr(app, "_REPOSITORY", fake)
+    stages = {}
+    signals = []
+
+    def record_stage(**receipt):
+        stages[(receipt["run_id"], receipt["sequence"], receipt["stage_id"])] = receipt
+        return True
+
+    def record_signal(**receipt):
+        signals.append(receipt)
+        return "signal-test"
+
+    monkeypatch.setattr(app.operational_evidence, "record_stage", record_stage)
+    monkeypatch.setattr(app.operational_evidence, "record_signal", record_signal)
+    source = json.dumps(
+        {
+            "opportunity_number": "N00014-26-S-B001",
+            "title": "Public ONR research opportunity",
+            "summary": "Research grant objectives and expected outcomes.",
+        }
+    ).encode("utf-8")
+    planned = json.loads(
+        app.handler(
+            api_event(
+                "POST",
+                "/documents/uploads",
+                {
+                    "filename": "onr-public-opportunity.json",
+                    "content_type": "application/json",
+                    "size_bytes": len(source),
+                    "synthetic_only": False,
+                    "data_classification": "public",
+                    "contains_cui": False,
+                    "pii_minimized": True,
+                    "source_sha256": app.engine.sha256_bytes(source),
+                },
+            )
+        )["body"]
+    )
+    source_key = planned["source"].removeprefix("document-lake://")
+    fake.source_objects[("input-bucket", source_key)] = (source, "application/json")
+    inspected = app.inspect_stage(
+        {
+            "detail": {
+                "bucket": {"name": "input-bucket"},
+                "object": {"key": source_key, "size": len(source)},
+            }
+        }
+    )
+    quality = app.quality_stage(inspected)
+    completed = app.curate_stage(quality)
+    return planned, completed, stages, signals
+
+
 def test_browser_upload_contract_and_poweruser_gate(monkeypatch):
     fake = FakeRepository()
     monkeypatch.setattr(app, "_REPOSITORY", fake)
@@ -268,6 +324,41 @@ def test_drop_runs_bronze_quality_silver_gold_and_exposes_lineage(monkeypatch):
         "gold",
     ]
     assert fake.records[("run", run_id)]["stage"] == "gold-published"
+
+
+def test_completed_public_document_run_finalizes_upload_authorization(monkeypatch):
+    planned, completed, stages, _signals = run_public_document_pipeline(monkeypatch)
+    run_id = planned["run_id"]
+
+    assert completed["status"] == "completed"
+    assert stages[(run_id, 1, "upload-authorized")]["status"] == "completed"
+
+
+def test_public_document_lineage_directly_labels_every_stage(monkeypatch):
+    planned, _completed, stages, _signals = run_public_document_pipeline(monkeypatch)
+    run_id = planned["run_id"]
+    run_stages = [
+        receipt
+        for (receipt_run_id, _sequence, _stage_id), receipt in stages.items()
+        if receipt_run_id == run_id
+    ]
+
+    assert sorted(receipt["sequence"] for receipt in run_stages) == list(range(1, 9))
+    assert {
+        receipt["evidence_class"] for receipt in run_stages
+    } == {"public-operational"}
+
+
+def test_public_document_completion_signal_carries_run_evidence_class(monkeypatch):
+    planned, _completed, _stages, signals = run_public_document_pipeline(monkeypatch)
+    completion = next(
+        signal
+        for signal in signals
+        if signal["run_id"] == planned["run_id"]
+        and signal["title"] == "Document pipeline completed"
+    )
+
+    assert completion["evidence_class"] == "public-operational"
 
 
 def test_public_award_narratives_use_governed_champion_and_publish_evidence(monkeypatch):

@@ -370,6 +370,15 @@ const VERIFIED_PUBLIC_REQUIREMENTS = new Set([
   "continuous-public-acquisition",
 ]);
 
+const FULL_MODEL_LIFECYCLE_RUN_KINDS = [
+  "model-training",
+  "model-evaluation",
+  "model-registration",
+  "model-approval",
+  "model-deployment",
+  "sagemaker-batch-inference",
+] as const;
+
 export function resolveOperationalRequirementStates(
   requirements: readonly RequirementTrace[],
   operations: OperationsSummaryResponse | null,
@@ -377,10 +386,11 @@ export function resolveOperationalRequirementStates(
   if (!isVerifiedOperationsSummary(operations)) return requirements.map((item) => ({ ...item }));
 
   const acceptedPublicRun = verifiedAcceptedPublicRun(operations);
-  const verifiedModelRun = operations.runs.find((run) => isVerifiedRun(run, [
+  const verifiedInferenceRun = operations.runs.find((run) => isVerifiedRun(run, [
     "sagemaker-batch-inference",
     "public-narrative-classification",
   ]));
+  const verifiedModelLifecycle = fullModelLifecycleEvidence(operations);
   const verifiedDriftRun = operations.runs.find((run) => (
     isVerifiedRun(run) && run.run_kind.toLowerCase().includes("drift")
   ));
@@ -393,11 +403,18 @@ export function resolveOperationalRequirementStates(
         caveat: `Protected operations evidence verifies completed public run ${acceptedPublicRun.run_id} with an accepted watermark and source digest. This proves a bounded public workflow, not access to protected ONR systems or production authorization.`,
       };
     }
-    if (item.id === "real-model-lifecycle" && verifiedModelRun) {
+    if (item.id === "real-model-lifecycle" && verifiedModelLifecycle) {
       return {
         ...item,
         status: "verified-live",
-        caveat: `Protected operations evidence verifies completed model run ${verifiedModelRun.run_id}. The bounded public model remains decision support and is not an accredited production endpoint or a prediction of ONR program success.`,
+        caveat: `Protected operations evidence verifies the full model lifecycle for ${verifiedModelLifecycle.modelId} version ${verifiedModelLifecycle.modelVersion}. Training, evaluation, registration, approval, deployment, and bounded execution each returned a completed public receipt. The model remains decision support and is not an accredited production endpoint or a prediction of ONR program success.`,
+      };
+    }
+    if (item.id === "real-model-lifecycle" && verifiedInferenceRun) {
+      return {
+        ...item,
+        status: "configured",
+        caveat: `Protected operations evidence verifies observed public inference run ${verifiedInferenceRun.run_id}. This proves bounded scoring only and does not verify training, evaluation, registration, approval, or deployment.`,
       };
     }
     if (item.id === "drift-monitoring" && verifiedDriftRun) {
@@ -409,6 +426,35 @@ export function resolveOperationalRequirementStates(
     }
     return { ...item };
   });
+}
+
+function fullModelLifecycleEvidence(
+  operations: OperationsSummaryResponse,
+): { modelId: string; modelVersion: string } | null {
+  const receiptKindsByModel = new Map<string, Set<string>>();
+  const modelIdentity = new Map<string, { modelId: string; modelVersion: string }>();
+
+  for (const run of operations.runs) {
+    if (!isVerifiedRun(run)) continue;
+    const runKind = normalizedRunKind(run.run_kind);
+    if (!FULL_MODEL_LIFECYCLE_RUN_KINDS.includes(runKind as (typeof FULL_MODEL_LIFECYCLE_RUN_KINDS)[number])) continue;
+    const modelId = run.model?.id.trim() ?? "";
+    const modelVersion = run.model?.version?.trim() ?? "";
+    const modelSha256 = run.model?.sha256?.trim().toLowerCase() ?? "";
+    if (!modelId || !modelVersion || !validSha256(modelSha256)) continue;
+    const key = `${modelId}\u0000${modelVersion}\u0000${modelSha256}`;
+    const receiptKinds = receiptKindsByModel.get(key) ?? new Set<string>();
+    receiptKinds.add(runKind);
+    receiptKindsByModel.set(key, receiptKinds);
+    modelIdentity.set(key, { modelId, modelVersion });
+  }
+
+  for (const [key, receiptKinds] of receiptKindsByModel) {
+    if (FULL_MODEL_LIFECYCLE_RUN_KINDS.every((kind) => receiptKinds.has(kind))) {
+      return modelIdentity.get(key) ?? null;
+    }
+  }
+  return null;
 }
 
 function isVerifiedOperationsSummary(
@@ -437,7 +483,7 @@ function verifiedAcceptedPublicRun(operations: OperationsSummaryResponse): Opera
 }
 
 function isVerifiedRun(run: OperationsRunSummary, allowedKinds?: readonly string[]): boolean {
-  const normalizedKind = run.run_kind.trim().toLowerCase().replaceAll("_", "-");
+  const normalizedKind = normalizedRunKind(run.run_kind);
   const evidenceClass = run.evidence_class.trim().toLowerCase().replaceAll("_", "-");
   return Boolean(
     run.run_id.trim()
@@ -449,6 +495,10 @@ function isVerifiedRun(run: OperationsRunSummary, allowedKinds?: readonly string
     && validTimestamp(run.updated_at)
     && validSha256(run.source.sha256),
   );
+}
+
+function normalizedRunKind(value: string): string {
+  return value.trim().toLowerCase().replaceAll("_", "-");
 }
 
 function validTimestamp(value: string | null): boolean {

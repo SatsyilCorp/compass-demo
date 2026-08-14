@@ -20,6 +20,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import { deliveryEvidence, type DeliveryQualityStatus } from "./evidence-model";
 
 type DeliveryTab = "pipeline" | "iac" | "security" | "recovery";
 type GateState = "defined" | "approval" | "deploy";
@@ -36,7 +37,11 @@ type Gate = {
 };
 
 const REPOSITORY = "https://github.com/SatsyilCorp/compass-demo";
-const SOURCE_REVISION = process.env.NEXT_PUBLIC_SOURCE_REVISION ?? "local candidate";
+const DELIVERY_EVIDENCE = deliveryEvidence({
+  sourceRevision: process.env.NEXT_PUBLIC_SOURCE_REVISION,
+  qualityStatus: process.env.NEXT_PUBLIC_QUALITY_STATUS,
+  qualityRunUrl: process.env.NEXT_PUBLIC_QUALITY_RUN_URL,
+});
 
 const GATES: Gate[] = [
   { id: "source", label: "Source integrity", detail: "Check out the reviewed commit, enforce ASCII content policy, and reject committed credentials.", command: "gitleaks detect --no-banner --redact", evidence: ".github/workflows/quality.yml", state: "defined", icon: GitCommitHorizontal },
@@ -88,13 +93,31 @@ export function DeliveryControl() {
               <span className="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white/70">Commit-bound definitions</span>
             </div>
             <h2 className="mt-3 text-2xl font-bold">Golden delivery path</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/70">The repository defines one path through source, security, data, model, browser, approval, deployment, and runtime gates. Open the current Actions run to verify which gates actually executed for a revision.</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/70">The repository defines one path through source, security, data, model, browser, approval, deployment, and runtime gates. The build receipt below identifies the exact revision and current quality result when that evidence is available.</p>
           </div>
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            <HeroMetric label="Revision" value={SOURCE_REVISION.slice(0, 12)} icon={GitCommitHorizontal} />
-            <HeroMetric label="Quality gates" value={String(GATES.length)} icon={BadgeCheck} />
-            <HeroMetric label="Cloud auth pattern" value="OIDC" icon={LockKeyhole} />
+            <HeroMetric label="Revision" value={DELIVERY_EVIDENCE.revisionLabel} icon={GitCommitHorizontal} />
+            <HeroMetric label="CI receipt" value={DELIVERY_EVIDENCE.qualityLabel} icon={BadgeCheck} />
+            <HeroMetric label="Cloud auth definition" value="OIDC" icon={LockKeyhole} />
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-white p-4 shadow-card sm:p-5" aria-label="Build-time deployment receipt">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Build-time deployment receipt</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <QualityReceiptState status={DELIVERY_EVIDENCE.qualityStatus} />
+              <code className="break-all rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-[10px] text-text-muted">
+                {DELIVERY_EVIDENCE.revision ?? "Exact deployed revision not recorded"}
+              </code>
+            </div>
+            <p className="mt-2 max-w-4xl text-xs leading-5 text-text-muted">{DELIVERY_EVIDENCE.caveat}</p>
+          </div>
+          <a href={DELIVERY_EVIDENCE.qualityRunUrl ?? `${REPOSITORY}/actions`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-gov-primary hover:bg-surface-2">
+            {DELIVERY_EVIDENCE.qualityRunUrl ? "Open exact quality run" : "Open Actions"} <ExternalLink className="size-3.5" aria-hidden />
+          </a>
         </div>
       </section>
 
@@ -112,7 +135,7 @@ export function DeliveryControl() {
             <div className="border-b border-border p-4 lg:border-b-0 lg:border-r sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div><p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">CI/CD execution</p><h3 className="mt-1 text-lg font-bold text-text-strong">Secure promotion sequence</h3></div>
-                <a href={`${REPOSITORY}/actions`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-gov-primary hover:bg-surface-2">Open live Actions <ExternalLink className="size-3.5" aria-hidden /></a>
+                <a href={DELIVERY_EVIDENCE.qualityRunUrl ?? `${REPOSITORY}/actions`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-gov-primary hover:bg-surface-2">{DELIVERY_EVIDENCE.qualityRunUrl ? "Open exact receipt" : "Open Actions"} <ExternalLink className="size-3.5" aria-hidden /></a>
               </div>
               <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {GATES.map((item, index) => {
@@ -163,6 +186,13 @@ function RecoveryEvidence() {
 
 function HeroMetric({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
   return <div className="rounded-lg border border-white/12 bg-white/[0.06] p-3"><Icon className="size-4 text-gold-light" aria-hidden /><p className="mt-2 text-[9px] font-bold uppercase tracking-wide text-white/45">{label}</p><p className="mt-1 break-all font-mono text-xs font-bold text-white/85">{value}</p></div>;
+}
+
+function QualityReceiptState({ status }: { status: DeliveryQualityStatus }) {
+  if (status === "success") return <span className="rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-success">Verified success</span>;
+  if (status === "failure") return <span className="rounded-full border border-danger/30 bg-danger-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-danger">Failed</span>;
+  if (status === "pending") return <span className="rounded-full border border-warn/30 bg-warn-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-warn">Running</span>;
+  return <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-text-muted">Not verified</span>;
 }
 
 function GateState({ state }: { state: GateState }) {

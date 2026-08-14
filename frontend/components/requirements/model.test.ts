@@ -121,15 +121,59 @@ test("only a completed public receipt with matching accepted watermark promotes 
   assert.equal(resolved.find((item) => item.id === "lineage")?.status, "configured");
 });
 
-test("model and drift asks promote only from completed public run receipts", () => {
+test("public inference evidence does not verify the full model lifecycle", () => {
   const operations = liveOperationsSummary();
   operations.runs.push(
-    publicRun({ run_id: "model-verified", run_kind: "sagemaker-batch-inference" }),
+    publicRun({
+      run_id: "model-inference-observed",
+      run_kind: "sagemaker-batch-inference",
+      model: {
+        id: "public-sbir-transition",
+        label: "Public Navy SBIR transition candidate",
+        kind: "sagemaker-model-package",
+        version: "2",
+        sha256: "b".repeat(64),
+      },
+    }),
     publicRun({ run_id: "drift-verified", run_kind: "model-drift" }),
   );
   const resolved = resolveOperationalRequirementStates(REQUIREMENTS, operations);
-  assert.equal(resolved.find((item) => item.id === "real-model-lifecycle")?.status, "verified-live");
+  const lifecycle = resolved.find((item) => item.id === "real-model-lifecycle");
+  assert.equal(lifecycle?.status, "configured");
+  assert.match(lifecycle?.caveat ?? "", /observed public inference/i);
+  assert.match(lifecycle?.caveat ?? "", /does not verify training, evaluation, registration, approval, or deployment/i);
   assert.equal(resolved.find((item) => item.id === "drift-monitoring")?.status, "verified-live");
+});
+
+test("full model lifecycle promotes only from explicit coherent lifecycle receipts", () => {
+  const operations = liveOperationsSummary();
+  const model = {
+    id: "public-sbir-transition",
+    label: "Public Navy SBIR transition candidate",
+    kind: "sagemaker-model-package",
+    version: "2",
+    sha256: "b".repeat(64),
+  };
+  for (const runKind of [
+    "model-training",
+    "model-evaluation",
+    "model-registration",
+    "model-approval",
+    "model-deployment",
+    "sagemaker-batch-inference",
+  ]) {
+    operations.runs.push(publicRun({
+      run_id: `lifecycle-${runKind}`,
+      run_kind: runKind,
+      model,
+    }));
+  }
+
+  const lifecycle = resolveOperationalRequirementStates(REQUIREMENTS, operations)
+    .find((item) => item.id === "real-model-lifecycle");
+  assert.equal(lifecycle?.status, "verified-live");
+  assert.match(lifecycle?.caveat ?? "", /full model lifecycle/i);
+  assert.match(lifecycle?.caveat ?? "", /public-sbir-transition version 2/i);
 });
 
 test("live public evidence is primary and rehearsal is explicit", () => {

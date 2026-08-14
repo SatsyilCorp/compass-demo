@@ -96,11 +96,41 @@ test("routine activity is grouped without hiding its latest evidence", () => {
 
   const inbox = buildSignalInbox(value);
   assert.equal(inbox.actionableUnread, 1);
-  assert.deepEqual(inbox.attention.map((item) => item.event_id), ["drift"]);
+  assert.deepEqual(inbox.attention.map((item) => item.signal.event_id), ["drift"]);
   assert.equal(inbox.activity.length, 1);
   assert.equal(inbox.activity[0].occurrenceCount, 2);
   assert.equal(inbox.activity[0].signal.event_id, "routine-new");
   assert.equal(inbox.activity[0].signal.href, "/admin/lineage/?run=new");
+});
+
+test("repeated actionable events collapse into one visible issue group", () => {
+  const value = response();
+  value.signals = [
+    signal("review-new", "open", {
+      evidence_class: "public-predicted",
+      signal_type: "public_narrative_classification",
+      severity: "warning",
+      title: "Public source narrative classification completed",
+      message: "The model classified 100 narratives.",
+      occurred_at: "2026-08-12T21:05:00.000Z",
+      run_id: "new",
+    }),
+    signal("review-old", "open", {
+      evidence_class: "public-predicted",
+      signal_type: "public_narrative_classification",
+      severity: "warning",
+      title: "Public source narrative classification completed",
+      message: "The model classified 50 narratives.",
+      occurred_at: "2026-08-12T21:00:00.000Z",
+      run_id: "old",
+    }),
+  ];
+
+  const inbox = buildSignalInbox(value);
+  assert.equal(inbox.actionableUnread, 1);
+  assert.equal(inbox.actionableEventTotal, 2);
+  assert.equal(inbox.attention[0].occurrenceCount, 2);
+  assert.equal(inbox.attention[0].signal.event_id, "review-new");
 });
 
 test("public and synthetic activity never collapse into one group", () => {
@@ -119,6 +149,26 @@ test("public and synthetic activity never collapse into one group", () => {
   ];
 
   assert.equal(buildSignalInbox(value).activity.length, 2);
+});
+
+test("actionable events from different sources remain separate issues", () => {
+  const value = response();
+  value.signals = [
+    signal("usa", "open", {
+      signal_type: "public_acquisition",
+      severity: "warning",
+      title: "Public acquisition needs review",
+      source: "USAspending",
+    }),
+    signal("grants", "open", {
+      signal_type: "public_acquisition",
+      severity: "warning",
+      title: "Public acquisition needs review",
+      source: "Grants.gov",
+    }),
+  ];
+
+  assert.equal(buildSignalInbox(value).actionableUnread, 2);
 });
 
 test("acknowledgement updates only the matching signal and recalculates unread count", () => {

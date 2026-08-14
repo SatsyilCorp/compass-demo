@@ -29,11 +29,11 @@ const OPTIONS: Array<{
 
 export function EvidenceModeBar() {
   const router = useRouter();
-  const { mode, selectMode } = useEvidenceMode();
+  const { hydrated, mode, selectMode } = useEvidenceMode();
   const { selectCurated } = useMissionDataContext();
 
   const activate = (next: EvidenceMode) => {
-    if (next === mode) return;
+    if (hydrated && next === mode) return;
     selectMode(next);
     selectCurated();
     router.push(next === "rehearsal" ? "/rehearsal/" : "/admin/acquisition/");

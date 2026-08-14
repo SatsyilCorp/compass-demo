@@ -99,3 +99,15 @@ test("public acquisition is primary and rehearsal remains explicit", () => {
   assert.ok(publicLane);
   assert.equal(publicLane.nodes.find((node) => node.id === "scheduled-collector")?.status, "Running now");
 });
+
+test("DevSecOps view describes configured gates without inventing current execution", () => {
+  const view = BRIEFING_VIEWS.find((candidate) => candidate.id === "devsecops");
+  assert.ok(view);
+
+  const pipeline = view.lanes.find((lane) => lane.id === "devsecops-pipeline");
+  assert.ok(pipeline);
+  assert.equal(pipeline.nodes.every((item) => item.status === "Configured"), true);
+  assert.match(view.truth, /configured/i);
+  assert.match(view.truth, /exact commit-bound.*receipt/i);
+  assert.doesNotMatch(view.truth, /workflows and AWS deployment are active/i);
+});

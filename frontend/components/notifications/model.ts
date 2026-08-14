@@ -12,9 +12,10 @@ export type SignalActivityGroup = {
 };
 
 export type SignalInbox = {
-  attention: OperationsSignal[];
+  attention: SignalActivityGroup[];
   activity: SignalActivityGroup[];
   actionableUnread: number;
+  actionableEventTotal: number;
   activityTotal: number;
 };
 
@@ -71,7 +72,8 @@ export function buildSignalInbox(response: OperationsSignalsResponse): SignalInb
   const ordered = [...response.signals].sort((left, right) => (
     timestamp(right.occurred_at) - timestamp(left.occurred_at)
   ));
-  const attention = ordered.filter(signalNeedsAttention);
+  const attentionEvents = ordered.filter(signalNeedsAttention);
+  const attention = groupSignals(attentionEvents, attentionKey);
   const grouped = new Map<string, SignalActivityGroup>();
 
   for (const signal of ordered) {
@@ -95,7 +97,8 @@ export function buildSignalInbox(response: OperationsSignalsResponse): SignalInb
     attention,
     activity: [...grouped.values()],
     actionableUnread: attention.length,
-    activityTotal: ordered.length - attention.length,
+    actionableEventTotal: attentionEvents.length,
+    activityTotal: ordered.length - attentionEvents.length,
   };
 }
 
@@ -132,6 +135,45 @@ function activityKey(signal: OperationsSignal): string {
     signal.message,
     delivery,
   ].join("::");
+}
+
+function attentionKey(signal: OperationsSignal): string {
+  const delivery = signal.deliveries
+    .map((item) => `${item.channel}:${item.state}`)
+    .sort()
+    .join("|");
+  return [
+    signal.evidence_class,
+    signal.signal_type,
+    signal.severity,
+    signal.title,
+    signal.source,
+    signal.run_kind ?? "",
+    delivery,
+  ].join("::");
+}
+
+function groupSignals(
+  signals: OperationsSignal[],
+  keyFor: (signal: OperationsSignal) => string,
+): SignalActivityGroup[] {
+  const grouped = new Map<string, SignalActivityGroup>();
+  for (const signal of signals) {
+    const key = keyFor(signal);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.occurrenceCount += 1;
+      existing.firstOccurredAt = signal.occurred_at;
+      continue;
+    }
+    grouped.set(key, {
+      signal,
+      occurrenceCount: 1,
+      firstOccurredAt: signal.occurred_at,
+      lastOccurredAt: signal.occurred_at,
+    });
+  }
+  return [...grouped.values()];
 }
 
 function timestamp(value: string): number {

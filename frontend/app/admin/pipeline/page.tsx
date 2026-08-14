@@ -3,6 +3,7 @@
 import { ServerCog } from "lucide-react";
 
 import { AppShell } from "@/components/shell/app-shell";
+import { OperationalLineage } from "@/components/lineage/operational-lineage";
 import { PageHeader } from "@/components/shell/page-header";
 import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { SystemInspector } from "./system-inspector";
@@ -19,7 +20,7 @@ export default function MissionControlPage() {
         lead={rehearsal ? "Inspect deterministic rehearsal adapters without presenting their runs, notifications, or model outputs as live AWS evidence." : "Trace each live decision from authenticated request to source identity, data policy, document workflow, model receipt, delivery evidence, and append-only audit state. Every returned operation declares its evidence class."}
         icon={<ServerCog className="size-5" aria-hidden />}
       />
-      <SystemInspector />
+      {rehearsal ? <SystemInspector /> : <OperationalLineage />}
     </AppShell>
   );
 }

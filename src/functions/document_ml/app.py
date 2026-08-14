@@ -90,6 +90,18 @@ def _actor(claims: http.Claims) -> str:
     return claims.username or claims.email or claims.sub or "unknown"
 
 
+def _document_evidence_class(record: Mapping[str, Any]) -> str:
+    declared = str(record.get("evidence_class") or "").strip().lower()
+    if declared:
+        return declared
+    boundary = record.get("data_boundary")
+    if isinstance(boundary, Mapping) and str(
+        boundary.get("classification") or ""
+    ).strip().lower() == "public":
+        return "public-operational"
+    return "synthetic-rehearsal"
+
+
 def _safe_filename(filename: str) -> str:
     base = PurePosixPath(filename or "").name
     safe = SAFE_NAME_RE.sub("-", base).strip(".-")[:120]
@@ -179,10 +191,11 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
         1,
         "upload-authorized",
         "Upload authorized and source hash declared",
-        "running",
+        "completed",
         source=_logical_uri(key),
         source_sha256=source_sha256,
         actor=_actor(claims),
+        evidence_class=evidence_class,
         detail={
             "evidence_class": evidence_class,
             "record_count": 1,
@@ -242,6 +255,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     filename = PurePosixPath(key).name
     now = engine.utc_now()
     current_before = _repo().get_record("run", run_id) or {}
+    evidence_class = _document_evidence_class(current_before)
     _stage(
         run_id,
         2,
@@ -250,6 +264,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "completed",
         source=_logical_uri(key),
         source_sha256=str(current_before.get("source_sha256") or "") or None,
+        evidence_class=evidence_class,
         detail={"record_count": 1},
     )
     try:
@@ -300,6 +315,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
             "quarantined",
             source=_logical_uri(key),
             source_sha256=str(current_before.get("source_sha256") or "") or None,
+            evidence_class=evidence_class,
             detail={"rejected_records": 1},
         )
         operational_evidence.record_signal(
@@ -341,6 +357,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "bronze_key": bronze_key,
         "source": _logical_uri(key),
         "source_object_version": str(response.get("VersionId") or "") or None,
+        "evidence_class": evidence_class,
         "updated_at": now,
     }
     current = _repo().merge_record("run", run_id, update)
@@ -354,6 +371,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         destination=_logical_uri(bronze_key),
         source_sha256=extracted["sha256"],
         output_sha256=operational_evidence.canonical_digest(bronze),
+        evidence_class=evidence_class,
         detail={
             "record_count": int((extracted.get("schema") or {}).get("record_count") or 1),
             "schema": str((extracted.get("schema") or {}).get("shape") or "document"),
@@ -369,6 +387,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         destination=_logical_uri(bronze_key),
         source_sha256=extracted["sha256"],
         output_sha256=operational_evidence.canonical_digest(bronze),
+        evidence_class=evidence_class,
         detail={
             "accepted_records": int((extracted.get("schema") or {}).get("record_count") or 1),
             "schema": str((extracted.get("schema") or {}).get("shape") or "document"),
@@ -382,11 +401,13 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "source_key": key,
         "bronze_key": bronze_key,
         "org_unit": current.get("org_unit", "ONR-Corporate"),
+        "evidence_class": evidence_class,
     }
 
 
 def quality_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
+    evidence_class = _document_evidence_class(event)
     bronze_key = str(event["bronze_key"])
     extracted = _repo().get_json(bronze_key)
     receipt = engine.quality_receipt(extracted)
@@ -400,6 +421,7 @@ def quality_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "stage": "quality-gate",
         "quality": receipt,
         "quality_receipt_uri": _logical_uri(receipt_key),
+        "evidence_class": evidence_class,
         "updated_at": engine.utc_now(),
     }
     _repo().merge_record("run", run_id, update)
@@ -413,6 +435,7 @@ def quality_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         destination=_logical_uri(receipt_key),
         input_sha256=str(extracted.get("sha256") or "") or None,
         output_sha256=operational_evidence.canonical_digest(receipt),
+        evidence_class=evidence_class,
         detail={
             "quality_score": receipt["score"],
             "failed_records": len(receipt["blocking_failures"]),
@@ -649,6 +672,7 @@ def classify_public_records(event: Mapping[str, Any]) -> Dict[str, Any]:
 
 def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
+    evidence_class = _document_evidence_class(event)
     bronze = _repo().get_json(str(event["bronze_key"]))
     model, model_state = _champion_or_baseline()
     prediction = engine.predict(model, str(bronze.get("extracted_text") or ""))
@@ -692,6 +716,7 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         source_sha256=str(bronze.get("sha256") or "") or None,
         input_sha256=operational_evidence.canonical_digest(silver),
         output_sha256=operational_evidence.canonical_digest(prediction),
+        evidence_class=evidence_class,
         detail={
             "model_version": model["model_version"],
             "confidence": prediction["confidence"],
@@ -708,6 +733,7 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         destination=_logical_uri(silver_key),
         source_sha256=str(bronze.get("sha256") or "") or None,
         output_sha256=operational_evidence.canonical_digest(silver),
+        evidence_class=evidence_class,
         detail={"accepted_records": 1, "schema": str(bronze.get("schema", {}).get("shape") or "document")},
     )
     complete = {
@@ -724,6 +750,7 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "silver_key": silver_key,
         "gold_uri": _logical_uri(gold_key),
         "gold_key": gold_key,
+        "evidence_class": evidence_class,
         "lineage": [
             _logical_uri(str(event["source_key"])),
             _logical_uri(str(event["bronze_key"])),
@@ -747,6 +774,7 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         source_sha256=str(bronze.get("sha256") or "") or None,
         input_sha256=operational_evidence.canonical_digest(silver),
         output_sha256=operational_evidence.canonical_digest(gold),
+        evidence_class=evidence_class,
         detail={
             "accepted_records": 1,
             "model_version": model["model_version"],
@@ -764,6 +792,7 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         ),
         run_id=run_id,
         evidence_uri=_logical_uri(gold_key),
+        evidence_class=evidence_class,
         detail={
             "accepted_records": 1,
             "model_version": model["model_version"],

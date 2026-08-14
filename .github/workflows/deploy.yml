@@ -40,10 +40,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          runs=$(gh run list --workflow quality.yml --commit "$GITHUB_SHA" --limit 20 --json databaseId,headSha,status,conclusion)
+          runs=$(gh run list --workflow quality.yml --commit "$GITHUB_SHA" --limit 20 --json databaseId,headSha,status,conclusion,url)
           python - "$runs" <<'PY'
           import json
           import os
+          import re
           import sys
 
           expected = os.environ["GITHUB_SHA"]
@@ -55,6 +56,14 @@ jobs:
               and run.get("conclusion") == "success"
           ]
           assert matches, "no successful quality.yml run exists for this exact commit"
+          quality_url = matches[0].get("url", "")
+          assert re.fullmatch(
+              r"https://github\.com/SatsyilCorp/compass-demo/actions/runs/\d+",
+              quality_url,
+          ), "quality run URL is not an exact Compass Actions receipt"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write("QUALITY_STATUS=success\n")
+              handle.write(f"QUALITY_RUN_URL={quality_url}\n")
           print(f"verified quality run {matches[0]['databaseId']} for {expected[:12]}")
           PY
 
@@ -314,6 +323,9 @@ jobs:
           NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ env.WEB_CLIENT_ID }}
           NEXT_PUBLIC_COGNITO_REDIRECT_URI: ${{ env.WEB_CALLBACK_URL }}
           NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI: ${{ env.WEB_LOGOUT_URL }}
+          NEXT_PUBLIC_SOURCE_REVISION: ${{ env.DEPLOY_REVISION }}
+          NEXT_PUBLIC_QUALITY_STATUS: ${{ env.QUALITY_STATUS }}
+          NEXT_PUBLIC_QUALITY_RUN_URL: ${{ env.QUALITY_RUN_URL }}
         run: |
           pnpm install --frozen-lockfile
           pnpm typecheck
