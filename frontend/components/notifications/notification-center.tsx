@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
+import { EvidenceClassBadge } from "@/components/evidence/evidence-class-badge";
 import type {
   OperationsSignal,
   OperationsSignalDelivery,
@@ -349,6 +350,7 @@ function SignalCard({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[9px] font-bold uppercase tracking-wide text-text-subtle">{meta.label}</span>
               <span className={`rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase ${open ? "border-gov-primary/20 bg-white text-gov-primary" : "border-success/25 bg-success-soft text-success"}`}>{activityOnly && open ? "activity" : signal.status}</span>
+              <EvidenceClassBadge evidenceClass={signal.evidence_class} compact />
               {occurrenceCount > 1 ? <span className="rounded-full border border-info/20 bg-info-soft px-2 py-0.5 text-[8px] font-bold uppercase text-info">{occurrenceCount} similar</span> : null}
             </div>
             <h3 className="mt-1 text-sm font-bold leading-5 text-text-strong">{signal.title}</h3>
@@ -420,7 +422,7 @@ function DeliveryChip({ delivery }: { delivery: OperationsSignalDelivery }) {
 }
 
 function ModeBadge({ mode }: { mode: OperationsSignalsResponse["mode"] }) {
-  return <span className={`rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide ${mode === "live" ? "border-success/30 bg-success/10 text-emerald-100" : "border-warn/35 bg-warn/10 text-amber-100"}`}>{mode === "live" ? "Live AWS" : "Replay fixture"}</span>;
+  return <span className={`rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide ${mode === "live" ? "border-success/30 bg-success/10 text-emerald-100" : "border-warn/35 bg-warn/10 text-amber-100"}`}>{mode === "live" ? "Deployed AWS adapter" : "Replay adapter"}</span>;
 }
 
 function formatTimestamp(value: string): string {

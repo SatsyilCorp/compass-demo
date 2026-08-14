@@ -3,9 +3,10 @@
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { AuthProvider } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
+import { EvidenceModeProvider } from "@/lib/evidence-mode-context";
 import { MissionDataProvider } from "@/lib/mission-data-context";
 import { TokenSync } from "./token-sync";
-import { AUTH_DISABLED } from "./use-app-auth";
+import { AUTH_CONFIGURED, AUTH_DISABLED } from "./use-app-auth";
 
 const COGNITO_AUTHORITY = process.env.NEXT_PUBLIC_COGNITO_AUTHORITY ?? "";
 const COGNITO_DOMAIN = process.env.NEXT_PUBLIC_COGNITO_DOMAIN ?? "";
@@ -64,14 +65,14 @@ const oidcConfig =
 export function Providers({ children }: { children: React.ReactNode }) {
   const inner = (
     <NuqsAdapter>
-      <MissionDataProvider>{children}</MissionDataProvider>
+      <EvidenceModeProvider>
+        <MissionDataProvider>{children}</MissionDataProvider>
+      </EvidenceModeProvider>
     </NuqsAdapter>
   );
 
-  if (AUTH_DISABLED || !oidcConfig) {
-    // No AuthProvider context in demo mode - useAppAuth() falls back to the
-    // sessionStorage-backed demo persona. TokenSync still runs so lib/api.ts
-    // picks up the role/org_unit for the mock-mode RLS simulation.
+  if (AUTH_DISABLED) {
+    // Local and test-only bypass. A deployed build explicitly sets this false.
     return (
       <>
         <TokenSync />
@@ -80,10 +81,37 @@ export function Providers({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (!AUTH_CONFIGURED || !oidcConfig) {
+    return <AuthenticationConfigurationError />;
+  }
+
   return (
     <AuthProvider {...oidcConfig}>
       <TokenSync />
       {inner}
     </AuthProvider>
+  );
+}
+
+function AuthenticationConfigurationError() {
+  return (
+    <main className="grid min-h-screen place-items-center bg-bg px-5 py-10">
+      <section className="w-full max-w-xl rounded-xl border border-danger/35 bg-white p-6 shadow-elevated">
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-danger">
+          Authentication unavailable
+        </p>
+        <h1 className="mt-2 text-2xl font-bold text-text-strong">
+          Compass cannot establish the identity boundary
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-text-muted">
+          This build is missing its Cognito authority, domain, or client identifier. Access is
+          blocked so the application never substitutes a demo identity for a live user.
+        </p>
+        <p className="mt-4 rounded-lg border border-border bg-surface-2 p-3 font-mono text-[11px] leading-5 text-text-muted">
+          Rebuild from the deployed stack with scripts/build-frontend.sh, or explicitly set
+          NEXT_PUBLIC_AUTH_DISABLED=true only for local testing.
+        </p>
+      </section>
+    </main>
   );
 }

@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 
 import {
-  USE_MOCK,
   getDocumentRunApi,
   postDocumentUploadApi,
   putDocumentBytesApi,
@@ -28,15 +27,21 @@ import {
 } from "@/lib/api";
 import {
   DOCUMENT_MEDIA_TYPES,
+  buildLiveFileIdentityReceipt,
   buildLocalReceipt,
   liveDocumentStageIndex,
   mediaTypeForFile,
   previewTextForBytes,
   sha256Hex,
   validateDocument,
+  type DocumentIdentityReceipt,
   type LocalDocumentReceipt,
 } from "@/lib/documents/document-intake";
 import { saveDocumentEvidence } from "@/lib/documents/document-evidence-store";
+import {
+  bindingFromUploadPlan,
+  type LiveDocumentBinding,
+} from "@/lib/documents/live-contract";
 
 const ACCEPT = ".pdf,.docx,.txt,.md,.csv,.json,.jsonl,.xlsx,.xml";
 const TERMINAL = new Set(["completed", "curated", "quarantined", "failed"]);
@@ -55,18 +60,22 @@ const SAMPLE_DOCUMENTS = [
 type WorkState = "idle" | "reading" | "running" | "complete" | "quarantined" | "failed";
 type InputBoundary = "synthetic-demo" | "public";
 
-export function DocumentDropZone() {
+export function DocumentDropZone({ mode = "live-public" }: { mode?: "live-public" | "rehearsal" }) {
+  const rehearsal = mode === "rehearsal";
   const inputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dragging, setDragging] = useState(false);
   const [state, setState] = useState<WorkState>("idle");
-  const [receipt, setReceipt] = useState<LocalDocumentReceipt | null>(null);
+  const [receipt, setReceipt] = useState<DocumentIdentityReceipt | null>(null);
   const [activeStage, setActiveStage] = useState(-1);
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [liveRun, setLiveRun] = useState<DocumentRunRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sampleLoading, setSampleLoading] = useState<string | null>(null);
-  const [boundary, setBoundary] = useState<InputBoundary>("synthetic-demo");
+  const [boundary, setBoundary] = useState<InputBoundary>(mode === "rehearsal" ? "synthetic-demo" : "public");
+  const availableSamples = SAMPLE_DOCUMENTS.filter((sample) => (
+    mode === "rehearsal" ? sample.boundary === "synthetic-demo" : sample.boundary === "public"
+  ));
 
   const reset = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
@@ -97,9 +106,13 @@ export function DocumentDropZone() {
     pollRef.current = setTimeout(tick, 260);
   }, []);
 
-  const pollLiveRun = useCallback(async (runId: string, attempt = 0) => {
+  const pollLiveRun = useCallback(async (
+    runId: string,
+    binding: LiveDocumentBinding,
+    attempt = 0,
+  ) => {
     try {
-      const run = await getDocumentRunApi(runId);
+      const run = await getDocumentRunApi(runId, binding);
       setLiveRun(run);
       setLiveStatus(`${run.status} | ${run.stage}`);
       setActiveStage(liveDocumentStageIndex(run.stage, run.status));
@@ -107,13 +120,13 @@ export function DocumentDropZone() {
         setState(run.status === "failed" ? "failed" : run.status === "quarantined" ? "quarantined" : "complete");
         return;
       }
-      if (attempt < 24) pollRef.current = setTimeout(() => void pollLiveRun(runId, attempt + 1), 1_500);
+      if (attempt < 24) pollRef.current = setTimeout(() => void pollLiveRun(runId, binding, attempt + 1), 1_500);
       else {
         setState("failed");
         setError("The upload succeeded, but the processing receipt did not reach a terminal state within the demo polling window.");
       }
     } catch {
-      if (attempt < 4) pollRef.current = setTimeout(() => void pollLiveRun(runId, attempt + 1), 1_500);
+      if (attempt < 4) pollRef.current = setTimeout(() => void pollLiveRun(runId, binding, attempt + 1), 1_500);
       else {
         setState("failed");
         setError("The protected run receipt could not be retrieved. The uploaded object remains hash-bound and can be reconciled from Mission Control.");
@@ -135,20 +148,26 @@ export function DocumentDropZone() {
     try {
       const bytes = await file.arrayBuffer();
       const sha256 = await sha256Hex(bytes);
-      const nextReceipt = buildLocalReceipt({
+      if (rehearsal) {
+        const nextReceipt = buildLocalReceipt({
+          fileName: file.name,
+          mediaType,
+          sizeBytes: file.size,
+          sha256,
+          previewText: previewTextForBytes(mediaType, bytes),
+        });
+        setReceipt(nextReceipt);
+        saveDocumentEvidence(nextReceipt);
+        animateReplay(nextReceipt);
+        return;
+      }
+
+      setReceipt(buildLiveFileIdentityReceipt({
         fileName: file.name,
         mediaType,
         sizeBytes: file.size,
         sha256,
-        previewText: previewTextForBytes(mediaType, bytes),
-      });
-      setReceipt(nextReceipt);
-      saveDocumentEvidence(nextReceipt);
-
-      if (USE_MOCK) {
-        animateReplay(nextReceipt);
-        return;
-      }
+      }));
 
       setState("running");
       setActiveStage(0);
@@ -164,14 +183,14 @@ export function DocumentDropZone() {
       });
       setLiveStatus(`${plan.status} | ${plan.stage}`);
       setActiveStage(1);
-      await putDocumentBytesApi(plan.upload, bytes);
+      await putDocumentBytesApi(plan, bytes);
       setActiveStage(2);
-      await pollLiveRun(plan.run_id);
+      await pollLiveRun(plan.run_id, bindingFromUploadPlan(plan));
     } catch (cause) {
       setState("failed");
       setError(cause instanceof Error ? cause.message : "Document intake failed before a terminal receipt was created.");
     }
-  }, [animateReplay, boundary, pollLiveRun, reset]);
+  }, [animateReplay, boundary, pollLiveRun, rehearsal, reset]);
 
   const loadSample = useCallback(async (sample: (typeof SAMPLE_DOCUMENTS)[number]) => {
     setSampleLoading(sample.fileName);
@@ -202,20 +221,20 @@ export function DocumentDropZone() {
         <div className="border-b border-border p-5 lg:border-b-0 lg:border-r sm:p-6">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-gov-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white">Element 3 of 7</span>
-            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${USE_MOCK ? "border-info/30 bg-info-soft text-info" : "border-success/30 bg-success-soft text-success"}`}>
-              {USE_MOCK ? "Bounded browser replay" : "Live AWS event path"}
+            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${rehearsal ? "border-warn/30 bg-warn-soft text-warn" : "border-success/30 bg-success-soft text-success"}`}>
+              {rehearsal ? "Explicit browser rehearsal" : "Live AWS event path"}
             </span>
           </div>
           <h2 id="document-intake-title" className="mt-3 text-xl font-bold text-text-strong">Drop a governed document</h2>
-          <p className="mt-2 text-xs leading-5 text-text-muted">Select a synthetic file or a PII-minimized public file from your computer. Compass validates the boundary, computes its hash, lands the original, infers its shape, applies quality rules, classifies it, and publishes governed evidence.</p>
+          <p className="mt-2 text-xs leading-5 text-text-muted">{mode === "rehearsal" ? "Select an explicitly synthetic file. Compass validates the boundary, computes its hash, lands the original, applies quality rules, classifies it, and publishes isolated rehearsal evidence." : "Select a PII-minimized public file from your computer. Compass validates the boundary, computes its hash, lands the original, applies quality rules, classifies it, and publishes governed public evidence."}</p>
 
-          <div className="mt-4 grid grid-cols-2 gap-2" aria-label="Document data boundary">
+          {mode === "rehearsal" ? <div className="mt-4 grid grid-cols-2 gap-2" aria-label="Document data boundary">
             {(["synthetic-demo", "public"] as const).map((value) => (
-              <button key={value} type="button" onClick={() => setBoundary(value)} className={`min-h-11 rounded-md border px-3 text-xs font-bold ${boundary === value ? "border-gov-primary bg-gov-primary text-white" : "border-border bg-white text-text-muted hover:bg-surface-2"}`}>
+              <button key={value} type="button" onClick={() => setBoundary(value)} disabled={value === "public"} className={`min-h-11 rounded-md border px-3 text-xs font-bold ${boundary === value ? "border-gov-primary bg-gov-primary text-white" : "border-border bg-white text-text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"}`}>
                 {value === "public" ? "Public, PII-minimized" : "Synthetic demo"}
               </button>
             ))}
-          </div>
+          </div> : <div className="mt-4 flex items-start gap-2 rounded-lg border border-success/30 bg-success-soft p-3"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /><div><p className="text-xs font-bold text-success">Public, PII-minimized boundary is active</p><p className="mt-1 text-[9px] leading-4 text-text-muted">Synthetic samples are available only from the separate rehearsal workspace.</p></div></div>}
 
           <input
             ref={inputRef}
@@ -243,13 +262,13 @@ export function DocumentDropZone() {
           <div className="mt-4 rounded-lg border border-border bg-white p-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Prepared synthetic samples</p>
-                <p className="mt-1 text-[10px] leading-4 text-text-muted">Select the PII-minimized public ONR record or a synthetic sample to send real bytes through the same path.</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">{mode === "rehearsal" ? "Prepared synthetic samples" : "Prepared public sample"}</p>
+                <p className="mt-1 text-[10px] leading-4 text-text-muted">{mode === "rehearsal" ? "Select a clearly labeled synthetic fixture to rehearse the event path without mixing it into live public evidence." : "Send one PII-minimized public ONR opportunity record through the live AWS event path."}</p>
               </div>
               <FileText className="size-4 shrink-0 text-gov-primary" aria-hidden />
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {SAMPLE_DOCUMENTS.map((sample) => {
+              {availableSamples.map((sample) => {
                 const loading = sampleLoading === sample.fileName;
                 return (
                   <button
@@ -268,7 +287,7 @@ export function DocumentDropZone() {
           </div>
 
           {error ? <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft p-3 text-xs leading-5 text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}</div> : null}
-          {receipt ? <ReceiptSummary receipt={receipt} liveStatus={liveStatus} liveRun={liveRun} /> : null}
+          {receipt ? <ReceiptSummary receipt={receipt} liveStatus={liveStatus} liveRun={liveRun} rehearsal={rehearsal} /> : null}
           {state !== "idle" ? <button type="button" onClick={reset} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-text-muted hover:bg-surface-2"><RotateCcw className="size-3.5" aria-hidden /> Reset intake</button> : null}
         </div>
 
@@ -278,7 +297,7 @@ export function DocumentDropZone() {
             <StatePill state={state} />
           </div>
           <div className="mt-5 space-y-2">
-            {(receipt?.stages ?? PLACEHOLDER_STAGES).map((stage, index) => {
+            {(rehearsal && receipt?.mode === "bounded_browser_replay" ? receipt.stages : PLACEHOLDER_STAGES).map((stage, index) => {
               const Icon = STAGE_ICONS[index] ?? FileSearch;
               const done = receipt && (index < activeStage || (state === "complete" && index === activeStage));
               const quarantined = receipt && index === activeStage && state === "quarantined";
@@ -311,13 +330,13 @@ const PLACEHOLDER_STAGES = [
 
 const STAGE_ICONS: LucideIcon[] = [Fingerprint, UploadCloud, Sparkles, FileArchive, FileSearch, BadgeCheck, FileText, FileSpreadsheet];
 
-function ReceiptSummary({ receipt, liveStatus, liveRun }: { receipt: LocalDocumentReceipt; liveStatus: string | null; liveRun: DocumentRunRecord | null }) {
-  const localResult = receipt.classification;
-  const terminalLiveResult = !USE_MOCK && liveRun?.status === "completed" && typeof liveRun.document_class === "string";
-  const displayClass = USE_MOCK ? localResult.displayLabel : terminalLiveResult ? String(liveRun.document_class).replaceAll("_", " ") : "Awaiting server result";
-  const confidence = USE_MOCK ? localResult.confidence : terminalLiveResult && typeof liveRun.confidence === "number" ? liveRun.confidence : null;
-  const reviewRequired = USE_MOCK ? localResult.reviewRequired : terminalLiveResult ? Boolean(liveRun.review_required) : true;
-  return <div className="mt-4 rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-strong">{receipt.fileName}</p><p className="mt-1 text-[9.5px] text-text-muted">{formatBytes(receipt.sizeBytes)} | {receipt.shape}</p></div><span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase ${terminalLiveResult && !reviewRequired ? "border-success/30 bg-success-soft text-success" : "border-warn/30 bg-warn-soft text-warn"}`}>{terminalLiveResult || USE_MOCK ? reviewRequired ? "Human review" : "Auto accepted" : "Processing"}</span></div><div className="mt-3 grid gap-2 sm:grid-cols-2"><Metric label="Predicted class" value={displayClass} /><Metric label="Confidence" value={confidence === null ? "Pending" : `${Math.round(confidence * 100)}%`} /></div><div className="mt-3 flex items-center gap-2 rounded-md bg-surface-2 px-2.5 py-2"><Fingerprint className="size-3.5 shrink-0 text-gov-primary" aria-hidden /><code className="truncate text-[9px] text-text-muted" title={receipt.sha256}>{receipt.sha256}</code></div>{liveStatus ? <p className="mt-2 text-[9.5px] font-semibold text-info">Live receipt: {liveStatus}</p> : null}{liveRun?.model_version ? <p className="mt-1 text-[9.5px] text-text-muted">Model version: <span className="font-mono">{liveRun.model_version}</span></p> : null}{liveRun?.run_id ? <a href={`/admin/lineage/?run=${encodeURIComponent(liveRun.run_id)}`} className="mt-2 inline-flex min-h-9 items-center gap-1 text-[10px] font-bold text-gov-primary hover:underline">Open authoritative stage lineage <ArrowRight className="size-3" aria-hidden /></a> : null}</div>;
+function ReceiptSummary({ receipt, liveStatus, liveRun, rehearsal }: { receipt: DocumentIdentityReceipt; liveStatus: string | null; liveRun: DocumentRunRecord | null; rehearsal: boolean }) {
+  const localResult = rehearsal && receipt.mode === "bounded_browser_replay" ? receipt.classification : null;
+  const terminalLiveResult = !rehearsal && liveRun?.status === "completed" && typeof liveRun.document_class === "string";
+  const displayClass = localResult ? localResult.displayLabel : terminalLiveResult ? String(liveRun.document_class).replaceAll("_", " ") : "Awaiting server result";
+  const confidence = localResult ? localResult.confidence : terminalLiveResult && typeof liveRun.confidence === "number" ? liveRun.confidence : null;
+  const reviewRequired = localResult ? localResult.reviewRequired : terminalLiveResult ? Boolean(liveRun.review_required) : true;
+  return <div className="mt-4 rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-strong">{receipt.fileName}</p><p className="mt-1 text-[9.5px] text-text-muted">{formatBytes(receipt.sizeBytes)} | {receipt.shape}</p></div><span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase ${(terminalLiveResult || rehearsal) && !reviewRequired ? "border-success/30 bg-success-soft text-success" : "border-warn/30 bg-warn-soft text-warn"}`}>{terminalLiveResult || rehearsal ? reviewRequired ? "Human review" : "Auto accepted" : "Processing"}</span></div><div className="mt-3 grid gap-2 sm:grid-cols-2"><Metric label="Predicted class" value={displayClass} /><Metric label="Confidence" value={confidence === null ? "Pending" : `${Math.round(confidence * 100)}%`} /></div><div className="mt-3 flex items-center gap-2 rounded-md bg-surface-2 px-2.5 py-2"><Fingerprint className="size-3.5 shrink-0 text-gov-primary" aria-hidden /><code className="truncate text-[9px] text-text-muted" title={receipt.sha256}>{receipt.sha256}</code></div>{liveStatus ? <p className="mt-2 text-[9.5px] font-semibold text-info">Live receipt: {liveStatus}</p> : null}{liveRun?.model_version ? <p className="mt-1 text-[9.5px] text-text-muted">Model version: <span className="font-mono">{liveRun.model_version}</span></p> : null}{liveRun?.run_id ? <a href={`/admin/lineage/?run=${encodeURIComponent(liveRun.run_id)}`} className="mt-2 inline-flex min-h-9 items-center gap-1 text-[10px] font-bold text-gov-primary hover:underline">Open authoritative stage lineage <ArrowRight className="size-3" aria-hidden /></a> : null}</div>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

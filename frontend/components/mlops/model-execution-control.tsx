@@ -20,12 +20,12 @@ import {
 
 import {
   ApiError,
-  USE_MOCK,
   getPublicModelExecutionApi,
   getPublicModelExecutionsApi,
   postPublicModelExecutionApi,
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import {
   isTerminalModelExecutionStatus,
   type PublicModelExecutionReceipt,
@@ -65,6 +65,8 @@ function statusStyle(status: PublicModelExecutionReceipt["status"]): string {
 
 export function ModelExecutionControl() {
   const auth = useAppAuth();
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
   const [sampleSize, setSampleSize] = useState<number>(8);
   const [phase, setPhase] = useState<RequestPhase>("idle");
   const [receipt, setReceipt] = useState<PublicModelExecutionReceipt | null>(null);
@@ -110,7 +112,7 @@ export function ModelExecutionControl() {
   }, [acceptReceipt]);
 
   useEffect(() => {
-    if (USE_MOCK || !auth.idToken || hydratedRef.current) return;
+    if (rehearsal || !auth.idToken || hydratedRef.current) return;
     hydratedRef.current = true;
     const sequence = ++sequenceRef.current;
     setPhase("polling");
@@ -135,10 +137,10 @@ export function ModelExecutionControl() {
         setError(`${errorMessage(cause)} Durable execution history could not be loaded.`);
         setPhase("idle");
       });
-  }, [acceptReceipt, auth.idToken, pollExecution]);
+  }, [acceptReceipt, auth.idToken, pollExecution, rehearsal]);
 
   const launch = useCallback(async () => {
-    if (USE_MOCK || !auth.idToken || phase === "submitting" || phase === "polling") return;
+    if (rehearsal || !auth.idToken || phase === "submitting" || phase === "polling") return;
     clearPoll();
     const sequence = ++sequenceRef.current;
     setReceipt(null);
@@ -167,19 +169,19 @@ export function ModelExecutionControl() {
       setError(errorMessage(cause));
       setPhase("idle");
     }
-  }, [acceptReceipt, auth.idToken, clearPoll, phase, pollExecution, sampleSize]);
+  }, [acceptReceipt, auth.idToken, clearPoll, phase, pollExecution, rehearsal, sampleSize]);
 
   const recheck = useCallback(() => {
-    if (!receipt || USE_MOCK) return;
+    if (!receipt || rehearsal) return;
     clearPoll();
     const sequence = ++sequenceRef.current;
     setError(null);
     setPhase("polling");
     void pollExecution(receipt.executionId, sequence);
-  }, [clearPoll, pollExecution, receipt]);
+  }, [clearPoll, pollExecution, receipt, rehearsal]);
 
-  const liveReady = !USE_MOCK && Boolean(auth.idToken) && auth.role === "poweruser";
-  const canReadLive = !USE_MOCK && Boolean(auth.idToken);
+  const liveReady = !rehearsal && Boolean(auth.idToken) && auth.role === "poweruser";
+  const canReadLive = !rehearsal && Boolean(auth.idToken);
   const active = phase === "submitting" || phase === "polling";
 
   return (
@@ -196,7 +198,7 @@ export function ModelExecutionControl() {
           </div>
           <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[10px] leading-4 ${liveReady ? "border-success/30 bg-success/10 text-emerald-100" : "border-warn/30 bg-warn/10 text-amber-100"}`}>
             {liveReady ? <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /> : <LockKeyhole className="mt-0.5 size-4 shrink-0" aria-hidden />}
-            <span>{liveReady ? "Protected AWS execution API ready" : USE_MOCK ? "Replay mode cannot claim cloud execution" : canReadLive ? "Viewer can inspect receipts but cannot start execution" : "Waiting for the protected session"}</span>
+            <span>{liveReady ? "Protected AWS execution API ready" : rehearsal ? "Rehearsal cannot claim cloud execution" : canReadLive ? "Viewer can inspect receipts but cannot start execution" : "Waiting for the protected session"}</span>
           </div>
         </div>
       </div>
@@ -240,7 +242,7 @@ export function ModelExecutionControl() {
           {!liveReady ? (
             <div className="mt-4 flex gap-2 rounded-md border border-warn/30 bg-warn-soft p-3 text-[10px] leading-5 text-warn">
               <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>{USE_MOCK ? "The local replay demonstrates UI behavior only. Sign in to the deployed live system to create an actual execution receipt." : canReadLive ? "Starting a bounded model execution requires the corporate poweruser role. Durable receipts remain readable here." : "Authentication must finish before this control can mutate AWS state."}</span>
+              <span>{rehearsal ? "The explicit rehearsal demonstrates UI behavior only. Select live public evidence to create an actual execution receipt." : canReadLive ? "Starting a bounded model execution requires the corporate poweruser role. Durable receipts remain readable here." : "Authentication must finish before this control can mutate AWS state."}</span>
             </div>
           ) : null}
 

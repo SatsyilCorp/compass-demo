@@ -28,6 +28,9 @@ import feed_sources
 SOURCE_ID = "usaspending-onr-grants"
 ENDPOINT = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
 CONTRACT = "compass.public-acquisition.v1"
+CONTINUOUS_CONTROL_CONTRACT = "compass.public-acquisition-continuous-control.v1"
+CONTINUOUS_CONTROL_PK = "PUBLIC_ACQUISITION_CONTROL#CONTINUOUS"
+CONTINUOUS_CONTROL_SK = "STATE"
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 PROFILE_CONFIG = {
     "quick": {"page_size": 25, "pages": 1},
@@ -271,6 +274,61 @@ def _get_alias(source_id: str = SOURCE_ID) -> Dict[str, Any] | None:
     )
     item = response.get("Item")
     return _json_safe(item) if item else None
+
+
+def continuous_acquisition_status() -> Dict[str, Any]:
+    """Read the operator control, defaulting safely to the deployed schedule.
+
+    A missing record means running so existing stacks continue polling after
+    this controller is deployed. The default is returned explicitly and is not
+    silently persisted by a read.
+    """
+    response = _table().get_item(
+        Key={"pk": CONTINUOUS_CONTROL_PK, "sk": CONTINUOUS_CONTROL_SK},
+        ConsistentRead=True,
+    )
+    item = _json_safe(response.get("Item") or {})
+    enabled = bool(item.get("enabled", True))
+    return {
+        "contract": CONTINUOUS_CONTROL_CONTRACT,
+        "mode": "live",
+        "evidence_class": "public-operational",
+        "status": "running" if enabled else "stopped",
+        "enabled": enabled,
+        "defaulted": not bool(item),
+        "updated_at": item.get("updated_at"),
+        "updated_by": item.get("updated_by"),
+        "manual_runs_available": True,
+        "control_scope": "scheduled public-source acquisitions",
+    }
+
+
+def set_continuous_acquisition(*, enabled: bool, actor: str) -> Dict[str, Any]:
+    now = _iso()
+    item = {
+        "pk": CONTINUOUS_CONTROL_PK,
+        "sk": CONTINUOUS_CONTROL_SK,
+        "contract": CONTINUOUS_CONTROL_CONTRACT,
+        "record_type": "public-acquisition-control",
+        "enabled": bool(enabled),
+        "status": "running" if enabled else "stopped",
+        "updated_at": now,
+        "updated_by": _text(actor, 160) or "corporate-poweruser",
+    }
+    _table().put_item(Item=_decimal_safe(item))
+    return continuous_acquisition_status()
+
+
+def _scheduled_skip(action: str, source_id: str | None = None) -> Dict[str, Any]:
+    control = continuous_acquisition_status()
+    return {
+        **control,
+        "scheduled_action": action,
+        "source_id": source_id,
+        "result": "skipped",
+        "reason": "scheduled public-source acquisition is stopped by an operator",
+        "observed_at": _iso(),
+    }
 
 
 def _put_acquisition(record: Mapping[str, Any]) -> None:
@@ -917,6 +975,7 @@ def run_acquisition(
         failed_at = _iso()
         failure = {
             "contract": CONTRACT,
+            "evidence_class": "public-operational",
             "run_id": run_id,
             "source_id": SOURCE_ID,
             "source": source,
@@ -1264,6 +1323,7 @@ def run_feed_acquisition(
     except Exception as exc:
         failure = {
             "contract": CONTRACT,
+            "evidence_class": "public-operational",
             "run_id": run_id,
             "source_id": source_id,
             "source_label": spec["label"],
@@ -1551,10 +1611,13 @@ def list_acquisitions(limit: int = 50) -> Dict[str, Any]:
         public = _json_safe(item)
         for hidden in ("pk", "sk", "gsi1pk", "gsi1sk", "record_type"):
             public.pop(hidden, None)
+        if not public.get("evidence_class") and public.get("status") != "completed":
+            public["evidence_class"] = "public-operational"
         records.append(public)
     return {
         "contract": "compass.public-acquisition-list.v1",
         "mode": "live",
+        "evidence_class": "public-operational",
         "generated_at": _iso(),
         "schedule": "rate(5 minutes)",
         "source_transport": "source-specific bounded HTTPS polling, then accepted Kinesis change events",
@@ -1573,10 +1636,15 @@ def _poweruser(event: Mapping[str, Any]):
 def handler(event, context=None):
     event = event or {}
     if event.get("action") == "poll":
+        if not continuous_acquisition_status()["enabled"]:
+            return _scheduled_skip("poll", SOURCE_ID)
         return run_acquisition(profile=str(event.get("profile") or "standard"))
     if event.get("action") == "poll_source":
+        source_id = str(event.get("source_id") or "")
+        if not continuous_acquisition_status()["enabled"]:
+            return _scheduled_skip("poll_source", source_id)
         return run_feed_acquisition(
-            str(event.get("source_id") or ""),
+            source_id,
             profile=str(event.get("profile") or "standard"),
         )
     if not (event.get("requestContext") or {}).get("http"):
@@ -1584,12 +1652,26 @@ def handler(event, context=None):
     claims, allowed = _poweruser(event)
     if not claims.is_authenticated:
         return http.unauthorized()
-    if not allowed:
-        return http.forbidden("public acquisition control requires the corporate poweruser role")
     method = http.get_method(event) or ""
     path = http.get_path(event) or ""
     if method == "GET" and path.endswith("/public-intelligence/acquisitions"):
         return http.ok(list_acquisitions())
+    if method == "GET" and path.endswith(
+        "/public-intelligence/acquisitions/continuous"
+    ):
+        return http.ok(continuous_acquisition_status())
+    if not allowed:
+        return http.forbidden("public acquisition control requires the corporate poweruser role")
+    if method == "POST" and path.endswith(
+        "/public-intelligence/acquisitions/continuous/start"
+    ):
+        actor = claims.username or claims.email or claims.sub or "poweruser"
+        return http.ok(set_continuous_acquisition(enabled=True, actor=actor))
+    if method == "POST" and path.endswith(
+        "/public-intelligence/acquisitions/continuous/stop"
+    ):
+        actor = claims.username or claims.email or claims.sub or "poweruser"
+        return http.ok(set_continuous_acquisition(enabled=False, actor=actor))
     if method == "POST" and path.endswith("/public-intelligence/acquisitions/run"):
         actor = claims.username or claims.email or claims.sub or "poweruser"
         try:

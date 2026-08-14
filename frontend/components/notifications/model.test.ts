@@ -20,6 +20,7 @@ function signal(
 ): OperationsSignal {
   return {
     event_id: eventId,
+    evidence_class: "unclassified",
     signal_type: "test",
     severity: "info",
     title: "Test signal",
@@ -100,6 +101,24 @@ test("routine activity is grouped without hiding its latest evidence", () => {
   assert.equal(inbox.activity[0].occurrenceCount, 2);
   assert.equal(inbox.activity[0].signal.event_id, "routine-new");
   assert.equal(inbox.activity[0].signal.href, "/admin/lineage/?run=new");
+});
+
+test("public and synthetic activity never collapse into one group", () => {
+  const value = response();
+  value.signals = [
+    signal("public", "open", {
+      evidence_class: "public-observed",
+      title: "Source records accepted",
+      message: "Ten records entered the governed path.",
+    }),
+    signal("synthetic", "open", {
+      evidence_class: "synthetic-demo",
+      title: "Source records accepted",
+      message: "Ten records entered the governed path.",
+    }),
+  ];
+
+  assert.equal(buildSignalInbox(value).activity.length, 2);
 });
 
 test("acknowledgement updates only the matching signal and recalculates unread count", () => {

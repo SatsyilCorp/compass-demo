@@ -28,16 +28,14 @@ import {
 import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { PageHeader } from "@/components/shell/page-header";
+import { LiveEvidenceStatus } from "@/components/public-intelligence/live-evidence-status";
 import {
   getPublicModelExecutionsApi,
-  getPublicAcquisitionsApi,
   getPublicIntelligenceSnapshotApi,
-  postPublicAcquisitionRunApi,
   postPublicIntelligenceExplainApi,
-  USE_MOCK,
-  type PublicAcquisitionList,
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import type { PublicModelExecutionReceipt } from "@/lib/mlops/model-execution";
 import { PUBLIC_INTELLIGENCE_SNAPSHOT } from "@/lib/public-intelligence/demo-snapshot";
 import {
@@ -47,6 +45,7 @@ import {
   safeHttpsUrl,
 } from "@/lib/public-intelligence/live";
 import { SOURCE_ACQUISITION_GROUPS } from "@/lib/public-intelligence/source-acquisition";
+import { usePublicOperations } from "@/lib/public-intelligence/use-public-operations";
 import type { SourceAcquisitionState } from "@/lib/public-intelligence/source-acquisition";
 import type {
   EvidenceClass,
@@ -66,26 +65,28 @@ const exactNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 })
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 
 type View = "portfolio" | "programs" | "explain" | "models" | "sources";
-type SnapshotState = "loading" | "live" | "fallback";
+type SnapshotState = "loading" | "live" | "rehearsal" | "unavailable";
 type ModelSignalState = "loading" | "live" | "unavailable";
 
 export function IntelligenceWorkspace() {
   const auth = useAppAuth();
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
   const [view, setView] = useState<View>("portfolio");
   const [selectedProgram, setSelectedProgram] = useState(PUBLIC_INTELLIGENCE_SNAPSHOT.programs[0]?.id ?? "");
   const [liveSnapshot, setLiveSnapshot] = useState<PublicIntelligenceSnapshotResponse | null>(null);
-  const [snapshotState, setSnapshotState] = useState<SnapshotState>(USE_MOCK ? "fallback" : "loading");
+  const [snapshotState, setSnapshotState] = useState<SnapshotState>(rehearsal ? "rehearsal" : "loading");
   const [snapshotMessage, setSnapshotMessage] = useState(
-    USE_MOCK
-      ? "Local replay mode uses the bundled, last-known public snapshot."
+    rehearsal
+      ? "Explicit rehearsal uses a fixed, non-live public evidence snapshot."
       : "Verifying the protected public evidence manifest and index.",
   );
   const [refreshing, setRefreshing] = useState(false);
   const [latestModelExecution, setLatestModelExecution] = useState<PublicModelExecutionReceipt | null>(null);
-  const [modelSignalState, setModelSignalState] = useState<ModelSignalState>(USE_MOCK ? "unavailable" : "loading");
+  const [modelSignalState, setModelSignalState] = useState<ModelSignalState>(rehearsal ? "unavailable" : "loading");
   const [modelSignalMessage, setModelSignalMessage] = useState(
-    USE_MOCK
-      ? "Live SageMaker execution receipts require the deployed AWS environment."
+    rehearsal
+      ? "SageMaker execution receipts are disabled in explicit rehearsal."
       : "Loading governed SageMaker prediction receipts.",
   );
   const [modelSignalsRefreshing, setModelSignalsRefreshing] = useState(false);
@@ -101,14 +102,14 @@ export function IntelligenceWorkspace() {
 
   const loadSnapshot = useCallback(async () => {
     const requestId = ++requestSequence.current;
-    if (USE_MOCK) {
-      setSnapshotState("fallback");
-      setSnapshotMessage("Local replay mode uses the bundled, last-known public snapshot.");
+    if (rehearsal) {
+      setSnapshotState("rehearsal");
+      setSnapshotMessage("Explicit rehearsal uses a fixed, non-live public evidence snapshot.");
       return;
     }
     if (!auth.idToken) {
-      setSnapshotState("fallback");
-      setSnapshotMessage("The protected session is not ready, so the bundled last-known snapshot remains visible.");
+      setSnapshotState("unavailable");
+      setSnapshotMessage("The protected session is not ready. No rehearsal snapshot has been substituted.");
       return;
     }
 
@@ -130,21 +131,21 @@ export function IntelligenceWorkspace() {
         setSnapshotState("live");
         setSnapshotMessage("The last verified live response remains visible because revalidation did not complete.");
       } else {
-        setSnapshotState("fallback");
-        setSnapshotMessage("Live verification is unavailable, so the bundled last-known snapshot remains visible.");
+        setSnapshotState("unavailable");
+        setSnapshotMessage("Live verification is unavailable. No rehearsal snapshot has been substituted.");
       }
     } finally {
       if (requestId === requestSequence.current) setRefreshing(false);
     }
-  }, [auth.idToken]);
+  }, [auth.idToken, rehearsal]);
 
   const loadModelSignals = useCallback(async () => {
     const requestId = ++modelRequestSequence.current;
-    if (USE_MOCK || !auth.idToken) {
+    if (rehearsal || !auth.idToken) {
       setModelSignalState("unavailable");
       setModelSignalMessage(
-        USE_MOCK
-          ? "Live SageMaker execution receipts require the deployed AWS environment."
+        rehearsal
+          ? "SageMaker execution receipts are disabled in explicit rehearsal."
           : "A verified signed-in session is required to read model execution receipts.",
       );
       return;
@@ -175,7 +176,7 @@ export function IntelligenceWorkspace() {
     } finally {
       if (requestId === modelRequestSequence.current) setModelSignalsRefreshing(false);
     }
-  }, [auth.idToken]);
+  }, [auth.idToken, rehearsal]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadSnapshot(), 0);
@@ -190,14 +191,14 @@ export function IntelligenceWorkspace() {
   return (
     <div className="space-y-6">
       <PageHeader
-        kicker="Public evidence intelligence | Multi-source governed snapshot"
-        title="ONR portfolio intelligence"
+        kicker={rehearsal ? "Explicit rehearsal | Fixed public evidence snapshot" : "Live public evidence | Multi-source governed intelligence"}
+        title={rehearsal ? "Rehearse the intelligence workflow" : "ONR public evidence intelligence"}
         icon={<Orbit className="size-5" aria-hidden />}
-        lead="The accepted evidence package contains public award, opportunity, SBIR, publication, dataset, and technical-report snapshots with source-level provenance. One funding model is registered as a review-only candidate, while unvalidated program-level predictions remain hidden."
+        lead={rehearsal ? "This fixed, non-live snapshot exists only for a deterministic presentation rehearsal. Return to live public evidence to use current accepted source receipts and model execution evidence." : "The protected AWS API verifies the accepted public evidence package, exact source identities, real model receipts, and citation contract. If verification fails, this screen fails visibly and never substitutes rehearsal data."}
         actions={
           <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-xs font-bold text-success">
             <ShieldCheck className="size-4" aria-hidden />
-            Public data only
+            {rehearsal ? "Fixed rehearsal snapshot" : "Verified public data only"}
           </div>
         }
       />
@@ -210,9 +211,9 @@ export function IntelligenceWorkspace() {
         onRefresh={() => void loadSnapshot()}
       />
 
-      <EvidenceBoundary snapshot={snapshot} />
+      {snapshotState === "live" || snapshotState === "rehearsal" ? <EvidenceBoundary snapshot={snapshot} /> : <UnavailableIntelligence />}
 
-      <div className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-1 shadow-soft" role="tablist" aria-label="Intelligence workspace views">
+      {snapshotState === "live" || snapshotState === "rehearsal" ? <><div className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-1 shadow-soft" role="tablist" aria-label="Intelligence workspace views">
         {([
           ["portfolio", "Portfolio signal"],
           ["programs", "Program explorer"],
@@ -235,7 +236,7 @@ export function IntelligenceWorkspace() {
 
       {view === "portfolio" ? <PortfolioView snapshot={snapshot} /> : null}
       {view === "programs" ? <ProgramsView snapshot={snapshot} selected={selectedProgram} onSelect={setSelectedProgram} program={program} /> : null}
-      {view === "explain" ? <CitedExplainer canCallLive={!USE_MOCK && Boolean(auth.idToken)} snapshotState={snapshotState} liveSnapshotId={liveSnapshot?.snapshot_id ?? null} /> : null}
+      {view === "explain" ? <CitedExplainer canCallLive={!rehearsal && Boolean(auth.idToken)} snapshotState={snapshotState} liveSnapshotId={liveSnapshot?.snapshot_id ?? null} /> : null}
       {view === "models" ? (
         <ModelsView
           snapshot={snapshot}
@@ -246,7 +247,7 @@ export function IntelligenceWorkspace() {
           onRefresh={() => void loadModelSignals()}
         />
       ) : null}
-      {view === "sources" ? <SourcesView snapshot={snapshot} /> : null}
+      {view === "sources" ? <SourcesView snapshot={snapshot} live={!rehearsal} /> : null}</> : null}
     </div>
   );
 }
@@ -276,7 +277,9 @@ function SnapshotConnection({
     ? "Live backend verified"
     : loading
       ? "Verifying protected snapshot"
-      : "Bundled last-known snapshot";
+      : state === "rehearsal"
+        ? "Explicit fixed rehearsal snapshot"
+        : "Live intelligence unavailable";
 
   return (
     <section className={`rounded-lg border px-4 py-3 ${style}`} aria-live="polite">
@@ -293,7 +296,7 @@ function SnapshotConnection({
             ) : null}
           </div>
         </div>
-        {!USE_MOCK ? (
+        {state !== "rehearsal" ? (
           <button
             type="button"
             onClick={onRefresh}
@@ -309,6 +312,10 @@ function SnapshotConnection({
   );
 }
 
+function UnavailableIntelligence() {
+  return <section className="rounded-xl border border-danger/30 bg-danger-soft p-6 text-center"><WifiOff className="mx-auto size-7 text-danger" aria-hidden /><h2 className="mt-3 text-base font-bold text-text-strong">No live intelligence has been verified</h2><p className="mx-auto mt-2 max-w-2xl text-xs leading-5 text-text-muted">Compass is intentionally fail-closed on this screen. Refresh the protected service or inspect source operations. A fixed rehearsal snapshot is available only after explicitly selecting rehearsal mode.</p><a href="/admin/acquisition/" className="mt-4 inline-flex min-h-11 items-center rounded-md bg-gov-primary px-4 text-xs font-bold text-white hover:bg-gov-primary-dark">Inspect source operations</a></section>;
+}
+
 function EvidenceBoundary({ snapshot }: { snapshot: IntelligenceSnapshot }) {
   const persistedSourceCount = snapshot.sources.filter((source) => source.status === "persisted").length;
   return (
@@ -318,9 +325,9 @@ function EvidenceBoundary({ snapshot }: { snapshot: IntelligenceSnapshot }) {
         <p className="mt-2 text-sm font-bold">Public ONR-related candidate evidence</p>
         <p className="mt-1 text-[11px] leading-5 text-white/65">Not an ONR internal system and not a confirmed internal performance record.</p>
       </div>
-      <Metric label="Grants" value={number.format(snapshot.corpus.awards)} detail="retrieved candidate records" Icon={FileSearch} />
-      <Metric label="Contracts" value={number.format(snapshot.corpus.contracts)} detail="retrieved candidate records" Icon={Landmark} />
-      <Metric label="Candidate award value" value={money.format(snapshot.corpus.candidateAwardValueUsd)} detail="summed award amounts" Icon={Network} />
+      <Metric label="Grants" value={formatCount(snapshot.corpus.awards)} detail="retrieved candidate records" Icon={FileSearch} />
+      <Metric label="Contracts" value={formatCount(snapshot.corpus.contracts)} detail="retrieved candidate records" Icon={Landmark} />
+      <Metric label="Candidate award value" value={formatMoney(snapshot.corpus.candidateAwardValueUsd)} detail="summed award amounts" Icon={Network} />
       <Metric label="Sources" value={String(persistedSourceCount)} detail="persisted public source families" Icon={DatabaseZap} />
     </section>
   );
@@ -347,7 +354,7 @@ function PortfolioView({ snapshot }: { snapshot: IntelligenceSnapshot }) {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Capital flow</p>
             <h2 className="mt-1 text-lg font-bold text-text-strong">Observed candidate-scope obligations</h2>
-            <p className="mt-1 text-xs leading-5 text-text-muted">Values are from the persisted USAspending spending-over-time response for Department of the Navy plus keyword N00014 candidate scope. They are not an authoritative inventory of every ONR obligation.</p>
+            <p className="mt-1 text-xs leading-5 text-text-muted">Only annual obligation values present in the verified public snapshot are plotted. Missing periods and unreported values remain absent.</p>
           </div>
           <EvidencePill kind="observed" />
         </div>
@@ -364,8 +371,8 @@ function PortfolioView({ snapshot }: { snapshot: IntelligenceSnapshot }) {
         </div>
         <div className="mt-2 flex flex-wrap gap-4 text-[10px] text-text-muted">
           <span className="inline-flex items-center gap-2"><span className="h-0.5 w-5 bg-gov-primary-vivid" /> Observed source value</span>
-          <span>FY2026 is partial; the USAspending cutoff is 2026-08-11</span>
-          <span className="font-bold text-warn">Candidate model trained. No forecast is published until approval.</span>
+          <span>Observed values retain the snapshot source and as-of boundary.</span>
+          <span className="font-bold text-warn">No forecast is substituted when a verified model receipt is absent.</span>
         </div>
       </section>
 
@@ -450,7 +457,7 @@ function ProgramsView({
             <button key={item.id} type="button" onClick={() => onSelect(item.id)} className={`w-full rounded-lg border p-3 text-left transition-colors ${selected === item.id ? "border-gov-primary bg-gov-primary-lighter" : "border-border bg-white hover:bg-surface-2"}`}>
               <div className="flex items-center justify-between gap-3">
                 <span className="font-mono text-[10px] font-bold text-gold-ink">{item.id}</span>
-                <span className="text-[10px] font-bold text-text-muted">{money.format(item.awardAmountUsd)}</span>
+                <span className="text-[10px] font-bold text-text-muted">{formatMoney(item.awardAmountUsd)}</span>
               </div>
               <p className="mt-2 line-clamp-2 text-xs font-bold leading-5 text-text-strong">{item.title}</p>
               <p className="mt-1 truncate text-[10px] text-text-muted">{item.recipient}</p>
@@ -470,7 +477,7 @@ function ProgramsView({
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <ProgramMetric label="Observed award value" value={money.format(program.awardAmountUsd)} kind="observed" />
+          <ProgramMetric label="Observed award value" value={formatMoney(program.awardAmountUsd)} kind="observed" />
           <ProgramMetric label="Transition indicator" value={formatNullablePercent(program.transitionProbability)} kind="predicted" />
           <ProgramMetric label="Impact percentile" value={formatPercentile(program.impactPercentile)} kind="predicted" />
           <ProgramMetric label="Model confidence" value={formatNullablePercent(program.confidence)} kind="predicted" />
@@ -582,7 +589,9 @@ function CitedExplainer({
             ? `Protected explanation route ready${liveSnapshotId ? ` for ${liveSnapshotId}` : ""}.`
             : snapshotState === "loading"
               ? "Waiting for the protected session and live snapshot verification."
-              : "Bundled evidence is read-only. Sign in to the live backend to generate a cited explanation."}
+              : snapshotState === "rehearsal"
+                ? "The fixed rehearsal snapshot is read-only. Select live public evidence to generate a cited explanation."
+                : "Live evidence is unavailable. No rehearsal result has been substituted."}
         </div>
 
         <div className="mt-5 space-y-2">
@@ -952,14 +961,14 @@ function SignalEvidence({ icon: Icon, label, value }: { icon: typeof BadgeCheck;
   return <div className="rounded-lg border border-border bg-surface-2 p-3"><Icon className="size-4 text-gov-primary" aria-hidden /><p className="mt-2 text-[9px] font-bold uppercase tracking-wide text-text-subtle">{label}</p><p className="mt-1 break-all font-mono text-[9px] leading-4 text-text-muted">{value}</p></div>;
 }
 
-function SourcesView({ snapshot }: { snapshot: IntelligenceSnapshot }) {
+function SourcesView({ snapshot, live }: { snapshot: IntelligenceSnapshot; live: boolean }) {
   const persistedRecords = snapshot.sources.reduce(
     (total, source) => total + (source.status === "persisted" ? source.recordCount ?? 0 : 0),
     0,
   );
   return (
     <div className="space-y-4">
-      <LiveAcquisitionPanel />
+      {live ? <LiveAcquisitionPanel /> : <section className="rounded-xl border border-warn/30 bg-warn-soft p-4 text-xs leading-5 text-warn"><p className="font-bold">Fixed rehearsal source ledger</p><p className="mt-1">Continuous public acquisition is disabled in rehearsal. Return to live public evidence to read or control current source receipts.</p></section>}
       <SourceAcquisitionInventory persistedRecords={persistedRecords} />
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
       <div className="border-b border-border px-5 py-4">
@@ -973,7 +982,7 @@ function SourcesView({ snapshot }: { snapshot: IntelligenceSnapshot }) {
             <div><p className="text-sm font-bold text-text-strong">{source.name}</p><p className="mt-1 text-[10px] text-text-muted">{source.authority}</p></div>
             <div><p className="text-sm font-bold text-text-strong">{formatExactCount(source.recordCount)}</p><p className="mt-1 text-[10px] text-text-muted">{source.recordLabel}</p></div>
             <p className="text-xs leading-5 text-text-muted">{source.use}</p>
-            <div className="flex items-center justify-between gap-3 md:justify-end"><SourceStatus status={source.status} /><a href={source.url} target="_blank" rel="noreferrer" aria-label={`Open ${source.name} source`} className="grid size-11 place-items-center rounded-md border border-border text-gov-primary hover:bg-surface-2"><ExternalLink className="size-4" aria-hidden /></a></div>
+            <div className="flex items-center justify-between gap-3 md:justify-end"><SourceStatus status={source.status} />{source.url ? <a href={source.url} target="_blank" rel="noreferrer" aria-label={`Open ${source.name} source`} className="grid size-11 place-items-center rounded-md border border-border text-gov-primary hover:bg-surface-2"><ExternalLink className="size-4" aria-hidden /></a> : <span className="grid size-11 place-items-center rounded-md border border-border text-text-subtle" title="No verified source URL was reported"><LockKeyhole className="size-4" aria-hidden /></span>}</div>
           </article>
         ))}
       </div>
@@ -983,90 +992,8 @@ function SourcesView({ snapshot }: { snapshot: IntelligenceSnapshot }) {
 }
 
 function LiveAcquisitionPanel() {
-  const [data, setData] = useState<PublicAcquisitionList | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const next = await getPublicAcquisitionsApi();
-      setData(next);
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The public acquisition receipt is unavailable.");
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 15_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
-
-  const runNow = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await postPublicAcquisitionRunApi();
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The public acquisition run failed.");
-    } finally {
-      setBusy(false);
-    }
-  }, [refresh]);
-
-  const latest = data?.acquisitions[0] ?? null;
-  const completed = latest?.status === "completed";
-  return (
-    <section className="overflow-hidden rounded-xl border border-gov-primary/25 bg-surface shadow-card" aria-labelledby="live-acquisition-title">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border bg-gov-primary-lighter/45 px-5 py-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${data?.mode === "live" ? "border-success/30 bg-success-soft text-success" : "border-info/30 bg-info-soft text-info"}`}>{data?.mode === "live" ? "Live scheduled acquisition" : "Replay only"}</span>
-            <span className="rounded-full border border-border bg-white px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-text-muted">{data?.schedule ?? "Loading schedule"}</span>
-          </div>
-          <h2 id="live-acquisition-title" className="mt-2 text-lg font-bold text-text-strong">USAspending change acquisition</h2>
-          <p className="mt-1 max-w-4xl text-xs leading-5 text-text-muted">Compass polls the official public API as a bounded micro-batch. It versions the raw response, canonicalizes a PII-minimized projection, compares stable record hashes, advances an accepted watermark, and emits one PII-minimized Kinesis envelope for each added or changed record. Unchanged records emit no event.</p>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => void refresh()} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-text-muted hover:bg-surface-2"><RefreshCw className="size-3.5" aria-hidden /> Refresh receipt</button>
-          <button type="button" onClick={() => void runNow()} disabled={busy || data?.mode !== "live"} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-gov-primary px-3 text-xs font-bold text-white hover:bg-gov-primary-dark disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Activity className="size-3.5" aria-hidden />} Run bounded poll</button>
-        </div>
-      </div>
-      {error ? <div role="alert" className="m-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft p-3 text-xs leading-5 text-danger"><AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}</div> : null}
-      {latest ? (
-        <div className="p-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <AcquisitionMetric label="State" value={latest.status} tone={completed ? "success" : "attention"} />
-            <AcquisitionMetric label="Records" value={String(latest.record_count ?? 0)} />
-            <AcquisitionMetric label="Added" value={String(latest.added_records ?? 0)} />
-            <AcquisitionMetric label="Changed" value={String(latest.changed_records ?? 0)} />
-            <AcquisitionMetric label="Unchanged" value={String(latest.unchanged_records ?? 0)} />
-            <AcquisitionMetric label="Watermark" value={latest.watermark || "No source date"} />
-          </div>
-          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div className="min-w-0 rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-text-subtle">Latest immutable receipt</p>
-              <p className="mt-1 text-xs font-bold text-text-strong">{latest.run_id}</p>
-              <code className="mt-1 block truncate text-[9px] text-text-muted" title={latest.snapshot_sha256}>{latest.snapshot_sha256 ?? "Snapshot digest unavailable for this receipt"}</code>
-              <p className="mt-2 text-[10px] leading-4 text-text-muted">{latest.scope_disclosure}</p>
-            </div>
-            <a href="/admin/lineage/" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-gov-primary px-4 text-xs font-bold text-gov-primary hover:bg-gov-primary-lighter">Open stage lineage <ArrowUpRight className="size-3.5" aria-hidden /></a>
-          </div>
-        </div>
-      ) : (
-        <div className="grid min-h-36 place-items-center p-5 text-center">
-          <div><Wifi className="mx-auto size-6 text-text-subtle" aria-hidden /><p className="mt-2 text-xs font-bold text-text-strong">No accepted live acquisition receipt yet</p><p className="mt-1 text-[10px] text-text-muted">A scheduled or manual run will create the first immutable watermark.</p></div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function AcquisitionMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "success" | "attention" }) {
-  const color = tone === "success" ? "text-success" : tone === "attention" ? "text-warn" : "text-text-strong";
-  return <div className="rounded-lg border border-border bg-white p-3"><p className="text-[8.5px] font-bold uppercase tracking-wide text-text-subtle">{label}</p><p className={`mt-2 truncate text-sm font-bold ${color}`} title={value}>{value}</p></div>;
+  const operations = usePublicOperations();
+  return <LiveEvidenceStatus control={operations.control} healthySources={operations.summary.healthySources} sourceCount={operations.data?.source_health?.length ?? 0} lastRefreshedAt={operations.lastRefreshedAt} refreshing={operations.refreshing} controlling={operations.controlling} error={operations.error} onRefresh={() => void operations.refresh()} onSetContinuous={(enabled) => void operations.setContinuous(enabled)} />;
 }
 
 function SourceAcquisitionInventory({ persistedRecords }: { persistedRecords: number }) {

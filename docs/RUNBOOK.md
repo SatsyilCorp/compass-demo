@@ -72,7 +72,7 @@ pnpm install --frozen-lockfile
 pnpm audit --prod
 pnpm typecheck
 pnpm test:scenario
-NEXT_PUBLIC_USE_MOCK=true NEXT_PUBLIC_AUTH_DISABLED=true pnpm build
+NEXT_PUBLIC_AUTH_DISABLED=true pnpm build
 pnpm exec playwright install chromium
 pnpm test:e2e
 ```
@@ -321,7 +321,7 @@ Use these explicit settings for the recording stack:
 
 | Setting | Recording value | Reason |
 |---|---|---|
-| `NEXT_PUBLIC_USE_MOCK` | `false` | The primary recording proves the live backend |
+| Product evidence mode | `Live public evidence` | This is the fail-closed browser default; rehearsal requires explicit selection |
 | `NEXT_PUBLIC_AUTH_DISABLED` | `false` | Cognito and MFA stay in the path |
 | `ExportMaxRows` | `250`, after confirming the full-portfolio request exceeds it | Enables the cross-persona guard path through a reviewed deployment value |
 | `APPROVAL_REQUIRE_FOUR_EYES` | `true` | A requester cannot decide the same approval |
@@ -418,15 +418,15 @@ or print the physical bucket name on camera.
 If the live environment is unavailable before recording, fix it and reschedule
 the take. Do not silently switch the submitted cloud proof to replay.
 
-Replay remains useful for rehearsal and evaluator reproduction:
+The explicit Rehearsal mode remains useful for evaluator reproduction:
 
 ```bash
 cd frontend
-NEXT_PUBLIC_USE_MOCK=true NEXT_PUBLIC_AUTH_DISABLED=true pnpm dev
+NEXT_PUBLIC_AUTH_DISABLED=true pnpm dev
 ```
 
-The UI must show Replay fixture. Use `Reset replay` before each rehearsal.
-Replay can prove interaction design and deterministic business rules, but not
+Open `/rehearsal/`, select **Activate rehearsal**, and use `Reset replay`
+before each presentation. Rehearsal can prove interaction design and deterministic business rules, but not
 AWS runtime, Cognito, network, database, workflow, or Bedrock execution.
 
 ## 13. Volume IV completion

@@ -1,3 +1,5 @@
+import type { OperationsRunSummary, OperationsSummaryResponse } from "@/lib/types";
+
 export const TRACE_STATUSES = [
   "verified-live",
   "configured",
@@ -79,31 +81,31 @@ export const REQUIREMENTS: RequirementTrace[] = [
   {
     id: "governed-intake-quality",
     title: "Governed intake and quality",
-    intent: "Accept a structured or unstructured file, bind its bytes to a run, apply quality policy, and publish or quarantine it with a retained receipt.",
-    status: "verified-live",
-    userAction: "Open Ingest and quality, select the prepared Technical report, then follow the visible stages from hash through Gold publication.",
+    intent: "Acquire real public records through named connectors, bind the exact source response to a run, apply quality policy, and publish or quarantine each bounded collection with a retained receipt.",
+    status: "configured",
+    userAction: "Open Live source operations, inspect a completed public pull, and follow its source receipt, hash, quality result, model classification, change set, and accepted watermark. Use file upload only from the explicit rehearsal workspace.",
     liveEvidence: [
-      { kind: "screen", label: "Ingest and quality", locator: "/ingest/", href: "/ingest/" },
-      { kind: "api", label: "Upload and run receipt", locator: "POST /documents/uploads | GET /documents/runs/{run_id}" },
+      { kind: "screen", label: "Live source operations", locator: "/admin/acquisition/", href: "/admin/acquisition/" },
+      { kind: "api", label: "Public acquisition receipt", locator: "GET /public-intelligence/acquisitions | POST /public-intelligence/sources/{source_id}/run" },
     ],
     locators: {
       source: ["frontend/components/documents/document-drop-zone.tsx", "src/functions/document_ml/app.py"],
       tests: ["src/functions/document_ml/tests/test_app.py", "frontend/lib/documents/document-intake.test.ts"],
       iac: ["template.yaml: DocumentObjectCreatedRule and DocumentMlStateMachine"],
     },
-    differentiator: "The run ID, source SHA-256, quality outcome, model result, and consumer projection remain bound to the same evidence chain.",
-    caveat: "The commercial demo accepts synthetic or public PII-minimized content only. It must not receive CUI, controlled technical data, or direct PII.",
-    tags: ["file drop", "structured", "unstructured", "quality", "quarantine"],
+    differentiator: "The source authority, retrieval time, run ID, source SHA-256, quality outcome, model result, and consumer projection remain bound to the same evidence chain.",
+    caveat: "The live plane accepts bounded public, PII-minimized evidence only. The separate rehearsal workspace accepts sanitized files. Neither path may receive CUI, controlled technical data, or direct PII.",
+    tags: ["public connector", "structured", "unstructured", "quality", "quarantine", "rehearsal"],
   },
   {
     id: "catalog-metadata",
     title: "Catalog and metadata",
     intent: "Expose governed datasets, field definitions, quality, freshness, ownership, and source context through one searchable catalog.",
-    status: "verified-live",
-    userAction: "Open Governed catalog, expand one dataset, and point to its field definitions, freshness, quality score, source batch, and owner.",
+    status: "configured",
+    userAction: "Open Governed catalog, expand one accepted public dataset, and point to its authority, field definitions, freshness, quality score, source run, model receipt, and owner.",
     liveEvidence: [
       { kind: "screen", label: "Governed catalog", locator: "/catalog/", href: "/catalog/" },
-      { kind: "api", label: "Catalog contract", locator: "GET /catalog" },
+      { kind: "api", label: "Public catalog contract", locator: "GET /public-intelligence/acquisitions | GET /public-intelligence/snapshot" },
     ],
     locators: {
       source: ["src/functions/catalog/app.py", "frontend/components/catalog/catalog-table.tsx"],
@@ -111,17 +113,17 @@ export const REQUIREMENTS: RequirementTrace[] = [
       iac: ["template.yaml: CatalogFunction and Glue catalog resources"],
     },
     differentiator: "Metadata is tied to operational quality and lineage evidence instead of being a detached inventory page.",
-    caveat: "The catalog covers Compass-managed assets. External enterprise catalogs need metadata connectors and Government-approved access.",
+    caveat: "The live catalog covers the bounded public records accepted by Compass. External enterprise catalogs need metadata connectors and Government-approved access. Rehearsal assets remain visibly separate.",
     tags: ["catalog", "dictionary", "freshness", "ownership"],
   },
   {
     id: "lineage",
     title: "Lineage",
-    intent: "Trace a specific run from immutable source through every processing stage, model version, output artifact, and consuming screen.",
-    status: "verified-live",
-    userAction: "After a file run, open its lineage link and inspect stage status, source and output hashes, model version, actor, and receipt locator.",
+    intent: "Trace a specific public acquisition from the external authority through immutable retention, normalization, quality, identity linkage, model version, accepted snapshot, and consuming screen.",
+    status: "configured",
+    userAction: "From an accepted public source run, open end-to-end lineage and inspect the authority URI, retrieval time, source and output hashes, quality stages, model version, identity keys, watermark, and receipt locator.",
     liveEvidence: [
-      { kind: "screen", label: "Run lineage", locator: "/catalog/lineage/?batch={run_id}", href: "/catalog/lineage/" },
+      { kind: "screen", label: "Public run lineage", locator: "/admin/lineage/?run={run_id}", href: "/admin/lineage/" },
       { kind: "api", label: "Cross-workflow lineage", locator: "GET /operations/lineage/{runId}" },
     ],
     locators: {
@@ -130,15 +132,15 @@ export const REQUIREMENTS: RequirementTrace[] = [
       iac: ["template.yaml: OperationsTable, document workflow, and intake workflow"],
     },
     differentiator: "Lineage is built from stage receipts and hashes produced by execution, not from a diagram-only claim.",
-    caveat: "Enterprise lineage stops at the Compass boundary until Databricks, Advana, or another external catalog supplies its own metadata events.",
+    caveat: "Public authority lineage begins at the retrieved public response. Enterprise lineage stops at the Compass boundary until Databricks, Advana, or another external catalog supplies its own metadata events.",
     tags: ["provenance", "hash", "receipt", "run"],
   },
   {
     id: "decision-analytics",
     title: "Decision analytics",
     intent: "Turn governed portfolio and document evidence into filterable decisions, anomalies, projections, and cited explanations.",
-    status: "verified-live",
-    userAction: "Open Decision workspace, apply a program or fiscal-year filter, inspect an anomaly, and follow its evidence back to the governed source.",
+    status: "configured",
+    userAction: "Open Decision workspace, confirm Live public evidence, apply a source, program, or fiscal-year filter, inspect a cross-source signal, and follow its citations back to accepted authority records.",
     liveEvidence: [
       { kind: "screen", label: "Decision workspace", locator: "/dashboard/", href: "/dashboard/" },
       { kind: "api", label: "Decision projection", locator: "GET /dashboard | GET /public-intelligence/snapshot" },
@@ -149,15 +151,15 @@ export const REQUIREMENTS: RequirementTrace[] = [
       iac: ["template.yaml: DashboardFunction and PublicIntelligenceFunction"],
     },
     differentiator: "The consumer view keeps citations, access scope, data mode, and originating run visible beside the decision signal.",
-    caveat: "Current results use synthetic or public evidence. They are decision-support signals, not authoritative ONR conclusions or autonomous decisions.",
+    caveat: "The default results use bounded public evidence. Rehearsal results appear only after explicit selection. All results are decision-support signals, not authoritative ONR conclusions or autonomous decisions.",
     tags: ["dashboard", "anomaly", "forecast", "citations"],
   },
   {
     id: "real-model-lifecycle",
     title: "Real model lifecycle",
     intent: "Train, evaluate, register, approve, deploy, and execute a governed model with immutable dataset, source, artifact, and metric receipts.",
-    status: "verified-live",
-    userAction: "Open Model operations, show the SageMaker candidate and its temporal evaluation, then run bounded scoring and inspect the returned prediction receipt.",
+    status: "configured",
+    userAction: "Open Model operations, show the public Navy SBIR training manifest and SageMaker candidate, then score a bounded current public cohort and inspect each returned prediction and lineage receipt.",
     liveEvidence: [
       { kind: "screen", label: "Model operations", locator: "/admin/mlops/", href: "/admin/mlops/" },
       { kind: "api", label: "Model registry and execution", locator: "GET /ml/models | POST /public-intelligence/model-executions" },
@@ -167,7 +169,7 @@ export const REQUIREMENTS: RequirementTrace[] = [
       tests: ["mlops/sagemaker/public_sbir_transition/test_submit_training.py", "frontend/lib/mlops/model-execution.test.ts"],
       iac: ["template.yaml: PublicSbirTransitionModelPackageGroup and DocumentSageMakerExecutionRole"],
     },
-    differentiator: "The demo separates a measured candidate from a production Champion and keeps promotion behind a human gate.",
+    differentiator: "The product ties public training rows, immutable artifacts, temporal evaluation, current public scoring inputs, prediction outputs, and human promotion to inspectable receipts.",
     caveat: "The public SBIR candidate is evidence for a bounded research use case. It is not an accredited production endpoint and must not be described as predicting program success.",
     tags: ["SageMaker", "registry", "training", "prediction", "human gate"],
   },
@@ -213,19 +215,19 @@ export const REQUIREMENTS: RequirementTrace[] = [
     id: "continuous-public-acquisition",
     title: "Continuous multi-source public acquisition",
     intent: "Pull bounded updates from official public sources on responsible schedules, retain source pages, compute record changes, classify narratives, create exact evidence links, and publish only accepted snapshots.",
-    status: "not-yet-implemented",
-    userAction: "Open Live source operations, run a connector, then show source health, the accepted receipt, model evidence, exact identity keys, the original record, and end-to-end lineage.",
+    status: "configured",
+    userAction: "Open Live source operations, confirm continuous acquisition is running, and show the latest accepted run for each authority, source-safe cadence, change counts, narrative classification, exact identity keys, and end-to-end lineage.",
     liveEvidence: [
       { kind: "screen", label: "Multi-source operations", locator: "/admin/acquisition/", href: "/admin/acquisition/" },
-      { kind: "api", label: "Source health and receipts", locator: "GET /public-intelligence/acquisitions" },
+      { kind: "api", label: "Source health and receipts", locator: "GET /public-intelligence/acquisitions | GET /public-intelligence/acquisitions/continuous" },
     ],
     locators: {
       source: ["src/functions/public_acquisition/app.py", "src/functions/public_acquisition/feed_sources.py", "src/functions/document_ml/app.py"],
       tests: ["src/functions/public_acquisition/tests/test_app.py", "src/functions/operations/tests/test_app.py"],
       iac: ["template.yaml: ScheduledPublicAcquisition, dead-letter queue, and public acquisition resources"],
     },
-    differentiator: "A source-specific receipt, immutable hashes, model version, exact identity keys, and change set connect every accepted fact to its owner and downstream decision surface.",
-    caveat: "Only sources with a current protected live API receipt and accepted watermark are verified. Public-source coverage is bounded, and missing public identifiers can require analyst review before cross-source linkage.",
+    differentiator: "Backend schedules continue without an open browser while the interface projects retained change events in near real time. Every accepted fact keeps its source-specific receipt, immutable hashes, model version, exact identity keys, and change set.",
+    caveat: "Continuous means recurring backend acquisition at each authority's responsible cadence, not a request to an external API every second. Only sources with a protected live receipt and accepted watermark are verified, and ambiguous cross-source links require analyst review.",
     tags: ["USAspending", "Grants.gov", "Crossref", "Federal Register", "lineage", "model"],
   },
   {
@@ -269,20 +271,20 @@ export const REQUIREMENTS: RequirementTrace[] = [
   {
     id: "controlled-release-api",
     title: "Controlled release and API",
-    intent: "Expose governed interfaces and exports with role checks, scope policy, approvals, checksums, and auditable release receipts.",
-    status: "verified-live",
-    userAction: "Open Governed release, request a bounded export, show the approval control, and inspect the checksum and audit receipt after release.",
+    intent: "Expose portable open-format interfaces while keeping a future protected release workflow, role checks, approvals, destinations, and audit evidence separate from browser-only preview behavior.",
+    status: "configured",
+    userAction: "Open Portable preview from the live public workspace, download the bounded JSON or CSV generated in this browser, inspect its source fields and local checksum, and state that no protected release, approval, delivery, or audit receipt was created.",
     liveEvidence: [
-      { kind: "screen", label: "Governed release", locator: "/export/", href: "/export/" },
-      { kind: "api", label: "Protected API contract", locator: "GET /openapi.json | POST /export" },
+      { kind: "screen", label: "Browser-generated portable preview", locator: "/export/", href: "/export/" },
+      { kind: "api", label: "Configured protected API contract", locator: "GET /openapi.json | POST /export" },
     ],
     locators: {
       source: ["src/functions/export/app.py", "src/functions/export/openapi.py"],
       tests: ["src/functions/export/tests/test_security.py", "src/functions/export/tests/test_openapi_routes.py"],
       iac: ["template.yaml: HttpApi JWT authorizer, export function, and encrypted buckets"],
     },
-    differentiator: "The release is a policy decision with a single-use receipt, not an unrestricted download button.",
-    caveat: "Production transfer destinations, cross-domain controls, records retention, and Government data-loss prevention policy remain environment-specific.",
+    differentiator: "The live screen proves data portability without misrepresenting a browser download as an approved server-side release. The protected release API remains a separately testable integration seam.",
+    caveat: "The live public screen creates a local browser preview only. It does not call POST /export, apply approval policy, deliver an object, write an audit record, or return a server receipt. Those controls require a verified protected API execution in the intended environment.",
     tags: ["API", "export", "approval", "checksum", "audit"],
   },
   {
@@ -309,17 +311,17 @@ export const REQUIREMENTS: RequirementTrace[] = [
 export const PRESENTER_SEQUENCE: PresenterStep[] = [
   {
     order: 1,
-    title: "Drop one file and prove the run",
+    title: "Start with live public acquisition",
     duration: "4 min",
-    instruction: "Use the prepared Technical report. Show the byte hash, quality gate, model stage, terminal receipt, catalog metadata, and run lineage.",
-    href: "/ingest/",
+    instruction: "Confirm continuous acquisition is running, open one accepted public run, and show its authority, watermark, source hash, quality result, model receipt, catalog metadata, and lineage.",
+    href: "/admin/acquisition/",
     requirementIds: ["governed-intake-quality", "catalog-metadata", "lineage"],
   },
   {
     order: 2,
     title: "Move from evidence to decision",
     duration: "4 min",
-    instruction: "Filter the decision workspace, inspect a cited signal, then show the real model candidate, bounded execution receipt, and shifted-data drift decision.",
+    instruction: "Filter live public intelligence, inspect a cited cross-source signal, then show the real public-data model candidate, bounded execution receipt, and shifted-data drift decision.",
     href: "/dashboard/",
     requirementIds: ["decision-analytics", "real-model-lifecycle", "drift-monitoring"],
   },
@@ -327,15 +329,15 @@ export const PRESENTER_SEQUENCE: PresenterStep[] = [
     order: 3,
     title: "Show continuous operations",
     duration: "3 min",
-    instruction: "Use the live proof panel and notification bell. A public pull counts only when a live watermark and change counts are present.",
+    instruction: "Use the live proof panel and notification bell. Explain that AWS schedules call each authority responsibly while the browser refreshes retained events in near real time. A source counts as live only when its protected receipt has a watermark and change counts.",
     href: "/admin/pipeline/",
     requirementIds: ["alerts-notifications", "continuous-public-acquisition"],
   },
   {
     order: 4,
-    title: "Prove secure delivery and release",
+    title: "Prove secure delivery and the release boundary",
     duration: "4 min",
-    instruction: "Walk the reviewed delivery pipeline, trusted identity path, protected API, approval gate, and checksummed release receipt.",
+    instruction: "Walk the reviewed delivery pipeline and trusted identity path, then create the browser-only portable preview and distinguish it from the configured protected approval, delivery, audit, and receipt workflow.",
     href: "/admin/delivery/",
     requirementIds: ["devsecops-iac", "identity-access", "controlled-release-api"],
   },
@@ -360,4 +362,99 @@ export function countByStatus(requirements: readonly RequirementTrace[] = REQUIR
     "external-dependency": 0,
     "not-yet-implemented": 0,
   });
+}
+
+const VERIFIED_PUBLIC_REQUIREMENTS = new Set([
+  "governed-intake-quality",
+  "lineage",
+  "continuous-public-acquisition",
+]);
+
+export function resolveOperationalRequirementStates(
+  requirements: readonly RequirementTrace[],
+  operations: OperationsSummaryResponse | null,
+): RequirementTrace[] {
+  if (!isVerifiedOperationsSummary(operations)) return requirements.map((item) => ({ ...item }));
+
+  const acceptedPublicRun = verifiedAcceptedPublicRun(operations);
+  const verifiedModelRun = operations.runs.find((run) => isVerifiedRun(run, [
+    "sagemaker-batch-inference",
+    "public-narrative-classification",
+  ]));
+  const verifiedDriftRun = operations.runs.find((run) => (
+    isVerifiedRun(run) && run.run_kind.toLowerCase().includes("drift")
+  ));
+
+  return requirements.map((item) => {
+    if (acceptedPublicRun && VERIFIED_PUBLIC_REQUIREMENTS.has(item.id)) {
+      return {
+        ...item,
+        status: "verified-live",
+        caveat: `Protected operations evidence verifies completed public run ${acceptedPublicRun.run_id} with an accepted watermark and source digest. This proves a bounded public workflow, not access to protected ONR systems or production authorization.`,
+      };
+    }
+    if (item.id === "real-model-lifecycle" && verifiedModelRun) {
+      return {
+        ...item,
+        status: "verified-live",
+        caveat: `Protected operations evidence verifies completed model run ${verifiedModelRun.run_id}. The bounded public model remains decision support and is not an accredited production endpoint or a prediction of ONR program success.`,
+      };
+    }
+    if (item.id === "drift-monitoring" && verifiedDriftRun) {
+      return {
+        ...item,
+        status: "verified-live",
+        caveat: `Protected operations evidence verifies completed drift run ${verifiedDriftRun.run_id}. Representative Government traffic, an approved baseline, and approved operating thresholds are still required for production monitoring.`,
+      };
+    }
+    return { ...item };
+  });
+}
+
+function isVerifiedOperationsSummary(
+  operations: OperationsSummaryResponse | null,
+): operations is OperationsSummaryResponse {
+  return Boolean(
+    operations
+    && operations.contract === "compass.operations.summary.v1"
+    && operations.mode === "live"
+    && validTimestamp(operations.generated_at)
+    && Array.isArray(operations.runs)
+    && Array.isArray(operations.source_watermarks),
+  );
+}
+
+function verifiedAcceptedPublicRun(operations: OperationsSummaryResponse): OperationsRunSummary | undefined {
+  return operations.runs.find((run) => {
+    if (!isVerifiedRun(run, ["public-acquisition"])) return false;
+    return operations.source_watermarks.some((watermark) => (
+      watermark.run_id === run.run_id
+      && watermark.status === "current"
+      && validTimestamp(watermark.last_accepted_at)
+      && Boolean(watermark.watermark?.trim())
+    ));
+  });
+}
+
+function isVerifiedRun(run: OperationsRunSummary, allowedKinds?: readonly string[]): boolean {
+  const normalizedKind = run.run_kind.trim().toLowerCase().replaceAll("_", "-");
+  const evidenceClass = run.evidence_class.trim().toLowerCase().replaceAll("_", "-");
+  return Boolean(
+    run.run_id.trim()
+    && (!allowedKinds || allowedKinds.includes(normalizedKind))
+    && evidenceClass.startsWith("public")
+    && run.status === "completed"
+    && run.stage_count > 0
+    && run.completed_stages >= run.stage_count
+    && validTimestamp(run.updated_at)
+    && validSha256(run.source.sha256),
+  );
+}
+
+function validTimestamp(value: string | null): boolean {
+  return Boolean(value && Number.isFinite(Date.parse(value)));
+}
+
+function validSha256(value: string | null | undefined): boolean {
+  return Boolean(value && /^[a-f0-9]{64}$/i.test(value));
 }

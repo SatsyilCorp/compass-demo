@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { curatedEvidenceSourceLabel } from "./mission-data-source";
 
-test("curated evidence source label distinguishes fixture and live serving modes", () => {
-  assert.equal(curatedEvidenceSourceLabel(true), "Fixture-backed serving projection");
-  assert.equal(curatedEvidenceSourceLabel(false), "Aurora serving projection");
+test("curated evidence source label distinguishes explicit rehearsal from live serving", () => {
+  assert.equal(curatedEvidenceSourceLabel("rehearsal"), "Explicit fixture-backed rehearsal projection");
+  assert.equal(curatedEvidenceSourceLabel("live"), "Protected live public serving projection");
 });

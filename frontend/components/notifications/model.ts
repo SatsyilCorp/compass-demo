@@ -124,6 +124,7 @@ function activityKey(signal: OperationsSignal): string {
     .sort()
     .join("|");
   return [
+    signal.evidence_class,
     signal.signal_type,
     signal.severity,
     signal.status,

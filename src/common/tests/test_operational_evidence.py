@@ -112,3 +112,31 @@ def test_duplicate_signal_does_not_reopen_or_republish(monkeypatch):
     assert second == first
     assert len(table.items) == writes_after_first
     assert len(sns.messages) == 1
+
+
+def test_writer_promotes_declared_evidence_class_to_stage_and_signal(monkeypatch):
+    table = Table()
+    monkeypatch.setattr(operational_evidence, "_TABLE", table)
+    monkeypatch.setenv("OPERATIONS_TABLE", "test")
+    monkeypatch.delenv("OPERATIONS_TOPIC_ARN", raising=False)
+
+    operational_evidence.record_stage(
+        run_id="doc-public",
+        run_kind="document-intake",
+        sequence=1,
+        stage_id="source",
+        label="Source accepted",
+        status="completed",
+        detail={"evidence_class": "public"},
+    )
+    operational_evidence.record_signal(
+        category="document-intake",
+        severity="info",
+        title="Document accepted",
+        message="A public document entered the governed path.",
+        detail={"evidence_class": "public"},
+        publish=False,
+    )
+
+    assert table.items[0]["evidence_class"] == "public"
+    assert table.items[1]["evidence_class"] == "public"

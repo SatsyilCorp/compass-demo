@@ -32,18 +32,27 @@ export type IntakeStage = {
   detail: string;
 };
 
-export type LocalDocumentReceipt = {
+type DocumentReceiptBase = {
   runId: string;
   fileName: string;
   mediaType: DocumentMediaType;
   sizeBytes: number;
   sha256: string;
   shape: "unstructured" | "records" | "workbook";
+};
+
+export type LiveDocumentIdentityReceipt = DocumentReceiptBase & {
+  mode: "live_file_identity";
+};
+
+export type LocalDocumentReceipt = DocumentReceiptBase & {
   qualityScore: number;
   classification: ClassificationResult;
   stages: IntakeStage[];
   mode: "bounded_browser_replay";
 };
+
+export type DocumentIdentityReceipt = LiveDocumentIdentityReceipt | LocalDocumentReceipt;
 
 const EXTENSION_MEDIA = new Map<string, DocumentMediaType>(
   Object.entries(DOCUMENT_MEDIA_TYPES).map(([extension, media]) => [extension, media]),
@@ -126,6 +135,23 @@ export function buildLocalReceipt(input: {
       { id: "classify", label: "Classify document", system: "Champion model", detail: `${classification.displayLabel} at ${Math.round(classification.confidence * 100)}% confidence` },
       { id: "gold", label: "Publish Gold", system: "Governed catalog", detail: classification.reviewRequired ? "Low-confidence record routed to human review" : "Classification and lineage published for decision support" },
     ],
+  };
+}
+
+export function buildLiveFileIdentityReceipt(input: {
+  fileName: string;
+  mediaType: DocumentMediaType;
+  sizeBytes: number;
+  sha256: string;
+}): LiveDocumentIdentityReceipt {
+  return {
+    runId: `pending-${input.sha256.slice(0, 16)}`,
+    fileName: input.fileName,
+    mediaType: input.mediaType,
+    sizeBytes: input.sizeBytes,
+    sha256: input.sha256,
+    shape: intakeShape(input.mediaType),
+    mode: "live_file_identity",
   };
 }
 

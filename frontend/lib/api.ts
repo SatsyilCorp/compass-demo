@@ -1,14 +1,9 @@
 /**
  * Compass API client.
  *
- * Two modes, switched by `NEXT_PUBLIC_USE_MOCK`:
- *   - USE_MOCK=true   every function below resolves from lib/mock/* fixtures
- *                      (filtered/masked by the current persona's role +
- *                      org_unit, simulating RLS/CLS client-side). The whole
- *                      app renders with zero AWS resources deployed.
- *   - USE_MOCK=false  every function below calls the deployed HttpApi at
- *                      NEXT_PUBLIC_API_BASE_URL with the signed-in user's
- *                      bearer token attached.
+ * Evidence mode is selected explicitly by the shared EvidenceModeProvider.
+ * Live public evidence is the fail-closed default. Rehearsal adapters are
+ * reachable only after the user selects deterministic synthetic rehearsal.
  *
  * Auth context (bearer token / role / org_unit) is set by
  * lib/auth/token-sync.tsx via `setAuthContext()`, a plain module ref
@@ -78,9 +73,28 @@ import {
   type PublicModelExecutionReceipt,
 } from "@/lib/mlops/model-execution";
 import { BearerTokenGate } from "@/lib/auth/bearer-token-gate";
-
-export const USE_MOCK =
-  typeof process !== "undefined" && process.env.NEXT_PUBLIC_USE_MOCK !== "false";
+import { usesRehearsalEvidence } from "@/lib/evidence-mode";
+import {
+  isLivePublicOperationsEvidenceClass,
+  normalizeOperationsEvidenceClass,
+} from "@/lib/operations-evidence";
+import {
+  parseContinuousPublicAcquisitionControl,
+  parsePublicAcquisitionList,
+  parsePublicAcquisitionRecord,
+} from "@/lib/public-intelligence/acquisition-contract";
+import {
+  parseLiveDocumentRun,
+  parseLiveDocumentRunRecord,
+  parseLiveDocumentUploadPlan,
+  type LiveDocumentBinding,
+  type LiveDocumentRun,
+  type LiveDocumentUploadPlan,
+} from "@/lib/documents/live-contract";
+import {
+  parseLiveDriftReceipt,
+  type LiveDriftReceipt,
+} from "@/lib/mlops/drift-contract";
 
 const API_BASE_URL =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL) || "";
@@ -150,15 +164,13 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 // ---------------------------------------------------------------------------
 
 export async function getMe(): Promise<MeResponse> {
-  if (USE_MOCK) {
-    const { getMe: mockGetMe } = await import("@/lib/mock");
-    return mockGetMe(authRef.role, authRef.orgUnit);
-  }
+  // Identity is never synthetic. Evidence mode can change data adapters, but
+  // it must not change who the signed-in user is or widen their authorization.
   return fetchJson<MeResponse>("/me");
 }
 
 export async function getCatalog(): Promise<CatalogResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getCatalog: mockGetCatalog } = await import("@/lib/mock");
     return mockGetCatalog(authRef.role, authRef.orgUnit);
   }
@@ -166,7 +178,7 @@ export async function getCatalog(): Promise<CatalogResponse> {
 }
 
 export async function getCatalogLineage(id: string): Promise<LineageResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getLineage } = await import("@/lib/mock");
     const result = getLineage(id, authRef.role, authRef.orgUnit);
     if (!result) throw new ApiError(404, { error: "not_found" });
@@ -178,7 +190,7 @@ export async function getCatalogLineage(id: string): Promise<LineageResponse> {
 export async function postIngestSimulate(
   req: IngestSimulateRequest = {},
 ): Promise<IngestSimulateResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { simulateIngest } = await import("@/lib/mock");
     return simulateIngest();
   }
@@ -189,7 +201,7 @@ export async function postIngestSimulate(
 }
 
 export async function getIngestStatus(): Promise<IngestStatusResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getIngestStatus: mockGetIngestStatus } = await import("@/lib/mock");
     return mockGetIngestStatus(authRef.role, authRef.orgUnit);
   }
@@ -197,7 +209,7 @@ export async function getIngestStatus(): Promise<IngestStatusResponse> {
 }
 
 export async function getStreamRecent(): Promise<StreamRecentResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getStreamRecent: mockGetStreamRecent } = await import("@/lib/mock");
     return mockGetStreamRecent(authRef.role, authRef.orgUnit);
   }
@@ -210,7 +222,7 @@ export async function postAnalyticsRun(
   if (authRef.role !== "poweruser") {
     throw new ApiError(403, { error: "poweruser analytics role required" });
   }
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { runAnalytics } = await import("@/lib/mock");
     return runAnalytics();
   }
@@ -224,7 +236,7 @@ export async function getAnalyticsRun(runId: string): Promise<AnalyticsRunDetail
   if (authRef.role !== "poweruser") {
     throw new ApiError(403, { error: "poweruser analytics role required" });
   }
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getAnalyticsRun: mockGetAnalyticsRun } = await import("@/lib/mock");
     return mockGetAnalyticsRun(runId, authRef.role, authRef.orgUnit);
   }
@@ -234,7 +246,7 @@ export async function getAnalyticsRun(runId: string): Promise<AnalyticsRunDetail
 export async function getDashboard(
   filters: DashboardFilters = {},
 ): Promise<DashboardResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getDashboard: mockGetDashboard } = await import("@/lib/mock");
     const replayLoader = mockGetDashboard as (
       role: Role | null,
@@ -267,7 +279,7 @@ export async function getDashboard(
 }
 
 export async function postChat(req: ChatRequest): Promise<ChatResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { answerChat } = await import("@/lib/mock");
     return answerChat(req, authRef.role, authRef.orgUnit);
   }
@@ -275,7 +287,7 @@ export async function postChat(req: ChatRequest): Promise<ChatResponse> {
 }
 
 export async function getAnomalies(): Promise<AnomaliesResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getAnomalies: mockGetAnomalies } = await import("@/lib/mock");
     return mockGetAnomalies(authRef.role, authRef.orgUnit);
   }
@@ -283,7 +295,7 @@ export async function getAnomalies(): Promise<AnomaliesResponse> {
 }
 
 export async function postApprovals(req: ApprovalRequest): Promise<ApprovalResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { createOrAdvanceApproval } = await import("@/lib/mock");
     return createOrAdvanceApproval(req, authRef.role ?? "viewer");
   }
@@ -291,7 +303,7 @@ export async function postApprovals(req: ApprovalRequest): Promise<ApprovalRespo
 }
 
 export async function getApprovals(): Promise<ApprovalsListResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { listPendingApprovals } = await import("@/lib/mock");
     return listPendingApprovals(authRef.role ?? "viewer");
   }
@@ -299,7 +311,7 @@ export async function getApprovals(): Promise<ApprovalsListResponse> {
 }
 
 export async function getLicenses(): Promise<LicensesResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getLicenses: mockGetLicenses } = await import("@/lib/mock");
     return mockGetLicenses();
   }
@@ -312,7 +324,7 @@ export async function getLicenses(): Promise<LicensesResponse> {
  * row count exceeds the max and no `approval_token` is attached.
  */
 export async function postExport(req: ExportRequest): Promise<ExportResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { runExport, ExportApprovalRequiredError } = await import("@/lib/mock");
     try {
       return await runExport(req, authRef.role, authRef.orgUnit);
@@ -325,18 +337,18 @@ export async function postExport(req: ExportRequest): Promise<ExportResponse> {
 }
 
 export async function getOpenApiSpec(): Promise<OpenApiDoc> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     return {
       openapi: "3.1.0",
       info: { title: "Compass API (mock)", version: "0.1.0" },
-      note: "Static export served by the deployed HttpApi at /openapi.json; not fixture-backed in USE_MOCK mode.",
+      note: "Static export served by the deployed HttpApi at /openapi.json; no live document is claimed during rehearsal.",
     };
   }
   return fetchJson<OpenApiDoc>("/openapi.json");
 }
 
 export async function getSystemEvidence(): Promise<SystemEvidenceResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const { getReplaySystemEvidence } = await import("@/lib/system-evidence-replay");
     return getReplaySystemEvidence();
   }
@@ -409,60 +421,50 @@ export type DocumentUploadRequest = {
   pii_minimized: boolean;
 };
 
-export type DocumentUploadResponse = {
-  run_id: string;
-  document_id: string;
-  status: string;
-  stage: string;
-  source: string;
-  upload: {
-    method: "POST";
-    url: string;
-    fields: Record<string, string>;
-    expires_in_seconds: number;
-    maximum_bytes: number;
-  };
-};
-
-export type DocumentRunRecord = Record<string, unknown> & {
-  run_id: string;
-  status: string;
-  stage: string;
-  filename?: string;
-  document_class?: string;
-  confidence?: number;
-  review_required?: boolean;
-  model_version?: string;
-  lineage_receipt_sha256?: string;
-};
+export type DocumentUploadResponse = LiveDocumentUploadPlan;
+export type DocumentRunRecord = LiveDocumentRun;
 
 export type ModelRecord = Record<string, unknown> & {
   model_version: string;
   status: string;
   metrics?: { accuracy?: number; macro_f1?: number };
 };
+export type ModelDriftReceipt = LiveDriftReceipt;
 
-export function postDocumentUploadApi(request: DocumentUploadRequest): Promise<DocumentUploadResponse> {
-  return fetchJson<DocumentUploadResponse>("/documents/uploads", {
+export async function postDocumentUploadApi(request: DocumentUploadRequest): Promise<DocumentUploadResponse> {
+  const response = await fetchJson<unknown>("/documents/uploads", {
     method: "POST",
     body: JSON.stringify(request),
   });
+  const parsed = parseLiveDocumentUploadPlan(response, {
+    fileName: request.filename,
+    contentType: request.content_type,
+    sizeBytes: request.size_bytes,
+    sourceSha256: request.source_sha256,
+  });
+  if (!parsed) {
+    throw new ApiError(502, response, "document_upload_plan_contract_invalid");
+  }
+  return parsed;
 }
 
 export async function putDocumentBytesApi(
-  upload: DocumentUploadResponse["upload"],
+  plan: DocumentUploadResponse,
   bytes: ArrayBuffer,
 ): Promise<void> {
+  if (bytes.byteLength !== plan.expected_bytes || bytes.byteLength > plan.upload.maximum_bytes) {
+    throw new ApiError(400, null, "document_upload_bytes_do_not_match_plan");
+  }
   const form = new FormData();
-  Object.entries(upload.fields).forEach(([key, value]) => form.append(key, value));
+  Object.entries(plan.upload.fields).forEach(([key, value]) => form.append(key, value));
   form.append(
     "file",
-    new Blob([bytes], { type: upload.fields["Content-Type"] ?? "application/octet-stream" }),
+    new Blob([bytes], { type: plan.content_type }),
   );
   let response: Response;
   try {
-    response = await fetch(upload.url, {
-      method: upload.method,
+    response = await fetch(plan.upload.url, {
+      method: plan.upload.method,
       body: form,
     });
   } catch {
@@ -481,14 +483,33 @@ export async function putDocumentBytesApi(
   }
 }
 
-export function getDocumentRunsApi(): Promise<{ runs: DocumentRunRecord[] }> {
-  return fetchJson<{ runs: DocumentRunRecord[] }>("/documents/runs", { cache: "no-store" });
+export async function getDocumentRunsApi(): Promise<{ runs: DocumentRunRecord[] }> {
+  const response = await fetchJson<unknown>("/documents/runs", { cache: "no-store" });
+  if (!response || typeof response !== "object" || !Array.isArray((response as { runs?: unknown }).runs)) {
+    throw new ApiError(502, response, "document_run_list_contract_invalid");
+  }
+  const runs = (response as { runs: unknown[] }).runs.map(parseLiveDocumentRunRecord);
+  if (runs.some((run) => run === null)) {
+    throw new ApiError(502, response, "document_run_list_contract_invalid");
+  }
+  return { runs: runs as DocumentRunRecord[] };
 }
 
-export function getDocumentRunApi(runId: string): Promise<DocumentRunRecord> {
-  return fetchJson<DocumentRunRecord>(`/documents/runs/${encodeURIComponent(runId)}`, {
+export async function getDocumentRunApi(
+  runId: string,
+  binding: LiveDocumentBinding,
+): Promise<DocumentRunRecord> {
+  if (binding.runId !== runId) {
+    throw new ApiError(400, null, "document_run_binding_invalid");
+  }
+  const response = await fetchJson<unknown>(`/documents/runs/${encodeURIComponent(runId)}`, {
     cache: "no-store",
   });
+  const parsed = parseLiveDocumentRun(response, binding);
+  if (!parsed) {
+    throw new ApiError(502, response, "document_run_contract_invalid");
+  }
+  return parsed;
 }
 
 export function postModelTrainApi(): Promise<ModelRecord> {
@@ -508,11 +529,22 @@ export function postModelDeployApi(modelVersion: string): Promise<Record<string,
   });
 }
 
-export function postModelDriftApi(documents?: string[]): Promise<Record<string, unknown>> {
-  return fetchJson<Record<string, unknown>>("/ml/drift/evaluate", {
+export async function postModelDriftApi(
+  documents: string[],
+  modelVersion: string,
+): Promise<LiveDriftReceipt> {
+  const response = await fetchJson<unknown>("/ml/drift/evaluate", {
     method: "POST",
-    body: JSON.stringify(documents ? { documents } : {}),
+    body: JSON.stringify({ documents }),
   });
+  const parsed = parseLiveDriftReceipt(response, {
+    modelVersion,
+    documentsObserved: documents.length,
+  });
+  if (!parsed) {
+    throw new ApiError(502, response, "model_drift_receipt_contract_invalid");
+  }
+  return parsed;
 }
 
 export function getModelOpsEvidenceApi(): Promise<Record<string, unknown>> {
@@ -553,8 +585,8 @@ export async function getPublicModelExecutionsApi(): Promise<PublicModelExecutio
 }
 
 // Public intelligence is intentionally backed only by the protected live API.
-// The page owns its bundled last-known fallback so it can state the evidence
-// mode clearly instead of presenting fallback data as a live cloud response.
+// A fixed public snapshot is available only after explicit rehearsal selection
+// and is never presented as a live cloud response.
 export async function getPublicIntelligenceSnapshotApi(): Promise<PublicIntelligenceSnapshotResponse> {
   const response = await fetchJson<unknown>("/public-intelligence/snapshot", {
     cache: "no-store",
@@ -582,6 +614,7 @@ export async function postPublicIntelligenceExplainApi(
 
 export type PublicAcquisitionRecord = {
   contract: "compass.public-acquisition.v1";
+  evidence_class: "public-observed" | "public-operational" | "synthetic-rehearsal";
   run_id: string;
   source_id: string;
   source_label?: string;
@@ -722,6 +755,7 @@ export type PublicEvidenceThread = {
 export type PublicAcquisitionList = {
   contract: "compass.public-acquisition-list.v1";
   mode: "live" | "replay";
+  evidence_class: "public-operational" | "synthetic-rehearsal";
   generated_at: string;
   schedule: string;
   source_transport: string;
@@ -731,41 +765,110 @@ export type PublicAcquisitionList = {
   acquisitions: PublicAcquisitionRecord[];
 };
 
+export type ContinuousPublicAcquisitionControl = {
+  contract: "compass.public-acquisition-continuous-control.v1";
+  mode: "live" | "rehearsal";
+  evidence_class: "public-operational" | "synthetic-rehearsal";
+  status: "running" | "stopped";
+  enabled: boolean;
+  defaulted: boolean;
+  updated_at?: string | null;
+  updated_by?: string | null;
+  manual_runs_available: boolean;
+  control_scope: string;
+};
+
 export async function getPublicAcquisitionsApi(): Promise<PublicAcquisitionList> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     return {
       contract: "compass.public-acquisition-list.v1",
       mode: "replay",
+      evidence_class: "synthetic-rehearsal",
       generated_at: new Date().toISOString(),
       schedule: "rate(5 minutes)",
       source_transport: "Replay of bounded HTTPS polling, then Kinesis change events",
       acquisitions: [],
     };
   }
-  return fetchJson<PublicAcquisitionList>("/public-intelligence/acquisitions", {
+  const response = await fetchJson<unknown>("/public-intelligence/acquisitions", {
     cache: "no-store",
   });
+  const parsed = parsePublicAcquisitionList(response);
+  if (!parsed) throw new ApiError(502, response, "public_acquisition_list_contract_invalid");
+  return parsed;
+}
+
+export async function getContinuousPublicAcquisitionApi(): Promise<ContinuousPublicAcquisitionControl> {
+  if (usesRehearsalEvidence()) {
+    return {
+      contract: "compass.public-acquisition-continuous-control.v1",
+      mode: "rehearsal",
+      evidence_class: "synthetic-rehearsal",
+      status: "stopped",
+      enabled: false,
+      defaulted: true,
+      updated_at: null,
+      updated_by: null,
+      manual_runs_available: false,
+      control_scope: "Live AWS schedules are unavailable in explicit rehearsal mode",
+    };
+  }
+  const response = await fetchJson<unknown>(
+    "/public-intelligence/acquisitions/continuous",
+    { cache: "no-store" },
+  );
+  const parsed = parseContinuousPublicAcquisitionControl(response);
+  if (!parsed) throw new ApiError(502, response, "public_acquisition_control_contract_invalid");
+  return parsed;
+}
+
+export async function startContinuousPublicAcquisitionApi(): Promise<ContinuousPublicAcquisitionControl> {
+  if (usesRehearsalEvidence()) throw new ApiError(409, { error: "live_acquisition_unavailable_in_rehearsal" });
+  const response = await fetchJson<unknown>(
+    "/public-intelligence/acquisitions/continuous/start",
+    { method: "POST", body: "{}" },
+  );
+  const parsed = parseContinuousPublicAcquisitionControl(response);
+  if (!parsed) throw new ApiError(502, response, "public_acquisition_control_contract_invalid");
+  return parsed;
+}
+
+export async function stopContinuousPublicAcquisitionApi(): Promise<ContinuousPublicAcquisitionControl> {
+  if (usesRehearsalEvidence()) throw new ApiError(409, { error: "live_acquisition_unavailable_in_rehearsal" });
+  const response = await fetchJson<unknown>(
+    "/public-intelligence/acquisitions/continuous/stop",
+    { method: "POST", body: "{}" },
+  );
+  const parsed = parseContinuousPublicAcquisitionControl(response);
+  if (!parsed) throw new ApiError(502, response, "public_acquisition_control_contract_invalid");
+  return parsed;
 }
 
 export async function postPublicAcquisitionRunApi(
   profile: "quick" | "standard" | "deep" = "standard",
 ): Promise<PublicAcquisitionRecord> {
-  if (USE_MOCK) throw new ApiError(409, { error: "live_acquisition_unavailable_in_replay" });
-  return fetchJson<PublicAcquisitionRecord>("/public-intelligence/acquisitions/run", {
+  if (usesRehearsalEvidence()) throw new ApiError(409, { error: "live_acquisition_unavailable_in_rehearsal" });
+  const response = await fetchJson<unknown>("/public-intelligence/acquisitions/run", {
     method: "POST",
     body: JSON.stringify({ profile }),
   });
+  const parsed = parsePublicAcquisitionRecord(response);
+  if (!parsed) throw new ApiError(502, response, "public_acquisition_record_contract_invalid");
+  return parsed;
 }
 
 export async function postPublicSourceRunApi(
   sourceId: string,
   profile: "quick" | "standard" | "deep" = "standard",
 ): Promise<PublicAcquisitionRecord> {
-  if (USE_MOCK) throw new ApiError(409, { error: "live_acquisition_unavailable_in_replay" });
-  return fetchJson<PublicAcquisitionRecord>(
+  if (usesRehearsalEvidence()) throw new ApiError(409, { error: "live_acquisition_unavailable_in_rehearsal" });
+  const response = await fetchJson<unknown>(
     `/public-intelligence/sources/${encodeURIComponent(sourceId)}/run`,
     { method: "POST", body: JSON.stringify({ profile }) },
   );
+  const parsed = parsePublicAcquisitionRecord(response);
+  if (!parsed) throw new ApiError(502, response, "public_acquisition_record_contract_invalid");
+  return parsed;
 }
 
 // ---------------------------------------------------------------------------
@@ -783,6 +886,7 @@ const OPERATIONS_REPLAY_RUNS: OperationsRunSummary[] = [
     run_id: "doc-4af2-replay",
     run_kind: "document_intake",
     label: "ONR technical report intake",
+    evidence_class: "synthetic-demo",
     status: "completed",
     current_stage: "gold-published",
     started_at: "2026-08-12T21:41:03.000Z",
@@ -799,6 +903,7 @@ const OPERATIONS_REPLAY_RUNS: OperationsRunSummary[] = [
     run_id: "acq-usaspending-replay",
     run_kind: "public_acquisition",
     label: "USAspending incremental acquisition",
+    evidence_class: "synthetic-demo",
     status: "running",
     current_stage: "normalize",
     started_at: "2026-08-12T21:53:40.000Z",
@@ -815,6 +920,7 @@ const OPERATIONS_REPLAY_RUNS: OperationsRunSummary[] = [
     run_id: "drift-doc-replay",
     run_kind: "model_drift",
     label: "Document classifier drift evaluation",
+    evidence_class: "synthetic-demo",
     status: "completed",
     current_stage: "review-task-created",
     started_at: "2026-08-12T21:37:18.000Z",
@@ -842,6 +948,7 @@ function replayStage(
   const updatedAt = `2026-08-12T21:${String(40 + sequence).padStart(2, "0")}:04.000Z`;
   return {
     stage_id: stageId,
+    evidence_class: "synthetic-demo",
     sequence,
     label,
     system,
@@ -921,6 +1028,7 @@ function replaySignalList(): OperationsSignalsResponse {
   const base: OperationsSignalsResponse["signals"] = [
     {
       event_id: "signal-drift-replay",
+      evidence_class: "synthetic-demo",
       signal_type: "model_drift",
       severity: "critical",
       title: "Document classifier drift requires review",
@@ -941,6 +1049,7 @@ function replaySignalList(): OperationsSignalsResponse {
     },
     {
       event_id: "signal-public-replay",
+      evidence_class: "synthetic-demo",
       signal_type: "public_acquisition",
       severity: "info",
       title: "USAspending increment is processing",
@@ -958,6 +1067,7 @@ function replaySignalList(): OperationsSignalsResponse {
     },
     {
       event_id: "signal-document-replay",
+      evidence_class: "synthetic-demo",
       signal_type: "document_intake",
       severity: "info",
       title: "Document evidence published",
@@ -1024,7 +1134,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function requiredOperationsRecord(value: unknown, contract: string, arrayKey?: string): Record<string, unknown> {
-  if (!isRecord(value) || value.contract !== contract || value.mode !== "live") {
+  if (
+    !isRecord(value)
+    || value.contract !== contract
+    || value.mode !== "live"
+    || value.evidence_scope !== "public-only"
+  ) {
     throw new ApiError(502, value, `${contract}_invalid`);
   }
   if (arrayKey && !Array.isArray(value[arrayKey])) throw new ApiError(502, value, `${contract}_${arrayKey}_invalid`);
@@ -1093,8 +1208,11 @@ function normalizeSignal(raw: unknown): OperationsSignalsResponse["signals"][num
   const runId = nullableText(raw.run_id);
   const evidenceUri = nullableText(raw.evidence_uri);
   const occurredAt = textValue(raw.created_at, textValue(raw.occurred_at, textValue(raw.updated_at, new Date().toISOString())));
+  const evidenceClass = normalizeOperationsEvidenceClass(raw.evidence_class, detail.evidence_class);
+  if (!isLivePublicOperationsEvidenceClass(evidenceClass)) return null;
   return {
     event_id: eventId,
+    evidence_class: evidenceClass,
     signal_type: textValue(raw.category, "operations"),
     severity,
     title: textValue(raw.title, "Operational signal"),
@@ -1128,10 +1246,13 @@ function normalizeRunSummary(raw: unknown): OperationsRunSummary | null {
   const stageCount = Math.max(0, Math.trunc(finiteNumber(raw.stage_count) ?? 0));
   const sourceSha = nullableText(raw.source_sha256);
   const terminal = ["completed", "quarantined", "failed", "expired", "cancelled"].includes(status);
+  const evidenceClass = normalizeOperationsEvidenceClass(raw.evidence_class);
+  if (!isLivePublicOperationsEvidenceClass(evidenceClass)) return null;
   return {
     run_id: runId,
     run_kind: runKind,
     label: operationsLabel(runKind),
+    evidence_class: evidenceClass,
     status,
     current_stage: textValue(raw.terminal_stage, terminal ? "terminal receipt" : "processing"),
     started_at: textValue(raw.started_at, updatedAt),
@@ -1163,6 +1284,7 @@ function normalizeStage(raw: unknown): OperationsLineageStage | null {
   const source = nullableText(raw.source);
   return {
     stage_id: stageId,
+    evidence_class: normalizeOperationsEvidenceClass(raw.evidence_class, detail.evidence_class),
     sequence: Math.max(0, Math.trunc(finiteNumber(raw.sequence) ?? 0)),
     label: textValue(raw.label, operationsLabel(stageId)),
     system: destination ?? source ?? operationsLabel(textValue(raw.run_kind, "operations")),
@@ -1237,6 +1359,10 @@ function normalizeLiveLineage(response: unknown, expectedRunId: string): Operati
   const raw = requiredOperationsRecord(response, "compass.operational-lineage.v1", "stages");
   const runId = textValue(raw.run_id);
   if (runId !== expectedRunId) throw new ApiError(502, response, "operations_lineage_run_mismatch");
+  const responseEvidenceClass = normalizeOperationsEvidenceClass(raw.evidence_class);
+  if (!isLivePublicOperationsEvidenceClass(responseEvidenceClass)) {
+    throw new ApiError(502, response, "operations_lineage_evidence_scope_mismatch");
+  }
   const stages = (raw.stages as unknown[]).map(normalizeStage).filter((item): item is OperationsLineageStage => Boolean(item)).sort((left, right) => left.sequence - right.sequence);
   if (stages.length === 0) throw new ApiError(502, response, "operations_lineage_stages_empty");
   const status = operationsRunStatus(raw.status);
@@ -1252,6 +1378,10 @@ function normalizeLiveLineage(response: unknown, expectedRunId: string): Operati
     run_id: runId,
     run_kind: textValue(raw.run_kind, "operational-run"),
     label: operationsLabel(textValue(raw.run_kind, "operational-run")),
+    evidence_class: normalizeOperationsEvidenceClass(
+      responseEvidenceClass,
+      stages.find((stage) => stage.evidence_class !== "unclassified")?.evidence_class,
+    ),
     status,
     current_stage: stages.find((stage) => stage.status === "running")?.stage_id ?? stages.at(-1)?.stage_id ?? "receipt pending",
     started_at: stages[0]?.started_at ?? stages[0]?.completed_at ?? updatedAt,
@@ -1288,20 +1418,20 @@ function normalizeLiveLineage(response: unknown, expectedRunId: string): Operati
 }
 
 export async function getOperationsSignals(): Promise<OperationsSignalsResponse> {
-  if (USE_MOCK) return replaySignalList();
+  if (usesRehearsalEvidence()) return replaySignalList();
   const response = await fetchJson<unknown>("/operations/signals?limit=100", { cache: "no-store" });
   return normalizeLiveSignals(response);
 }
 
 export async function getOperationsSummary(): Promise<OperationsSummaryResponse> {
-  if (USE_MOCK) return replayOperationsSummary();
+  if (usesRehearsalEvidence()) return replayOperationsSummary();
   const response = await fetchJson<unknown>("/operations/summary", { cache: "no-store" });
   return normalizeLiveSummary(response);
 }
 
 export async function getOperationsLineage(runId: string): Promise<OperationsLineageResponse> {
   if (!runId.trim()) throw new ApiError(400, { error: "run_id_required" });
-  if (USE_MOCK) return replayOperationsLineage(runId);
+  if (usesRehearsalEvidence()) return replayOperationsLineage(runId);
   const response = await fetchJson<unknown>(
     `/operations/lineage/${encodeURIComponent(runId)}`,
     { cache: "no-store" },
@@ -1313,7 +1443,7 @@ export async function postOperationsSignalAcknowledge(
   eventId: string,
 ): Promise<OperationsSignalAcknowledgeResponse> {
   if (!eventId.trim()) throw new ApiError(400, { error: "event_id_required" });
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     const signal = replaySignalList().signals.find((candidate) => candidate.event_id === eventId);
     if (!signal) throw new ApiError(404, { error: "operations_signal_not_found" });
     OPERATIONS_REPLAY_ACKNOWLEDGED.add(eventId);
@@ -1493,7 +1623,7 @@ function replayLiveDemoStream(): LiveDemoStreamResponse {
 }
 
 export async function getLiveDemoStream(): Promise<LiveDemoStreamResponse> {
-  if (USE_MOCK) return replayLiveDemoStream();
+  if (usesRehearsalEvidence()) return replayLiveDemoStream();
   return normalizeLiveDemoStream(
     await fetchJson<unknown>("/demo-stream", { cache: "no-store" }),
   );
@@ -1502,7 +1632,7 @@ export async function getLiveDemoStream(): Promise<LiveDemoStreamResponse> {
 export async function postLiveDemoStreamStart(
   request: LiveDemoStreamStartRequest,
 ): Promise<LiveDemoStreamResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     demoStreamReplayState = {
       sessionId: `demo-${Date.now().toString(36)}`,
       startedAtMs: Date.now(),
@@ -1520,7 +1650,7 @@ export async function postLiveDemoStreamStart(
 export async function postLiveDemoStreamStop(
   request: LiveDemoStreamStopRequest,
 ): Promise<LiveDemoStreamResponse> {
-  if (USE_MOCK) {
+  if (usesRehearsalEvidence()) {
     if (demoStreamReplayState?.sessionId === request.session_id) {
       demoStreamReplayState.stoppedAtMs = Date.now();
     }

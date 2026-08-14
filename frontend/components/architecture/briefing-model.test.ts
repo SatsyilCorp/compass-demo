@@ -80,3 +80,22 @@ test("public-source quarantine remains distinct from accepted public evidence", 
   assert.equal(publicLane.nodes.some((item) => item.id === "source-quarantine"), true);
   assert.equal(publicLane.nodes.some((item) => item.id === "accepted-source"), true);
 });
+
+test("public acquisition is primary and rehearsal remains explicit", () => {
+  const executive = BRIEFING_VIEWS.find((candidate) => candidate.id === "executive");
+  const lineage = BRIEFING_VIEWS.find((candidate) => candidate.id === "lineage");
+  assert.ok(executive);
+  assert.ok(lineage);
+
+  assert.match(executive.truth, /public evidence as the primary product plane/i);
+  assert.match(executive.callouts.join(" "), /explicit selection/i);
+  assert.match(lineage.truth, /source's responsible cadence/i);
+
+  const rehearsalLane = lineage.lanes.find((lane) => lane.id === "lineage-continuous");
+  assert.ok(rehearsalLane);
+  assert.match(rehearsalLane.boundary, /explicit rehearsal/i);
+
+  const publicLane = lineage.lanes.find((lane) => lane.id === "lineage-public");
+  assert.ok(publicLane);
+  assert.equal(publicLane.nodes.find((node) => node.id === "scheduled-collector")?.status, "Running now");
+});

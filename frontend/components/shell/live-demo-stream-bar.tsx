@@ -150,7 +150,7 @@ export function LiveDemoStreamBar() {
 
   return (
     <section
-      aria-label="Active demo package"
+      aria-label="Active rehearsal package"
       aria-live="polite"
       className={`border-b px-4 py-2.5 sm:px-6 xl:px-8 ${
         running ? "border-info/35 bg-info-soft" : "border-border bg-white"
@@ -172,20 +172,20 @@ export function LiveDemoStreamBar() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-gov-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
-                Demo package
+                Rehearsal package
               </span>
-              <p className="text-xs font-bold text-text-strong">{scaleSelected ? "Selected scale run" : "Curated demo"}</p>
+              <p className="text-xs font-bold text-text-strong">{scaleSelected ? "Selected scale run" : "Synthetic baseline"}</p>
               {!scaleSelected ? <StatusBadge status={status} /> : null}
               <span className="rounded-full border border-success/30 bg-success-soft px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-success">Safe synthetic data</span>
             </div>
             <p className="mt-0.5 text-[11px] leading-4 text-text-muted">
               {scaleSelected
-                ? `Viewing ${selection.runId}. Return to the demo portfolio to use live updates.`
+                ? `Viewing ${selection.runId}. Return to the rehearsal baseline to use the synthetic stream.`
                 : running
-                  ? `Element 3 live ingestion | ${session?.emitted_events.toLocaleString() ?? 0} new ${session?.emitted_events === 1 ? "record" : "records"} | every ${session?.cadence_seconds ?? cadence} ${session?.cadence_seconds === 1 ? "second" : "seconds"} | live for ${elapsed}`
+                  ? `Element 3 rehearsal stream | ${session?.emitted_events.toLocaleString() ?? 0} new ${session?.emitted_events === 1 ? "record" : "records"} | every ${session?.cadence_seconds ?? cadence} ${session?.cadence_seconds === 1 ? "second" : "seconds"} | running for ${elapsed}`
                   : session && session.emitted_events > 0
-                    ? `Element 3 live ingestion last added ${session.emitted_events.toLocaleString()} records. Start again to keep the portfolio changing.`
-                    : "Element 3 live ingestion adds one sample research award at a time and updates catalog, lineage, and decisions."}
+                    ? `Element 3 rehearsal last added ${session.emitted_events.toLocaleString()} synthetic records. Start again to continue the exercise.`
+                    : "Element 3 rehearsal adds one synthetic research award at a time and updates only the rehearsal catalog, lineage, and decisions."}
             </p>
           </div>
         </div>
@@ -202,7 +202,7 @@ export function LiveDemoStreamBar() {
               onClick={selectCurated}
               className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-white px-3 text-[10px] font-bold text-text-strong hover:bg-surface-2"
             >
-              <RotateCcw className="size-3.5" aria-hidden /> Use demo portfolio
+              <RotateCcw className="size-3.5" aria-hidden /> Use rehearsal baseline
             </button>
           ) : null}
           {auth.role === "poweruser" && !running && !scaleSelected ? (
@@ -225,7 +225,7 @@ export function LiveDemoStreamBar() {
                 className="inline-flex min-h-10 items-center gap-2 rounded-md bg-gov-primary px-3 text-[10px] font-bold text-white transition-colors hover:bg-gov-primary-dark disabled:opacity-50"
               >
                 {pending === "start" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Play className="size-3.5" aria-hidden />}
-                Start live updates
+                Start rehearsal stream
               </button>
             </>
           ) : null}
@@ -237,11 +237,11 @@ export function LiveDemoStreamBar() {
               className="inline-flex min-h-10 items-center gap-2 rounded-md border border-danger/30 bg-white px-3 text-[10px] font-bold text-danger transition-colors hover:bg-danger-soft disabled:opacity-50"
             >
               {pending === "stop" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Square className="size-3.5" aria-hidden />}
-              Stop live updates
+              Stop rehearsal stream
             </button>
           ) : null}
-          <Link href="/ingest/" className="inline-flex min-h-10 items-center rounded-md px-2 text-[10px] font-bold text-gov-primary hover:bg-gov-primary-lighter">
-            Open Element 3
+          <Link href="/rehearsal/ingest/" className="inline-flex min-h-10 items-center rounded-md px-2 text-[10px] font-bold text-gov-primary hover:bg-gov-primary-lighter">
+            Open rehearsal intake
           </Link>
         </div>
       </div>

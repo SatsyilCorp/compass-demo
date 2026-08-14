@@ -141,6 +141,25 @@ def configure(monkeypatch, value):
     return table, s3, stream
 
 
+def api_event(method, path, *, role="poweruser", body=None):
+    authorizer = {}
+    if role:
+        authorizer = {
+            "lambda": {
+                "username": f"{role}-operator",
+                "role": role,
+                "org_unit": "ONR-Corporate" if role == "poweruser" else "Code-30",
+            }
+        }
+    return {
+        "requestContext": {
+            "http": {"method": method, "path": path},
+            "authorizer": authorizer,
+        },
+        "body": json.dumps(body) if body is not None else None,
+    }
+
+
 def test_acquisition_persists_hashes_deltas_and_stream_event(monkeypatch):
     table, s3, stream = configure(monkeypatch, source_response())
     receipt = app.run_acquisition(actor="presenter")
@@ -192,6 +211,113 @@ def test_acquisition_profiles_are_bounded_and_validated():
         assert "quick, standard, or deep" in str(exc)
     else:
         raise AssertionError("expected invalid profile to fail")
+
+
+def test_continuous_control_defaults_to_running_and_persists_operator_changes(
+    monkeypatch,
+):
+    table, _s3, _stream = configure(monkeypatch, source_response())
+
+    initial = app.continuous_acquisition_status()
+    assert initial == {
+        "contract": "compass.public-acquisition-continuous-control.v1",
+        "mode": "live",
+        "evidence_class": "public-operational",
+        "status": "running",
+        "enabled": True,
+        "defaulted": True,
+        "updated_at": None,
+        "updated_by": None,
+        "manual_runs_available": True,
+        "control_scope": "scheduled public-source acquisitions",
+    }
+
+    stopped = app.set_continuous_acquisition(enabled=False, actor="poweruser-operator")
+    assert stopped["status"] == "stopped"
+    assert stopped["enabled"] is False
+    assert stopped["defaulted"] is False
+    assert stopped["updated_by"] == "poweruser-operator"
+    assert table.items[(app.CONTINUOUS_CONTROL_PK, app.CONTINUOUS_CONTROL_SK)][
+        "record_type"
+    ] == "public-acquisition-control"
+
+
+def test_stopped_control_skips_scheduled_runs_but_not_manual_runs(monkeypatch):
+    configure(monkeypatch, source_response())
+    app.set_continuous_acquisition(enabled=False, actor="operator")
+    called = []
+    monkeypatch.setattr(
+        app,
+        "run_acquisition",
+        lambda **kwargs: called.append(kwargs) or {"status": "completed", "manual": True},
+    )
+
+    scheduled = app.handler({"action": "poll", "profile": "deep"})
+    assert scheduled["result"] == "skipped"
+    assert scheduled["status"] == "stopped"
+    assert scheduled["source_id"] == app.SOURCE_ID
+    assert called == []
+
+    manual = app.handler(
+        api_event(
+            "POST",
+            "/public-intelligence/acquisitions/run",
+            body={"profile": "quick"},
+        )
+    )
+    assert manual["statusCode"] == 201
+    assert called == [{"actor": "poweruser-operator", "profile": "quick"}]
+
+
+def test_continuous_http_routes_are_poweruser_protected(monkeypatch):
+    configure(monkeypatch, source_response())
+
+    status = app.handler(
+        api_event("GET", "/public-intelligence/acquisitions/continuous")
+    )
+    assert status["statusCode"] == 200
+    assert json.loads(status["body"])["status"] == "running"
+    viewer_status = app.handler(
+        api_event(
+            "GET",
+            "/public-intelligence/acquisitions/continuous",
+            role="viewer",
+        )
+    )
+    viewer_acquisitions = app.handler(
+        api_event("GET", "/public-intelligence/acquisitions", role="viewer")
+    )
+    assert viewer_status["statusCode"] == 200
+    assert viewer_acquisitions["statusCode"] == 200
+
+    stopped = app.handler(
+        api_event("POST", "/public-intelligence/acquisitions/continuous/stop")
+    )
+    assert stopped["statusCode"] == 200
+    assert json.loads(stopped["body"])["status"] == "stopped"
+
+    started = app.handler(
+        api_event("POST", "/public-intelligence/acquisitions/continuous/start")
+    )
+    assert started["statusCode"] == 200
+    assert json.loads(started["body"])["status"] == "running"
+
+    viewer = app.handler(
+        api_event(
+            "POST",
+            "/public-intelligence/acquisitions/continuous/stop",
+            role="viewer",
+        )
+    )
+    anonymous = app.handler(
+        api_event(
+            "POST",
+            "/public-intelligence/acquisitions/continuous/stop",
+            role=None,
+        )
+    )
+    assert viewer["statusCode"] == 403
+    assert anonymous["statusCode"] == 401
 
 
 def test_second_identical_snapshot_reports_unchanged(monkeypatch):

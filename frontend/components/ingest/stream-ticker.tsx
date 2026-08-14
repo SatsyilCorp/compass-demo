@@ -11,8 +11,9 @@ import {
   RadioTower,
   type LucideIcon,
 } from "lucide-react";
-import { getStreamRecent, USE_MOCK } from "@/lib/api";
+import { getStreamRecent } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
 import type { StreamRecord } from "@/lib/types";
 
@@ -50,6 +51,7 @@ function timeAgo(iso: string, now: number): string {
 /** Small streaming ticker: polls GET /stream/recent on an interval. Element 3. */
 export function StreamTicker() {
   const { role, orgUnit } = useAppAuth();
+  const { mode } = useEvidenceMode();
   const [records, setRecords] = useState<StreamRecord[]>([]);
   const [now, setNow] = useState<number>(() => Date.now());
   const [pulsing, setPulsing] = useState(false);
@@ -87,10 +89,10 @@ export function StreamTicker() {
   // Live responses tick between polls. Replay responses reset this value to
   // their deterministic scenario clock on every poll.
   useEffect(() => {
-    if (USE_MOCK) return;
+    if (mode === "rehearsal") return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [mode]);
 
   return (
     <section aria-label="Recent streaming activity" className="rounded-lg border border-border bg-surface shadow-card">

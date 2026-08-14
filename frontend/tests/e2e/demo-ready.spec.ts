@@ -47,7 +47,7 @@ test("Scale Lab previews, launches, proves, and exports a bounded workload", asy
   await page.getByRole("button", { name: /Quality and quarantine/ }).click();
   await expect(page.getByText("Every rejected record is counted and quarantined with rule-level reasons.", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "Unified decision workspace", exact: true }).click();
+  await page.getByRole("link", { name: "Unified decision workspace", exact: false }).click();
   await expect(page).toHaveURL(/\/dashboard\/$/);
   await expect(page.getByText("Scale run decision context", { exact: true })).toBeVisible();
   await expect(page.getByText("10,000 synthetic records", { exact: true })).toBeVisible();
@@ -55,27 +55,60 @@ test("Scale Lab previews, launches, proves, and exports a bounded workload", asy
   await expect(page.getByText("400 grants across 8 program areas", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Use curated baseline" }).first().click();
-  await expect(page.getByText("Curated demo", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Decision workspace" })).toBeVisible();
   await expect(page.getByText("Scale run decision context", { exact: true })).toHaveCount(0);
 });
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("compass.evidence-mode.v1", "rehearsal");
+  });
+});
+
+test("live public evidence is the fail-closed default and rehearsal requires selection", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium", "primary evidence boundary runs once on desktop");
+
+  await page.goto("/admin/acquisition/");
+  await page.getByRole("button", { name: "Live public evidence" }).click();
+  await expect(page).toHaveURL(/\/admin\/acquisition\/$/);
+  await expect(page.getByText("Live public evidence", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Named public source operations" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Rehearsal/ }).first().click();
+  await expect(page).toHaveURL(/\/rehearsal\/$/);
+  await expect(page.getByRole("heading", { name: /Rehearse the product/ })).toBeVisible();
+});
+
+test("a direct rehearsal URL activates the boundary and the Live button exits it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium", "direct evidence boundary runs once on desktop");
+
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.setItem("compass.evidence-mode.v1", "live"));
+  await page.goto("/rehearsal/dashboard/");
+
+  await expect(page).toHaveURL(/\/rehearsal\/dashboard\/$/);
+  await expect(page.getByRole("button", { name: /Rehearsal/ }).first()).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("compass.evidence-mode.v1"))).toBe("rehearsal");
+
+  await page.getByRole("button", { name: /Live public evidence/ }).first().click();
+  await expect(page).toHaveURL(/\/admin\/acquisition\/$/);
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("compass.evidence-mode.v1"))).toBe("live");
 });
 
 test("continuous synthetic ingestion advances until the operator stops it", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-chromium", "continuous stream workflow runs once on desktop");
 
-  await page.goto("/dashboard/");
-  await expect(page.getByText("Curated demo", { exact: true })).toBeVisible();
+  await page.goto("/rehearsal/ingest/");
+  await expect(page.getByText("Rehearsal package", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Synthetic baseline", { exact: true })).toBeVisible();
   await page.getByLabel("Synthetic stream cadence").selectOption("1");
-  await page.getByRole("button", { name: "Start live updates" }).click();
+  await page.getByRole("button", { name: "Start rehearsal stream" }).click();
 
   await expect(page.getByText("Updating now", { exact: true })).toBeVisible();
   await expect(page.getByText(/1 new record/)).toBeVisible({ timeout: 4_000 });
 
-  await page.getByRole("button", { name: "Stop live updates" }).click();
+  await page.getByRole("button", { name: "Stop rehearsal stream" }).click();
   await expect(page.getByText("Updates stopped", { exact: true })).toBeVisible();
 });
 
@@ -88,7 +121,7 @@ test("the demo sequence stays explicit and alerts use the full viewport", async 
     await expect(navigation.getByRole("link", { name: label, exact: false })).toBeVisible();
   }
   await expect(navigation.getByRole("link", { name: "Architecture", exact: true })).toBeHidden();
-  await expect(page.getByText("Demo package", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Rehearsal/ }).first()).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Demo evidence and supporting analysis", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Demo requirements", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Items needing review" })).toBeVisible();
@@ -138,7 +171,7 @@ test("architecture explorer maps services and explains production scale flow", a
   test.skip(testInfo.project.name !== "desktop-chromium", "interactive architecture flow runs once on desktop");
 
   await page.goto("/admin/architecture/");
-  await expect(page.getByRole("heading", { name: "AWS architecture and VPC map" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compass evidence architecture and VPC map" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Six views. One accountable system." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "10.42.0.0/16 across two availability zones" })).toBeVisible();
   await expect(page.getByText("Public subnet A", { exact: true })).toBeVisible();
@@ -150,8 +183,8 @@ test("architecture explorer maps services and explains production scale flow", a
   await page.getByRole("tab", { name: "Data lineage" }).click();
   await expect(page.getByRole("heading", { name: "Every accepted record keeps its origin and every rejected record keeps its reason" })).toBeVisible();
 
-  await page.getByText("Open the full deployed topology, scale playback, and component inventory", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Deployed AWS-native proving prototype" })).toBeVisible();
+  await page.getByText("Open the source-controlled topology, scale playback, and component inventory", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Compass proving prototype deployment model" })).toBeVisible();
   await expect(page.getByText("This is not a FedRAMP High, IL5, ATO, or Government production authorization.", { exact: false })).toBeVisible();
   await expect(page.getByText(/boxes mapped/)).toBeVisible();
 
@@ -160,17 +193,17 @@ test("architecture explorer maps services and explains production scale flow", a
   await expect(page.getByRole("group", { name: "Records: 1,000,000" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Peak throughput: 16,667 rec/s" })).toBeVisible();
 
-  await page.getByLabel("Scale Plan and Run Gate, AWS Lambda Scale Control").click();
+  await page.getByRole("button", { name: "Inspect Scale Plan and Run Gate, AWS Lambda Scale Control" }).click();
   await expect(page.getByText("The Scale Run Module exposes the narrow plan, launch, status, cancel, and export interface.", { exact: true })).toBeVisible();
   await expect(page.getByText("How it scales", { exact: true })).toBeVisible();
-  await expect(page.getByText("Security boundary", { exact: true })).toBeVisible();
+  await expect(page.getByText("Security boundary", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Show scale stage 5: Generate and gate" }).click();
   await expect(page.getByText("Generate and gate", { exact: true })).toBeVisible();
 
   await page.getByPlaceholder("Find a service, role, or control").fill("Macie");
   await expect(page.getByText("1 of", { exact: false })).toBeVisible();
-  await expect(page.getByText("Sensitive-data discovery", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sensitive-data discovery Amazon Macie", exact: true })).toBeVisible();
 });
 
 test("demo command center walks the scored sequence and strategic prompts", async ({ page }, testInfo) => {
@@ -194,11 +227,11 @@ test("demo command center walks the scored sequence and strategic prompts", asyn
 
 test("model operations refuses to present replay or registry evidence as an execution", async ({ page }) => {
   await page.goto("/admin/mlops/");
-  await expect(page.getByRole("heading", { name: "Execute the registered candidate" })).toBeVisible();
-  await expect(page.getByText("Replay mode cannot claim cloud execution", { exact: true })).toBeVisible();
-  await expect(page.getByText("No execution receipt in this session", { exact: true })).toBeVisible();
-  await expect(page.getByText("Registry evidence is not execution evidence", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Execute candidate now" })).toBeDisabled();
+  await expect(page.getByRole("heading", { name: "Rehearse the governed model lifecycle" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Classical document MLOps control room" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Commit-bound training sequence" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Run bounded training" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Execute candidate now" })).toHaveCount(0);
 });
 
 test("a completed ingest appears in the shared System Inspector evidence", async ({ page }, testInfo) => {
@@ -272,7 +305,7 @@ test("viewer cannot open the shared analytics workspace", async ({ page }, testI
   await page.getByLabel("Active demo persona").selectOption("viewer");
   await page.goto("/analytics/");
   await expect(page).toHaveURL(/\/dashboard\/$/);
-  await expect(page.getByRole("heading", { name: "What is happening now" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Decision workspace" })).toBeVisible();
 });
 
 test("keyboard users can bypass navigation and reach page content", async ({ page }) => {

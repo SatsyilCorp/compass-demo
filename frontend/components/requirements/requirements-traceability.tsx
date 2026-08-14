@@ -40,6 +40,7 @@ import {
   STATUS_META,
   TRACE_STATUSES,
   countByStatus,
+  resolveOperationalRequirementStates,
   type RequirementTrace,
   type TraceStatus,
 } from "./model";
@@ -119,7 +120,7 @@ export function RequirementsTraceability() {
   }, [auth.isLoading, loadOperations]);
 
   const effectiveRequirements = useMemo(
-    () => REQUIREMENTS.map((item) => resolveLiveState(item, operations.data)),
+    () => resolveOperationalRequirementStates(REQUIREMENTS, operations.data),
     [operations.data],
   );
   const totals = useMemo(() => countByStatus(effectiveRequirements), [effectiveRequirements]);
@@ -266,7 +267,7 @@ function ExecutiveProofHeader({ totals }: { totals: Record<TraceStatus, number> 
           </div>
           <h2 id="proof-summary-title" className="mt-2 text-xl font-bold">What the demo proves, without accreditation overclaim</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/72">
-            Compass is a production-scale proving prototype for synthetic and public data. A live label means a protected screen or API returned deployment evidence. It does not mean production authorization.
+            Compass is a production-scale proving prototype with live public evidence as the primary plane. Synthetic fixtures appear only after an explicit rehearsal selection. A live label means a protected screen or API returned deployment evidence. It does not mean production authorization.
           </p>
         </div>
         <div className="rounded-lg border border-white/15 bg-white/[0.07] p-4">
@@ -475,34 +476,6 @@ function TruthMetric({ value, label }: { value: string; label: string }) {
       <p className="mt-1 text-[8.5px] font-bold uppercase tracking-[0.12em] text-white/55">{label}</p>
     </div>
   );
-}
-
-function resolveLiveState(item: RequirementTrace, operations: OperationsSummaryResponse | null): RequirementTrace {
-  if (!operations || operations.mode !== "live") return item;
-
-  if (item.id === "continuous-public-acquisition") {
-    const watermark = operations.source_watermarks.find((source) => source.source_id.toLowerCase().includes("usaspending"));
-    if (watermark?.last_accepted_at && watermark.run_id) {
-      return {
-        ...item,
-        status: "verified-live",
-        caveat: `The live API reports an accepted public-data watermark for run ${watermark.run_id}. This proves a bounded public acquisition, not access to protected ONR systems.`,
-      };
-    }
-  }
-
-  if (item.id === "drift-monitoring") {
-    const acceptedRun = operations.runs.find((run) => run.run_kind.toLowerCase().includes("drift") && run.status === "completed");
-    if (acceptedRun) {
-      return {
-        ...item,
-        status: "verified-live",
-        caveat: `The live API reports completed drift run ${acceptedRun.run_id}. A representative Government baseline and approved operating thresholds are still required for production monitoring.`,
-      };
-    }
-  }
-
-  return item;
 }
 
 function formatTimestamp(value: string): string {

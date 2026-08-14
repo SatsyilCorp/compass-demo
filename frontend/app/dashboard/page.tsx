@@ -1,26 +1,29 @@
 import type { Metadata } from "next";
 
-import { AppShell } from "@/components/shell/app-shell";
+import { LivePublicDecisionWorkspace } from "@/components/public-intelligence/live-decision-workspace";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { AppShell } from "@/components/shell/app-shell";
+import { EvidenceModeDashboard } from "./view";
 
 /**
  * /dashboard - element 6.
  *
  * A server component only so the route can carry static metadata; every byte of
- * data on the page is fetched client-side from the HttpApi (or the mock
- * fixtures) with the signed-in persona's token, because the export is static
+ * data on the page is fetched client-side from the protected HttpApi in live
+ * mode. Explicit rehearsal routes use their isolated fixtures. The signed-in
+ * persona's token is required because the export is static
  * (`output: "export"`) and there is no server-side session to fetch with.
  */
 export const metadata: Metadata = {
-  title: "Executive Dashboard",
+  title: "Live Public Decision Workspace",
   description:
-    "Portfolio KPIs, funding concentration, execution trend, topic mix, natural-language Q&A with citations, and the anomaly → summary → approval workflow.",
+    "Accepted public-source changes, model receipts, analyst review flags, provenance, and cited decision support.",
 };
 
 export default function DashboardPage() {
   return (
     <AppShell>
-      <DashboardView />
+      <EvidenceModeDashboard live={<LivePublicDecisionWorkspace />} rehearsal={<DashboardView />} />
     </AppShell>
   );
 }

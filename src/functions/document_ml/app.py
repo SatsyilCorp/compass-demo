@@ -145,7 +145,14 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
     run_id = f"doc-{upload_id}"
     key = f"{UPLOAD_PREFIX}{run_id}/{filename}"
     now = engine.utc_now()
+    evidence_class = (
+        "public-operational"
+        if data_classification == "public"
+        else "synthetic-rehearsal"
+    )
     record = {
+        "contract": "compass.document-intake-run.v1",
+        "evidence_class": evidence_class,
         "run_id": run_id,
         "document_id": upload_id,
         "status": "awaiting-upload",
@@ -177,7 +184,7 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
         source_sha256=source_sha256,
         actor=_actor(claims),
         detail={
-            "evidence_class": data_classification,
+            "evidence_class": evidence_class,
             "record_count": 1,
             "schema": PurePosixPath(filename).suffix.lower(),
         },
@@ -190,6 +197,7 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
     )
     return {
         **record,
+        "contract": "compass.document-upload-plan.v1",
         "upload": {
             "method": "POST",
             "url": upload_plan["url"],
@@ -1066,30 +1074,17 @@ def deploy_model(claims: http.Claims, model_version: str) -> Dict[str, Any]:
 
 def _documents_for_drift(body: Mapping[str, Any]) -> List[str]:
     requested = body.get("documents")
-    if requested is not None:
-        if not isinstance(requested, list) or not MIN_DRIFT_DOCUMENTS <= len(requested) <= 200:
-            raise ValueError(
-                f"documents must contain between {MIN_DRIFT_DOCUMENTS} and 200 text values"
-            )
-        documents = [str(value).strip() for value in requested]
-        if any(len(value) < 20 for value in documents):
-            raise ValueError("every drift document must contain at least 20 characters")
-        return documents
-    documents = []
-    for run in _repo().list_records("run", limit=25):
-        silver_key = run.get("silver_key")
-        if silver_key:
-            value = str(_repo().get_json(str(silver_key)).get("normalized_text") or "").strip()
-            if len(value) >= 20:
-                documents.append(value)
-    _train, evaluation = engine.split_samples(engine.default_training_samples())
-    for sample in evaluation:
-        if len(documents) >= MIN_DRIFT_DOCUMENTS:
-            break
-        if sample.text not in documents:
-            documents.append(sample.text)
-    if len(documents) < MIN_DRIFT_DOCUMENTS:
-        raise RuntimeError("at least five valid monitoring documents are required")
+    if requested is None:
+        raise ValueError(
+            "live drift evaluation requires an explicit public monitoring window"
+        )
+    if not isinstance(requested, list) or not MIN_DRIFT_DOCUMENTS <= len(requested) <= 200:
+        raise ValueError(
+            f"documents must contain between {MIN_DRIFT_DOCUMENTS} and 200 text values"
+        )
+    documents = [str(value).strip() for value in requested]
+    if any(len(value) < 20 for value in documents):
+        raise ValueError("every drift document must contain at least 20 characters")
     return documents
 
 
@@ -1109,6 +1104,7 @@ def evaluate_drift(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
     receipt.update(
         {
             "drift_id": drift_id,
+            "evidence_class": "public-operational",
             "evaluated_by": _actor(claims),
             "created_at": now,
             "updated_at": now,
@@ -1139,6 +1135,7 @@ def evaluate_drift(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
         output_sha256=receipt["evaluation_window_sha256"],
         actor=_actor(claims),
         detail={
+            "evidence_class": "public-operational",
             "model_version": model["model_version"],
             "record_count": len(documents),
             "threshold": threshold,
@@ -1156,6 +1153,7 @@ def evaluate_drift(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
         output_sha256=operational_evidence.canonical_digest(receipt),
         actor=_actor(claims),
         detail={
+            "evidence_class": "public-operational",
             "model_version": model["model_version"],
             "record_count": len(documents),
             "threshold": threshold,
@@ -1174,6 +1172,7 @@ def evaluate_drift(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
         run_id=drift_id,
         evidence_uri=_logical_uri(receipt_key),
         detail={
+            "evidence_class": "public-operational",
             "model_version": model["model_version"],
             "record_count": len(documents),
             "threshold": threshold,
@@ -1232,13 +1231,20 @@ def _handle_api(event: Mapping[str, Any]) -> Dict[str, Any]:
             _public_record(item)
             for item in _repo().list_records("run", limit=50)
             if _run_visible(claims, item)
+            and item.get("contract") == "compass.document-intake-run.v1"
+            and str(item.get("run_id") or "").startswith("doc-")
         ]
         return http.ok({"runs": runs})
 
     run_match = re.search(r"/documents/runs/([^/]+)$", path)
     if method == "GET" and run_match:
         run = _repo().get_record("run", run_match.group(1))
-        if not run or not _run_visible(claims, run):
+        if (
+            not run
+            or run.get("contract") != "compass.document-intake-run.v1"
+            or not str(run.get("run_id") or "").startswith("doc-")
+            or not _run_visible(claims, run)
+        ):
             return http.not_found("document run not found")
         return http.ok(_public_record(run))
 

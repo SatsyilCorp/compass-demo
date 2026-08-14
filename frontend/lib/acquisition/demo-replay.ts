@@ -100,6 +100,7 @@ const DEMO_SOURCES: DemoSource[] = [
 function completedRun(source: DemoSource): PublicAcquisitionRecord {
   return {
     contract: "compass.public-acquisition.v1",
+    evidence_class: "synthetic-rehearsal",
     run_id: `demo-${source.source_id}-accepted`,
     source_id: source.source_id,
     source_label: `DEMO REPLAY | ${source.label}`,
@@ -162,6 +163,7 @@ function completedRun(source: DemoSource): PublicAcquisitionRecord {
 function failedRun(source: DemoSource): PublicAcquisitionRecord {
   return {
     contract: "compass.public-acquisition.v1",
+    evidence_class: "synthetic-rehearsal",
     run_id: `demo-${source.source_id}-failed`,
     source_id: source.source_id,
     source_label: `DEMO FAILURE | ${source.label}`,
@@ -258,6 +260,7 @@ export function buildAcquisitionDemoReplay(
   return {
     contract: "compass.public-acquisition-list.v1",
     mode: "replay",
+    evidence_class: "synthetic-rehearsal",
     generated_at: DEMO_NOW,
     schedule: "operator-controlled synthetic replay",
     source_transport: "Local deterministic fixture. No external API request.",
@@ -274,6 +277,7 @@ export function buildAcquisitionDemoSignals(
   const failure = failureSourceId
     ? [{
       event_id: `demo-failure-${failureSourceId}`,
+      evidence_class: "synthetic-demo",
       signal_type: "public_acquisition_failure_rehearsal",
       severity: "critical" as const,
       title: "DEMO FAILURE: source timeout rehearsed",
@@ -297,6 +301,7 @@ export function buildAcquisitionDemoSignals(
     ...failure,
     {
       event_id: "demo-acquisition-accepted",
+      evidence_class: "synthetic-demo",
       signal_type: "public_acquisition_replay",
       severity: "info" as const,
       title: "DEMO REPLAY: synthetic snapshot accepted",

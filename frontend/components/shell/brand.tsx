@@ -1,3 +1,8 @@
+"use client";
+
+import { evidenceModeDisclosure, evidenceModeLabel } from "@/lib/evidence-mode";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
+
 /** Compass brand primitives built as accessible inline vector artwork. */
 export function CompassMark({
   className = "h-9 w-9",
@@ -75,7 +80,8 @@ export function TrustIndicator({
   className?: string;
   tone?: "light" | "dark";
 }) {
-  const replay = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
   const colors =
     tone === "dark"
       ? "border-white/15 bg-white/[0.07] text-white"
@@ -84,19 +90,15 @@ export function TrustIndicator({
   return (
     <span
       className={`inline-flex min-h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-bold tracking-wide ${colors} ${className}`}
-      title={
-        replay
-          ? "Deterministic replay environment using synthetic demonstration data."
-          : "Connected service environment using public and synthetic demonstration data."
-      }
+      title={evidenceModeDisclosure(mode)}
     >
       <span
         aria-hidden
-        className={`size-2 rounded-full ${replay ? "bg-gold-light" : "bg-emerald-400"}`}
+        className={`size-2 rounded-full ${rehearsal ? "bg-gold-light" : "bg-emerald-400"}`}
       />
-      {replay ? "Replay mode" : "Live services"}
+      {evidenceModeLabel(mode)}
       <span aria-hidden className={tone === "dark" ? "text-white/35" : "text-text-subtle"}>•</span>
-      <span className={tone === "dark" ? "text-white/60" : "text-text-muted"}>{replay ? "Synthetic data" : "Public and synthetic data"}</span>
+      <span className={tone === "dark" ? "text-white/60" : "text-text-muted"}>{rehearsal ? "Synthetic only" : "No synthetic fallback"}</span>
     </span>
   );
 }

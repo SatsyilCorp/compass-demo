@@ -21,22 +21,15 @@ import {
 } from "lucide-react";
 
 import {
-  getPublicAcquisitionsApi,
   postPublicAcquisitionRunApi,
   postPublicSourceRunApi,
-  type PublicAcquisitionList,
   type PublicAcquisitionRecord,
   type PublicSourceHealth,
 } from "@/lib/api";
+import { LiveEvidenceStatus } from "@/components/public-intelligence/live-evidence-status";
+import { usePublicOperations } from "@/lib/public-intelligence/use-public-operations";
 
 type Profile = "quick" | "standard" | "deep";
-
-const SOURCE_IDS = [
-  "usaspending-onr-grants",
-  "grants-gov-onr",
-  "federal-register-onr",
-  "crossref-onr",
-] as const;
 
 const PROFILE_LABELS: Record<Profile, string> = {
   quick: "Quick bounded page",
@@ -51,77 +44,80 @@ type RunSummary = {
 };
 
 export function PublicSourceOperations() {
-  const [data, setData] = useState<PublicAcquisitionList | null>(null);
+  const operations = usePublicOperations(5_000);
   const [profile, setProfile] = useState<Profile>("standard");
   const [busySource, setBusySource] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
-  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [oldDemoLink, setOldDemoLink] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const response = await getPublicAcquisitionsApi();
-      setData(response);
-      setRefreshedAt(new Date());
-      setError(null);
-      return response;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Public source receipts are unavailable.");
-      return null;
-    }
-  }, []);
 
   useEffect(() => {
     setOldDemoLink(new URLSearchParams(window.location.search).get("mode") === "demo");
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 15_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+  }, []);
 
   const runSource = useCallback(async (sourceId: string) => {
     setBusySource(sourceId);
     setSummary(null);
-    setError(null);
+    setActionError(null);
     try {
       if (sourceId === "usaspending-onr-grants") await postPublicAcquisitionRunApi(profile);
       else await postPublicSourceRunApi(sourceId, profile);
-      await refresh();
+      await operations.refresh(true);
       setSummary({ successful: 1, failed: 0, completedAt: new Date().toISOString() });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The public source run failed.");
+      setActionError(cause instanceof Error ? cause.message : "The public source run failed.");
       setSummary({ successful: 0, failed: 1, completedAt: new Date().toISOString() });
     } finally {
       setBusySource(null);
     }
-  }, [profile, refresh]);
+  }, [operations, profile]);
 
   const runAll = useCallback(async () => {
+    const sourceIds = operations.data?.source_health?.map((source) => source.source_id) ?? [];
+    if (sourceIds.length === 0) {
+      setActionError("No verified public source registry is available. Refresh the controller receipt before running sources.");
+      return;
+    }
     setBusySource("all");
     setSummary(null);
-    setError(null);
+    setActionError(null);
     try {
-      const results = await Promise.allSettled([
-        postPublicAcquisitionRunApi(profile),
-        ...SOURCE_IDS.slice(1).map((sourceId) => postPublicSourceRunApi(sourceId, profile)),
-      ]);
-      await refresh();
+      const results = await Promise.allSettled(sourceIds.map((sourceId) =>
+        sourceId === "usaspending-onr-grants"
+          ? postPublicAcquisitionRunApi(profile)
+          : postPublicSourceRunApi(sourceId, profile),
+      ));
+      await operations.refresh(true);
       const failed = results.filter((result) => result.status === "rejected").length;
       setSummary({ successful: results.length - failed, failed, completedAt: new Date().toISOString() });
       if (failed > 0) {
-        setError(`${failed} source request${failed === 1 ? "" : "s"} failed. Each prior accepted snapshot remains active.`);
+        setActionError(`${failed} source request${failed === 1 ? "" : "s"} failed. Each prior accepted snapshot remains active.`);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The public source run could not complete.");
+      setActionError(cause instanceof Error ? cause.message : "The public source run could not complete.");
     } finally {
       setBusySource(null);
     }
-  }, [profile, refresh]);
+  }, [operations, profile]);
 
+  const data = operations.data;
   const latest = useMemo(() => latestAcceptedBySource(data?.acquisitions ?? []), [data]);
   const sources = data?.source_health ?? [];
   const healthy = sources.filter((source) => source.status === "healthy").length;
   const latestRun = data?.acquisitions.find((run) => run.status === "completed") ?? null;
+  const error = actionError ?? operations.error;
+  const controllerLabel = operations.error
+    ? "Live service unavailable"
+    : operations.control?.enabled
+      ? "Continuous acquisition running"
+      : operations.control?.status === "stopped"
+        ? "Continuous acquisition stopped"
+        : "Controller verifying";
+  const controllerDetail = operations.control?.enabled
+    ? "The AWS controller is enabled and invokes each authority only at its responsible cadence until an operator stops it."
+    : operations.control?.status === "stopped"
+      ? "The AWS controller is stopped. Retained accepted snapshots stay available, and an operator can restart acquisition or run one source now."
+      : "Compass is verifying the protected controller receipt. No active schedule is claimed until that receipt is available.";
 
   return (
     <div className="mt-6 space-y-5">
@@ -129,9 +125,9 @@ export function PublicSourceOperations() {
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn/35 bg-warn-soft p-4 shadow-soft">
           <div className="flex items-start gap-3">
             <Sparkles className="mt-0.5 size-5 shrink-0 text-warn" aria-hidden />
-            <div><p className="text-sm font-bold text-text-strong">The guaranteed demo path now has its own screen</p><p className="mt-1 text-xs leading-5 text-text-muted">This page is reserved for real public APIs. Use Element 3 for prepared synthetic files and visible ingestion stages.</p></div>
+            <div><p className="text-sm font-bold text-text-strong">Synthetic rehearsal now has its own boundary</p><p className="mt-1 text-xs leading-5 text-text-muted">This page is reserved for real public APIs. Enter rehearsal explicitly for prepared synthetic files and deterministic stages.</p></div>
           </div>
-          <Link href="/ingest/" className="inline-flex min-h-10 items-center gap-2 rounded-md bg-gov-primary px-3 text-xs font-bold text-white hover:bg-gov-primary-dark">Open file ingestion demo <ArrowRight className="size-3.5" aria-hidden /></Link>
+          <Link href="/rehearsal/" className="inline-flex min-h-10 items-center gap-2 rounded-md bg-gov-primary px-3 text-xs font-bold text-white hover:bg-gov-primary-dark">Open rehearsal selection <ArrowRight className="size-3.5" aria-hidden /></Link>
         </section>
       ) : null}
 
@@ -139,25 +135,25 @@ export function PublicSourceOperations() {
         <div className="grid gap-5 bg-gov-primary p-5 text-white lg:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)] lg:p-6">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/35 bg-emerald-300/10 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-emerald-100"><span className="size-2 rounded-full bg-emerald-300" /> Live public data</span>
-              <span className="rounded-full border border-white/20 bg-white/8 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white/75">Four named authorities</span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/35 bg-emerald-300/10 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-emerald-100"><span className="size-2 rounded-full bg-emerald-300" /> {controllerLabel}</span>
+              <span className="rounded-full border border-white/20 bg-white/8 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white/75">{sources.length ? `${sources.length} configured authorities` : "Registry verifying"}</span>
             </div>
-            <h2 className="mt-3 text-2xl font-bold tracking-tight">Pull a bounded public snapshot, then inspect its proof</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/72">This screen does one job. It requests a bounded page from each named authority, retains the response and hashes, applies governance and classification, then publishes an accepted snapshot for intelligence.</p>
-            <p className="mt-3 rounded-lg border border-white/12 bg-white/[0.06] p-3 text-xs leading-5 text-white/78"><strong className="text-white">Important:</strong> the public APIs are not called every second. A call happens only when you press a pull button or a responsible schedule fires.</p>
+            <h2 className="mt-3 text-2xl font-bold tracking-tight">Public acquisition control with exact source proof</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/72">{controllerDetail} Each accepted response retains hashes, governance outcome, model receipt, and snapshot identity for intelligence.</p>
+            <p className="mt-3 rounded-lg border border-white/12 bg-white/[0.06] p-3 text-xs leading-5 text-white/78"><strong className="text-white">Live behavior:</strong> the browser refreshes retained receipts every five seconds. It does not manufacture source events or call public APIs every second.</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Metric label="Healthy connectors" value={`${healthy}/${sources.length || 4}`} />
+            <Metric label="Healthy connectors" value={sources.length ? `${healthy}/${sources.length}` : "Verifying"} />
             <Metric label="Accepted snapshots" value={latest.size.toLocaleString("en-US")} />
             <Metric label="Latest records" value={(latestRun?.record_count ?? 0).toLocaleString("en-US")} />
-            <Metric label="Screen receipt refresh" value="15 sec" />
+            <Metric label="Screen receipt refresh" value="5 sec" />
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface-2 p-4">
           <div className="flex flex-wrap items-center gap-2 text-[10px] text-text-muted">
             <Clock3 className="size-3.5 text-gov-primary" aria-hidden />
-            <span>Last receipt refresh: <strong className="text-text-strong">{refreshedAt ? refreshedAt.toLocaleTimeString() : "loading"}</strong></span>
+            <span>Last receipt refresh: <strong className="text-text-strong">{operations.lastRefreshedAt ? new Date(operations.lastRefreshedAt).toLocaleTimeString() : "verifying"}</strong></span>
             <span className="text-border-strong" aria-hidden>|</span>
             <span>Configured schedules remain visible on each source card.</span>
           </div>
@@ -165,11 +161,23 @@ export function PublicSourceOperations() {
             <select value={profile} onChange={(event) => setProfile(event.target.value as Profile)} disabled={busySource !== null} className="min-h-11 rounded-md border border-border bg-white px-3 text-xs font-bold text-text-strong" aria-label="Bounded pull size">
               {(Object.keys(PROFILE_LABELS) as Profile[]).map((value) => <option key={value} value={value}>{PROFILE_LABELS[value]}</option>)}
             </select>
-            <button type="button" onClick={() => void refresh()} disabled={busySource !== null} className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-text-muted hover:bg-surface-2 disabled:opacity-50"><RefreshCw className="size-4" aria-hidden /> Refresh receipts</button>
-            <button type="button" onClick={() => void runAll()} disabled={busySource !== null} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-success px-4 text-xs font-bold text-white hover:brightness-95 disabled:opacity-55">{busySource === "all" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Cloud className="size-4" aria-hidden />}{busySource === "all" ? "Pulling four sources" : "Pull all four now"}</button>
+            <button type="button" onClick={() => void operations.refresh()} disabled={busySource !== null || operations.refreshing} className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-bold text-text-muted hover:bg-surface-2 disabled:opacity-50"><RefreshCw className={`size-4 ${operations.refreshing ? "animate-spin" : ""}`} aria-hidden /> Refresh receipts</button>
+            <button type="button" onClick={() => void runAll()} disabled={busySource !== null || sources.length === 0} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-success px-4 text-xs font-bold text-white hover:brightness-95 disabled:opacity-55">{busySource === "all" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Cloud className="size-4" aria-hidden />}{busySource === "all" ? `Pulling ${sources.length} sources` : `Pull all ${sources.length || "verified"} now`}</button>
           </div>
         </div>
       </section>
+
+      <LiveEvidenceStatus
+        control={operations.control}
+        healthySources={operations.summary.healthySources}
+        sourceCount={sources.length}
+        lastRefreshedAt={operations.lastRefreshedAt}
+        refreshing={operations.refreshing}
+        controlling={operations.controlling}
+        error={operations.error}
+        onRefresh={() => void operations.refresh()}
+        onSetContinuous={(enabled) => void operations.setContinuous(enabled)}
+      />
 
       {summary ? <RunResult summary={summary} /> : null}
       {error ? <div role="alert" className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-soft p-4 text-xs leading-5 text-danger"><AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /><div><p className="font-bold">The requested pull needs attention</p><p className="mt-1">{error}</p><p className="mt-1 text-[10px]">The last accepted snapshot remains available. Open Alerts for retained operator evidence.</p></div></div> : null}
@@ -194,13 +202,15 @@ export function PublicSourceOperations() {
         <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Exact inputs</p><h2 id="source-cards-heading" className="mt-1 text-lg font-bold text-text-strong">Named public sources</h2><p className="mt-1 text-xs text-text-muted">Every card shows authority, endpoint, schedule, last accepted receipt, and model state.</p></div><span className="inline-flex items-center gap-2 rounded-full border border-info/25 bg-info-soft px-3 py-1.5 text-[9px] font-bold uppercase text-info"><BellRing className="size-3.5" aria-hidden /> Failures appear in Alerts</span></div>
         <div className="mt-3 grid gap-3 xl:grid-cols-2">
           {sources.map((source) => <SourceCard key={source.source_id} source={source} latest={latest.get(source.source_id) ?? null} busy={busySource === source.source_id || busySource === "all"} onRun={() => void runSource(source.source_id)} />)}
-          {sources.length === 0 ? <EmptyState title="Loading the public source registry" detail="Compass is loading connector health and retained receipts." /> : null}
+          {sources.length === 0 && operations.loading ? <EmptyState title="Loading the protected source registry" detail="Compass is verifying connector health and retained receipts." /> : null}
+          {sources.length === 0 && !operations.loading && operations.error ? <EmptyState title="Public source registry is unavailable" detail="No source activity or synthetic substitute is shown. Refresh after the protected service recovers." /> : null}
+          {sources.length === 0 && !operations.loading && !operations.error ? <EmptyState title="No configured public source is available" detail="The protected registry returned no source contracts. Configure and verify a source before starting acquisition." /> : null}
         </div>
       </section>
 
       <section className="rounded-xl border border-gov-primary/20 bg-gov-primary-lighter/35 p-5 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div><p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Next decision step</p><h2 className="mt-1 text-lg font-bold text-text-strong">Use accepted snapshots for cross-source intelligence</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted">The intelligence workspace exposes source links, capture times, exact identities, explainable relationship candidates, model versions, and citations. It does not mix these records into the synthetic mission dashboard.</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-gold-ink">Next decision step</p><h2 className="mt-1 text-lg font-bold text-text-strong">Use accepted snapshots across the primary product</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted">The catalog, analytics, decision, model, release, and intelligence screens all project these accepted public receipts. Source links, capture times, exact identities, relationship candidates, model versions, and citations remain attached.</p></div>
           <Link href="/intelligence/" className="inline-flex min-h-11 items-center gap-2 rounded-md bg-gov-primary px-4 text-xs font-bold text-white hover:bg-gov-primary-dark">Open accepted public intelligence <ArrowRight className="size-4" aria-hidden /></Link>
         </div>
       </section>
@@ -213,7 +223,7 @@ function SourceCard({ source, latest, busy, onRun }: { source: PublicSourceHealt
   return (
     <article className="rounded-xl border border-border bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2 py-1 text-[8px] font-bold uppercase ${healthy ? "border-success/30 bg-success-soft text-success" : source.status === "failed" ? "border-danger/30 bg-danger-soft text-danger" : "border-info/25 bg-info-soft text-info"}`}>{source.status.replaceAll("-", " ")}</span><span className="rounded-full border border-success/25 bg-success-soft px-2 py-1 text-[8px] font-bold uppercase text-success">Live public</span></div><h3 className="mt-2 text-sm font-bold text-text-strong">{source.label}</h3><p className="mt-1 text-[10px] text-text-muted">Authority: {source.authority}</p></div>
+        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2 py-1 text-[8px] font-bold uppercase ${healthy ? "border-success/30 bg-success-soft text-success" : source.status === "failed" ? "border-danger/30 bg-danger-soft text-danger" : "border-info/25 bg-info-soft text-info"}`}>{source.status.replaceAll("-", " ")}</span><span className={`rounded-full border px-2 py-1 text-[8px] font-bold uppercase ${latest ? "border-success/25 bg-success-soft text-success" : "border-info/25 bg-info-soft text-info"}`}>{latest ? "Accepted public receipt" : "Configured public source"}</span></div><h3 className="mt-2 text-sm font-bold text-text-strong">{source.label}</h3><p className="mt-1 text-[10px] text-text-muted">Authority: {source.authority}</p></div>
         <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-gov-primary-lighter text-gov-primary"><RadioTower className="size-4.5" aria-hidden /></span>
       </div>
       <a href={source.endpoint} target="_blank" rel="noreferrer" className="mt-3 flex min-h-10 items-center gap-2 rounded-md border border-border bg-surface-2 px-3 font-mono text-[8.5px] text-gov-primary hover:bg-white"><span className="min-w-0 flex-1 truncate">{source.endpoint}</span><ExternalLink className="size-3.5 shrink-0" aria-hidden /></a>

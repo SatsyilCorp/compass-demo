@@ -19,7 +19,6 @@ import {
 
 import {
   ApiError,
-  USE_MOCK,
   getApprovals,
   getDashboard,
   postApprovals,
@@ -27,6 +26,7 @@ import {
   setAuthContext,
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { PageHeader } from "@/components/shell/page-header";
 import type {
   Approval,
@@ -112,6 +112,8 @@ function stepIndex(phase: Phase): number {
 
 export function ExportView() {
   const { role, orgUnit, idToken, displayName } = useAppAuth();
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
 
   const dashboard = useCompassQuery(getDashboard);
   const approvals = useCompassQuery(getApprovals);
@@ -126,7 +128,7 @@ export function ExportView() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const nextEventId = useRef(1);
 
-  const actor = USE_MOCK
+  const actor = rehearsal
     ? replayActor(role)
     : approvals.data?.actor ?? displayName ?? role ?? "anonymous";
 
@@ -629,6 +631,7 @@ export function ExportView() {
                 busy={busy === "export"}
                 onVerify={() => void verifySingleUse()}
                 onReset={reset}
+                rehearsal={rehearsal}
               />
             ) : null}
 
@@ -665,6 +668,7 @@ function ReleasedPanel({
   busy,
   onVerify,
   onReset,
+  rehearsal,
 }: {
   result: ExportResponse;
   approval: Approval | null;
@@ -673,6 +677,7 @@ function ReleasedPanel({
   busy: boolean;
   onVerify: () => void;
   onReset: () => void;
+  rehearsal: boolean;
 }) {
   const isReplayManifest = result.download_url.startsWith("data:application/json");
   const isDownloadable = /^https?:/i.test(result.download_url) || isReplayManifest;
@@ -740,8 +745,8 @@ function ReleasedPanel({
         </a>
       ) : (
         <p className="mt-3 rounded border border-border bg-surface px-2.5 py-2 text-[11px] leading-snug text-text-muted">
-          {USE_MOCK
-            ? "No file is materialized in mock mode. The deployed API returns a pre-signed, short-lived S3 URL scoped to the caller."
+          {rehearsal
+            ? "No cloud file is materialized in rehearsal. Live AWS releases return a pre-signed, short-lived S3 URL scoped to the caller."
             : "The API returned a non-HTTP download reference."}{" "}
           <code className="font-mono text-[10.5px]">download_url: {result.download_url || "(empty)"}</code>
         </p>

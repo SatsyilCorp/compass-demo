@@ -212,12 +212,28 @@ def test_public_upload_requires_explicit_public_boundary(monkeypatch):
     )
     payload = json.loads(accepted["body"])
     assert accepted["statusCode"] == 201
+    assert payload["contract"] == "compass.document-upload-plan.v1"
+    assert payload["evidence_class"] == "public-operational"
     assert payload["synthetic_only"] is False
     assert payload["data_boundary"] == {
         "classification": "public",
         "contains_cui": False,
         "pii_minimized": True,
     }
+
+    fake.put_record(
+        "run",
+        "public-ml-not-a-document",
+        {"run_id": "public-ml-not-a-document", "status": "completed"},
+    )
+    listed = json.loads(app.handler(api_event("GET", "/documents/runs"))["body"])
+    assert [item["run_id"] for item in listed["runs"]] == [payload["run_id"]]
+
+    fetched = json.loads(
+        app.handler(api_event("GET", f"/documents/runs/{payload['run_id']}"))["body"]
+    )
+    assert fetched["contract"] == "compass.document-intake-run.v1"
+    assert fetched["source_sha256"] == SOURCE_SHA256
 
 
 def test_drop_runs_bronze_quality_silver_gold_and_exposes_lineage(monkeypatch):
@@ -396,13 +412,33 @@ def test_training_registry_deployment_and_drift_are_real_state_changes(monkeypat
     )
     drift = json.loads(drift_response["body"])
     assert drift_response["statusCode"] == 201
+    assert drift["contract"] == "compass.model-drift-receipt.v1"
+    assert drift["evidence_class"] == "public-operational"
+    assert drift["model_version"] == version
+    assert drift["documents_observed"] == 6
     assert drift["drift_detected"] is True
+    assert len(drift["baseline_sha256"]) == 64
+    assert len(drift["evaluation_window_sha256"]) == 64
+    assert drift["recommended_action"] == "retrain-and-review"
+    assert drift["created_at"].endswith("+00:00")
     assert drift["receipt_uri"].startswith("document-lake://mlops/drift/")
 
     evidence_response = app.handler(api_event("GET", "/ml/ops/evidence"))
     evidence = json.loads(evidence_response["body"])
     assert evidence["champion"]["model_version"] == version
     assert evidence["models"][0]["status"] == "deployed"
+
+
+def test_live_drift_requires_an_explicit_monitoring_window(monkeypatch):
+    fake = FakeRepository()
+    monkeypatch.setattr(app, "_REPOSITORY", fake)
+    trained = json.loads(app.handler(api_event("POST", "/ml/train"))["body"])
+    app.handler(api_event("POST", f"/ml/models/{trained['model_version']}/deploy"))
+
+    response = app.handler(api_event("POST", "/ml/drift/evaluate", {}))
+
+    assert response["statusCode"] == 400
+    assert "explicit public monitoring window" in json.loads(response["body"])["error"]
 
 
 def test_model_promotion_enforces_source_controlled_metric_gate(monkeypatch):

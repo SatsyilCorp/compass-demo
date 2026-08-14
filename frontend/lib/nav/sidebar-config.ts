@@ -1,4 +1,5 @@
 import type { Role } from "@/lib/types";
+import type { EvidenceMode } from "@/lib/evidence-mode";
 
 export type NavItem = {
   href: string;
@@ -19,6 +20,13 @@ export type NavSection = {
 
 /** Keep the scored demonstration sequence visible while secondary proof stays collapsible. */
 export const SIDEBAR_SECTIONS: NavSection[] = [
+  {
+    label: "Evidence mode",
+    items: [
+      { href: "/admin/acquisition/", label: "Live public evidence home", shortLabel: "Live", icon: "radio-tower", element: 1, roles: ["poweruser"] },
+      { href: "/rehearsal/", label: "Rehearsal landing", shortLabel: "Rehearsal", icon: "flask-conical", element: 1 },
+    ],
+  },
   {
     label: "Demonstration sequence",
     items: [
@@ -73,7 +81,18 @@ export function sidebarFor(role: Role | null): NavSection[] {
 }
 
 export function navItemForPath(pathname: string, role: Role | null): NavItem | undefined {
+  const normalized = pathname !== "/rehearsal/" && pathname.startsWith("/rehearsal/")
+    ? pathname.slice("/rehearsal".length)
+    : pathname;
   return sidebarFor(role)
     .flatMap((section) => section.items)
-    .find((item) => pathname === item.href || pathname.startsWith(`${item.href.replace(/\/$/, "")}/`));
+    .find((item) => normalized === item.href || normalized.startsWith(`${item.href.replace(/\/$/, "")}/`));
+}
+
+const REHEARSAL_MISSION_ROUTES = new Set(["/ingest/", "/catalog/", "/analytics/", "/dashboard/", "/export/", "/licenses/"]);
+
+export function navHrefForEvidenceMode(href: string, mode: EvidenceMode): string {
+  return mode === "rehearsal" && REHEARSAL_MISSION_ROUTES.has(href)
+    ? `/rehearsal${href}`
+    : href;
 }

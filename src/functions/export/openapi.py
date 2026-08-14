@@ -1054,9 +1054,13 @@ def _schemas() -> dict[str, Any]:
         },
         "PublicAcquisition": {
             "type": "object",
-            "required": ["contract", "run_id", "source_id", "status", "stage", "started_at", "updated_at"],
+            "required": ["contract", "evidence_class", "run_id", "source_id", "status", "stage", "started_at", "updated_at"],
             "properties": {
                 "contract": {"type": "string", "const": "compass.public-acquisition.v1"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": ["public-observed", "public-operational"],
+                },
                 "run_id": {"type": "string"},
                 "source_id": {
                     "type": "string",
@@ -1117,6 +1121,38 @@ def _schemas() -> dict[str, Any]:
             },
             "additionalProperties": True,
         },
+        "PublicAcquisitionContinuousControl": {
+            "type": "object",
+            "required": [
+                "contract",
+                "mode",
+                "evidence_class",
+                "status",
+                "enabled",
+                "defaulted",
+                "manual_runs_available",
+                "control_scope",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-acquisition-continuous-control.v1",
+                },
+                "mode": {"type": "string", "const": "live"},
+                "evidence_class": {"type": "string", "const": "public-operational"},
+                "status": {"type": "string", "enum": ["running", "stopped"]},
+                "enabled": {"type": "boolean"},
+                "defaulted": {"type": "boolean"},
+                "updated_at": {"type": ["string", "null"], "format": "date-time"},
+                "updated_by": {"type": ["string", "null"]},
+                "manual_runs_available": {"type": "boolean", "const": True},
+                "control_scope": {
+                    "type": "string",
+                    "const": "scheduled public-source acquisitions",
+                },
+            },
+            "additionalProperties": False,
+        },
         "PublicSourceHealth": {
             "type": "object",
             "required": [
@@ -1157,10 +1193,11 @@ def _schemas() -> dict[str, Any]:
         },
         "PublicAcquisitionList": {
             "type": "object",
-            "required": ["contract", "mode", "generated_at", "schedule", "source_transport", "acquisitions"],
+            "required": ["contract", "mode", "evidence_class", "generated_at", "schedule", "source_transport", "acquisitions"],
             "properties": {
                 "contract": {"type": "string", "const": "compass.public-acquisition-list.v1"},
                 "mode": {"type": "string", "const": "live"},
+                "evidence_class": {"type": "string", "const": "public-operational"},
                 "generated_at": {"type": "string", "format": "date-time"},
                 "schedule": {"type": "string"},
                 "source_transport": {"type": "string"},
@@ -1170,13 +1207,18 @@ def _schemas() -> dict[str, Any]:
                     "maxItems": 10,
                     "items": _ref("PublicSourceHealth"),
                 },
+                "evidence_threads": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {"type": "object", "additionalProperties": True},
+                },
                 "acquisitions": {"type": "array", "maxItems": 100, "items": _ref("PublicAcquisition")},
             },
             "additionalProperties": False,
         },
         "OperationalSignal": {
             "type": "object",
-            "required": ["contract", "event_id", "category", "severity", "title", "message", "status"],
+            "required": ["contract", "event_id", "category", "severity", "title", "message", "status", "evidence_class"],
             "properties": {
                 "contract": {"type": "string", "const": "compass.operational-signal.v1"},
                 "event_id": {"type": "string"},
@@ -1185,6 +1227,7 @@ def _schemas() -> dict[str, Any]:
                 "title": {"type": "string"},
                 "message": {"type": "string"},
                 "status": {"type": "string", "enum": ["open", "acknowledged"]},
+                "evidence_class": {"type": "string"},
                 "run_id": {"type": ["string", "null"]},
                 "evidence_uri": {"type": ["string", "null"]},
                 "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
@@ -1194,10 +1237,11 @@ def _schemas() -> dict[str, Any]:
         },
         "OperationalSignals": {
             "type": "object",
-            "required": ["contract", "mode", "generated_at", "signals", "unacknowledged"],
+            "required": ["contract", "mode", "evidence_scope", "generated_at", "signals", "unacknowledged"],
             "properties": {
                 "contract": {"type": "string", "const": "compass.operational-signals.v1"},
                 "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
                 "generated_at": {"type": "string", "format": "date-time"},
                 "signals": {"type": "array", "maxItems": 100, "items": _ref("OperationalSignal")},
                 "unacknowledged": {"type": "integer", "minimum": 0},
@@ -1207,13 +1251,15 @@ def _schemas() -> dict[str, Any]:
         },
         "OperationalLineage": {
             "type": "object",
-            "required": ["contract", "mode", "run_id", "run_kind", "status", "stages", "edges", "generated_at"],
+            "required": ["contract", "mode", "evidence_scope", "run_id", "run_kind", "status", "evidence_class", "stages", "edges", "generated_at"],
             "properties": {
                 "contract": {"type": "string", "const": "compass.operational-lineage.v1"},
                 "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
                 "run_id": {"type": "string"},
                 "run_kind": {"type": "string"},
                 "status": {"type": "string"},
+                "evidence_class": {"type": "string"},
                 "source": {"type": ["string", "null"]},
                 "source_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
                 "model": {"type": ["string", "null"]},
@@ -1226,10 +1272,11 @@ def _schemas() -> dict[str, Any]:
         },
         "OperationalLineageList": {
             "type": "object",
-            "required": ["contract", "mode", "generated_at", "runs"],
+            "required": ["contract", "mode", "evidence_scope", "generated_at", "runs"],
             "properties": {
                 "contract": {"type": "string", "const": "compass.operational-lineage-list.v1"},
                 "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
                 "generated_at": {"type": "string", "format": "date-time"},
                 "runs": {"type": "array", "maxItems": 100, "items": {"type": "object", "additionalProperties": True}},
             },
@@ -1237,10 +1284,11 @@ def _schemas() -> dict[str, Any]:
         },
         "OperationalSummary": {
             "type": "object",
-            "required": ["contract", "mode", "generated_at", "counts", "runs", "proof", "disclosure"],
+            "required": ["contract", "mode", "evidence_scope", "generated_at", "counts", "runs", "proof", "disclosure"],
             "properties": {
                 "contract": {"type": "string", "const": "compass.operational-summary.v1"},
                 "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
                 "generated_at": {"type": "string", "format": "date-time"},
                 "counts": {"type": "object", "additionalProperties": {"type": "integer"}},
                 "runs": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
@@ -2054,18 +2102,31 @@ def _schemas() -> dict[str, Any]:
         "DocumentUploadResponse": {
             "type": "object",
             "required": [
+                "contract",
+                "evidence_class",
                 "run_id",
+                "document_id",
                 "status",
                 "stage",
                 "filename",
                 "content_type",
                 "expected_bytes",
                 "source",
+                "source_sha256",
+                "synthetic_only",
+                "data_boundary",
+                "created_at",
+                "updated_at",
                 "upload",
             ],
             "properties": {
-                "run_id": {"type": "string"},
-                "document_id": {"type": "string"},
+                "contract": {"type": "string", "const": "compass.document-upload-plan.v1"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": ["public-operational", "synthetic-rehearsal"],
+                },
+                "run_id": {"type": "string", "pattern": "^doc-[a-f0-9]{32}$"},
+                "document_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
                 "status": {"type": "string", "const": "awaiting-upload"},
                 "stage": {"type": "string", "const": "browser-upload"},
                 "filename": {"type": "string"},
@@ -2076,6 +2137,7 @@ def _schemas() -> dict[str, Any]:
                 "created_at": {"type": "string", "format": "date-time"},
                 "updated_at": {"type": "string", "format": "date-time"},
                 "source": {"type": "string", "pattern": "^document-lake://"},
+                "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "synthetic_only": {"type": "boolean"},
                 "data_boundary": {
                     "type": "object",
@@ -2117,17 +2179,63 @@ def _schemas() -> dict[str, Any]:
         },
         "DocumentRun": {
             "type": "object",
-            "required": ["run_id", "status", "stage"],
+            "required": [
+                "contract",
+                "evidence_class",
+                "run_id",
+                "document_id",
+                "status",
+                "stage",
+                "filename",
+                "content_type",
+                "expected_bytes",
+                "source",
+                "source_sha256",
+                "synthetic_only",
+                "data_boundary",
+                "created_at",
+                "updated_at",
+            ],
             "properties": {
-                "run_id": {"type": "string"},
-                "document_id": {"type": "string"},
+                "contract": {"type": "string", "const": "compass.document-intake-run.v1"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": ["public-operational", "synthetic-rehearsal"],
+                },
+                "run_id": {"type": "string", "pattern": "^doc-[a-f0-9]{32}$"},
+                "document_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
                 "status": {
                     "type": "string",
-                    "enum": ["awaiting-upload", "running", "completed", "quarantined"],
+                    "enum": ["awaiting-upload", "running", "completed", "quarantined", "failed"],
                 },
-                "stage": {"type": "string"},
+                "stage": {
+                    "type": "string",
+                    "enum": [
+                        "browser-upload",
+                        "bronze-inspected",
+                        "quality-gate",
+                        "gold-published",
+                        "inspect",
+                        "quarantine",
+                        "workflow-failed",
+                    ],
+                },
                 "filename": {"type": "string"},
                 "content_type": {"type": "string"},
+                "expected_bytes": {"type": "integer", "minimum": 1, "maximum": 15728640},
+                "source": {"type": "string", "pattern": "^document-lake://"},
+                "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "synthetic_only": {"type": "boolean"},
+                "data_boundary": {
+                    "type": "object",
+                    "required": ["classification", "contains_cui", "pii_minimized"],
+                    "properties": {
+                        "classification": {"type": "string", "enum": ["synthetic-demo", "public"]},
+                        "contains_cui": {"type": "boolean", "const": False},
+                        "pii_minimized": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
                 "bytes": {"type": "integer"},
                 "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "document_class": _ref("DocumentTaxonomy"),
@@ -2236,6 +2344,7 @@ def _schemas() -> dict[str, Any]:
         },
         "DocumentDriftRequest": {
             "type": "object",
+            "required": ["documents"],
             "properties": {
                 "documents": {
                     "type": "array",
@@ -2243,33 +2352,66 @@ def _schemas() -> dict[str, Any]:
                     "maxItems": 200,
                     "items": {"type": "string", "minLength": 20},
                 },
-                "threshold": {"type": "number", "minimum": 0, "maximum": 1},
+                "threshold": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
             },
             "additionalProperties": False,
         },
         "DocumentDriftReceipt": {
             "type": "object",
             "required": [
+                "contract",
+                "evidence_class",
                 "drift_id",
                 "model_version",
+                "documents_observed",
+                "tokens_observed",
+                "reference_label_distribution",
+                "observed_label_distribution",
+                "population_stability_index",
+                "out_of_vocabulary_rate",
                 "drift_detected",
                 "drift_score",
+                "threshold",
+                "recommended_action",
+                "evaluation_window_sha256",
+                "baseline_sha256",
                 "receipt_uri",
+                "evaluated_by",
+                "created_at",
+                "updated_at",
             ],
             "properties": {
-                "drift_id": {"type": "string"},
+                "contract": {"type": "string", "const": "compass.model-drift-receipt.v1"},
+                "evidence_class": {"type": "string", "const": "public-operational"},
+                "drift_id": {"type": "string", "pattern": "^drift-[a-f0-9]{12}$"},
                 "model_version": {"type": "string"},
-                "threshold": {"type": "number"},
-                "population_stability_index": {"type": "number"},
-                "out_of_vocabulary_rate": {"type": "number"},
-                "drift_score": {"type": "number"},
+                "documents_observed": {"type": "integer", "minimum": 5, "maximum": 200},
+                "tokens_observed": {"type": "integer", "minimum": 0},
+                "reference_label_distribution": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "observed_label_distribution": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "threshold": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                "population_stability_index": {"type": "number", "minimum": 0},
+                "out_of_vocabulary_rate": {"type": "number", "minimum": 0, "maximum": 1},
+                "drift_score": {"type": "number", "minimum": 0, "maximum": 1},
                 "drift_detected": {"type": "boolean"},
-                "recommended_action": {"type": "string"},
+                "recommended_action": {
+                    "type": "string",
+                    "enum": ["continue-monitoring", "retrain-and-review"],
+                },
+                "evaluation_window_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "baseline_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "receipt_uri": {"type": "string", "pattern": "^document-lake://"},
+                "evaluated_by": {"type": "string"},
                 "created_at": {"type": "string", "format": "date-time"},
                 "updated_at": {"type": "string", "format": "date-time"},
             },
-            "additionalProperties": True,
+            "additionalProperties": False,
         },
         "DocumentMlOpsEvidence": {
             "type": "object",
@@ -2667,6 +2809,45 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                     "Returns source-specific health, bounded public-source micro-batch "
                     "receipts, immutable snapshot digests, model evidence, exact identity "
                     "keys, and hash-derived changes."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/continuous": {
+            "get": _op(
+                "getContinuousPublicAcquisition",
+                "Read the continuous public-source acquisition control",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionContinuousControl"),
+                description=(
+                    "Authenticated mission-user view of the durable controller that gates all "
+                    "scheduled public-source polls. An absent control defaults to running. "
+                    "Manual bounded runs remain available in either state."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/continuous/start": {
+            "post": _op(
+                "startContinuousPublicAcquisition",
+                "Start scheduled public-source acquisition",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionContinuousControl"),
+                success_description="Running control",
+                description=(
+                    "Corporate poweruser control that durably enables subsequent scheduled "
+                    "USAspending and named public-source polls."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/continuous/stop": {
+            "post": _op(
+                "stopContinuousPublicAcquisition",
+                "Stop scheduled public-source acquisition",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionContinuousControl"),
+                success_description="Stopped control",
+                description=(
+                    "Corporate poweruser control that durably suppresses subsequent scheduled "
+                    "polls without disabling manual bounded runs or deleting accepted evidence."
                 ),
             )
         },

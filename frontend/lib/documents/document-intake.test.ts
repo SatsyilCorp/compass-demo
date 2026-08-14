@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DOCUMENT_MEDIA_TYPES,
   MAX_DOCUMENT_BYTES,
+  buildLiveFileIdentityReceipt,
   buildLocalReceipt,
   liveDocumentStageIndex,
   mediaTypeForFile,
@@ -56,4 +57,17 @@ test("receipt reconciles a real selected file to all eight stages", () => {
   assert.equal(receipt.stages.length, 8);
   assert.equal(receipt.classification.label, "financial_execution");
   assert.equal(receipt.runId, "doc-aaaaaaaaaaaaaaaa");
+});
+
+test("live file identity contains no browser classification or quality result", () => {
+  const receipt = buildLiveFileIdentityReceipt({
+    fileName: "public-record.json",
+    mediaType: DOCUMENT_MEDIA_TYPES.json,
+    sizeBytes: 128,
+    sha256: "a".repeat(64),
+  });
+  assert.equal(receipt.mode, "live_file_identity");
+  assert.equal("classification" in receipt, false);
+  assert.equal("qualityScore" in receipt, false);
+  assert.equal("stages" in receipt, false);
 });

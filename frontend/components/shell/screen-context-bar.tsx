@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 
 import { screenContextForPath, type ScreenEvidenceTone } from "@/lib/demo/screen-context";
+import { evidenceModeLabel } from "@/lib/evidence-mode";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
+import { navHrefForEvidenceMode } from "@/lib/nav/sidebar-config";
 import { LiveDemoStreamBar } from "./live-demo-stream-bar";
 
 const TONE: Record<ScreenEvidenceTone, {
@@ -62,7 +65,8 @@ const TONE: Record<ScreenEvidenceTone, {
 
 export function ScreenContextBar() {
   const pathname = usePathname() ?? "/";
-  const context = screenContextForPath(pathname);
+  const { mode } = useEvidenceMode();
+  const context = screenContextForPath(pathname, mode);
   const style = TONE[context.tone];
   const Icon = style.icon;
 
@@ -77,6 +81,7 @@ export function ScreenContextBar() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">{context.element}</span>
+                <span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${mode === "live" ? "border-success/30 bg-success-soft text-success" : "border-warn/30 bg-warn-soft text-warn"}`}>{evidenceModeLabel(mode)}</span>
                 <span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${style.badge}`}>{context.evidenceLabel}</span>
                 <span className="text-xs font-bold text-text-strong">{context.screen}</span>
               </div>
@@ -87,7 +92,7 @@ export function ScreenContextBar() {
             </div>
           </div>
           {context.nextHref && context.nextLabel ? (
-            <Link href={context.nextHref} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-gov-primary/25 bg-white px-3 text-[10px] font-bold text-gov-primary hover:bg-gov-primary-lighter">
+            <Link href={navHrefForEvidenceMode(context.nextHref, mode)} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-gov-primary/25 bg-white px-3 text-[10px] font-bold text-gov-primary hover:bg-gov-primary-lighter">
               {context.nextLabel} <ArrowRight className="size-3.5" aria-hidden />
             </Link>
           ) : null}

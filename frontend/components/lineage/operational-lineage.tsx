@@ -29,6 +29,7 @@ import {
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { subscribeLiveDemoStreamTick } from "@/lib/live-demo-stream-events";
+import { EvidenceClassBadge } from "@/components/evidence/evidence-class-badge";
 import type {
   OperationsLineageResponse,
   OperationsLineageStage,
@@ -260,6 +261,7 @@ function RunButton({ run, active, onSelect }: { run: OperationsRunSummary; activ
     <button type="button" onClick={() => onSelect(run.run_id)} aria-pressed={active} className={`w-full rounded-lg border p-3 text-left transition-colors ${active ? "border-gov-primary bg-gov-primary-lighter shadow-soft" : "border-border bg-white hover:border-gov-primary/30 hover:bg-surface-2"}`}>
       <div className="flex items-start justify-between gap-2"><span className="text-[9px] font-bold uppercase tracking-wide text-gold-ink">{humanize(run.run_kind)}</span><StatusChip status={run.status} /></div>
       <p className="mt-2 text-xs font-bold leading-5 text-text-strong">{run.label}</p>
+      <div className="mt-2"><EvidenceClassBadge evidenceClass={run.evidence_class} compact /></div>
       <p className="mt-1 truncate font-mono text-[9px] text-text-subtle">{run.run_id}</p>
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/80 pt-2 text-[9px] text-text-muted"><span>{run.completed_stages}/{run.stage_count} stages</span><span>{formatTimestamp(run.updated_at)}</span></div>
     </button>
@@ -271,7 +273,7 @@ function RunHeader({ lineage, progress }: { lineage: OperationsLineageResponse; 
   return (
     <div className="border-b border-border bg-white p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><StatusChip status={run.status} /><ModeBadge mode={lineage.mode} /><span className="font-mono text-[9px] text-text-subtle">{run.run_id}</span></div><h2 className="mt-2 text-lg font-bold text-text-strong">{run.label}</h2><p className="mt-1 text-xs text-text-muted">Current stage: <span className="font-semibold text-text-strong">{humanize(run.current_stage)}</span> | Updated {formatTimestamp(run.updated_at)}</p></div>
+        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><StatusChip status={run.status} /><ModeBadge mode={lineage.mode} /><EvidenceClassBadge evidenceClass={run.evidence_class} /><span className="font-mono text-[9px] text-text-subtle">{run.run_id}</span></div><h2 className="mt-2 text-lg font-bold text-text-strong">{run.label}</h2><p className="mt-1 text-xs text-text-muted">Current stage: <span className="font-semibold text-text-strong">{humanize(run.current_stage)}</span> | Updated {formatTimestamp(run.updated_at)}</p></div>
         <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[440px]">
           <SmallMetric label="Input" value={formatCount(run.counts.input_records)} />
           <SmallMetric label="Output" value={formatCount(run.counts.output_records)} />
@@ -296,6 +298,7 @@ function StageCard({ stage, selected, onSelect }: { stage: OperationsLineageStag
         <span className={`grid size-8 shrink-0 place-items-center rounded-md ${style.icon}`}>{stage.status === "running" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : stage.status === "completed" ? <CheckCircle2 className="size-4" aria-hidden /> : stage.status === "failed" || stage.status === "quarantined" ? <AlertTriangle className="size-4" aria-hidden /> : <CircleDot className="size-4" aria-hidden />}</span>
         <span className="min-w-0"><span className="block text-[8px] font-bold uppercase tracking-wide text-text-subtle">Stage {stage.sequence} | {stage.status}</span><span className="mt-1 block text-[11px] font-bold leading-4 text-text-strong">{stage.label}</span><span className="mt-1 block text-[9px] leading-4 text-text-muted">{stage.system}</span></span>
       </div>
+      <div className="mt-2"><EvidenceClassBadge evidenceClass={stage.evidence_class} compact /></div>
       <div className="mt-3 border-t border-current/10 pt-2"><p className="truncate font-mono text-[8px] text-text-subtle" title={stage.output_sha256 ?? stage.input_sha256 ?? undefined}>{shortDigest(stage.output_sha256 ?? stage.input_sha256, 8)}</p><p className="mt-1 text-[8.5px] text-text-muted">{stage.record_count === null ? "Count pending" : `${stage.record_count.toLocaleString("en-US")} records`} | attempt {stage.attempt}</p></div>
     </button>
   );
@@ -315,7 +318,7 @@ function StageInspector({ stage }: { stage: OperationsLineageStage }) {
   ];
   return (
     <article className="overflow-hidden rounded-xl border border-border bg-white">
-      <div className="border-b border-border bg-surface-2 px-4 py-4"><p className="text-[9px] font-bold uppercase tracking-wide text-gold-ink">Selected stage receipt</p><h3 className="mt-1 text-sm font-bold text-text-strong">{stage.label}</h3><p className="mt-1 text-[10.5px] leading-5 text-text-muted">{stage.detail}</p></div>
+      <div className="border-b border-border bg-surface-2 px-4 py-4"><div className="flex flex-wrap items-center gap-2"><p className="text-[9px] font-bold uppercase tracking-wide text-gold-ink">Selected stage receipt</p><EvidenceClassBadge evidenceClass={stage.evidence_class} compact /></div><h3 className="mt-1 text-sm font-bold text-text-strong">{stage.label}</h3><p className="mt-1 text-[10.5px] leading-5 text-text-muted">{stage.detail}</p></div>
       <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">{fields.map(({ label, value, icon: Icon, mono }) => <div key={label} className="bg-white p-3"><p className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-wide text-text-subtle"><Icon className="size-3" aria-hidden /> {label}</p><p className={`mt-1 break-all text-[10px] text-text-strong ${mono ? "font-mono" : "font-semibold"}`}>{value}</p></div>)}</div>
       <div className="space-y-2 border-t border-border p-4">
         <DigestRow label="Source SHA-256" value={stage.source_sha256} />
@@ -345,7 +348,7 @@ function StatusChip({ status }: { status: OperationsRunStatus }) {
 }
 
 function ModeBadge({ mode }: { mode: OperationsSummaryResponse["mode"] }) {
-  return <span className={`rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-wide ${mode === "live" ? "border-success/30 bg-success/10 text-emerald-100" : "border-warn/35 bg-warn/10 text-amber-100"}`}>{mode === "live" ? "Live AWS evidence" : "Replay fixture"}</span>;
+  return <span className={`rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-wide ${mode === "live" ? "border-success/30 bg-success/10 text-emerald-100" : "border-warn/35 bg-warn/10 text-amber-100"}`}>{mode === "live" ? "Deployed AWS adapter" : "Replay adapter"}</span>;
 }
 
 function HeroMetric({ label, value }: { label: string; value: number }) {

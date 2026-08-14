@@ -38,7 +38,7 @@ def openapi_routes() -> set[tuple[str, str]]:
 def test_openapi_matches_every_deployed_application_route():
     deployed = template_routes()
     served = openapi_routes()
-    assert len(deployed) == 49
+    assert len(deployed) == 52
     assert served == deployed
 
 
@@ -165,6 +165,31 @@ def test_public_intelligence_operations_publish_bounded_grounded_contracts():
     assert "source_url" in citation["required"]
     assert "model_run_id" in citation["required"]
     assert "uncertainty" in citation["required"]
+
+
+def test_continuous_public_acquisition_controller_contract():
+    document = build_openapi()
+    paths = document["paths"]
+    response_ref = {
+        "$ref": "#/components/schemas/PublicAcquisitionContinuousControl"
+    }
+    for method, path in (
+        ("get", "/public-intelligence/acquisitions/continuous"),
+        ("post", "/public-intelligence/acquisitions/continuous/start"),
+        ("post", "/public-intelligence/acquisitions/continuous/stop"),
+    ):
+        operation = paths[path][method]
+        assert operation["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ] == response_ref
+        assert operation["security"] == [{"cognitoJwt": []}]
+
+    schema = document["components"]["schemas"][
+        "PublicAcquisitionContinuousControl"
+    ]
+    assert schema["properties"]["status"]["enum"] == ["running", "stopped"]
+    assert schema["properties"]["manual_runs_available"]["const"] is True
+    assert schema["additionalProperties"] is False
 
 
 def test_public_model_execution_operations_publish_bounded_receipt_contracts():

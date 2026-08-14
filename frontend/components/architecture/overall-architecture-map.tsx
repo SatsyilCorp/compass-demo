@@ -33,19 +33,19 @@ import {
 } from "./overall-model";
 
 const DEPLOYMENT_META: Record<ArchitectureComponent["deployment"], { label: string; className: string; dot: string }> = {
-  core: { label: "Deployed core", className: "border-success/30 bg-success-soft text-success", dot: "bg-success" },
-  scale: { label: "Deployed scale", className: "border-info/30 bg-info-soft text-info", dot: "bg-info" },
-  conditional: { label: "Conditional", className: "border-gold/40 bg-gold-soft text-gold-ink", dot: "bg-gold" },
+  core: { label: "IaC-declared core", className: "border-success/30 bg-success-soft text-success", dot: "bg-success" },
+  scale: { label: "IaC-declared scale", className: "border-info/30 bg-info-soft text-info", dot: "bg-info" },
+  conditional: { label: "Conditional integration", className: "border-gold/40 bg-gold-soft text-gold-ink", dot: "bg-gold" },
   logical: { label: "Logical boundary", className: "border-border bg-surface-2 text-text-muted", dot: "bg-text-subtle" },
 };
 
 const PRODUCT_SURFACES = [
-  { label: "Ingest and quality", href: "/ingest/" },
   { label: "Live source operations", href: "/admin/acquisition/" },
+  { label: "Ingest and quality", href: "/ingest/" },
   { label: "Governed catalog", href: "/catalog/" },
   { label: "Topic intelligence", href: "/intelligence/" },
   { label: "Decision brief", href: "/dashboard/" },
-  { label: "Governed release", href: "/export/" },
+  { label: "Portable browser preview", href: "/export/" },
   { label: "License posture", href: "/licenses/" },
   { label: "MLOps", href: "/admin/mlops/" },
   { label: "Scale Lab", href: "/admin/scale/" },
@@ -54,13 +54,13 @@ const PRODUCT_SURFACES = [
 
 const SOURCE_FAMILIES = [
   { label: "Mission users", detail: "Power user, viewer, reviewer, operator" },
-  { label: "Authorized files", detail: "CSV, JSON, JSONL, XLSX, XML, PDF, DOCX, TXT, Markdown" },
-  { label: "USAspending", detail: "Five-minute real public award poll" },
-  { label: "Grants.gov", detail: "Fifteen-minute DOD-ONR opportunity and synopsis poll" },
-  { label: "Crossref", detail: "Hourly exact ONR funder publication poll" },
-  { label: "Federal Register", detail: "Thirty-minute Navy and ONR notice poll" },
+  { label: "USAspending", detail: "Five-minute backend public award poll" },
+  { label: "Grants.gov", detail: "Fifteen-minute backend DOD and ONR opportunity poll" },
+  { label: "Crossref", detail: "Hourly backend exact ONR funder publication poll" },
+  { label: "Federal Register", detail: "Thirty-minute backend Navy and ONR notice poll" },
   { label: "SBIR snapshot", detail: "Monthly public file with API health shown separately" },
-  { label: "Synthetic load test", detail: "Explicitly labeled one or two second operator pulse" },
+  { label: "Authorized rehearsal files", detail: "Explicit mode only: CSV, JSON, PDF, DOCX, TXT, and other bounded formats" },
+  { label: "Synthetic rehearsal pulse", detail: "Explicit mode only: deterministic one-second or two-second operator pulse" },
 ] as const;
 
 const TARGET_GROUPS = [
@@ -127,11 +127,11 @@ export function OverallArchitectureMap() {
                 <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-[#ffca73]">Complete system overview</p>
                 <h2 id="overall-architecture-title" className="mt-2 text-xl font-bold sm:text-2xl">Compass AWS reference architecture</h2>
                 <p className="mt-2 max-w-4xl text-xs leading-5 text-white/72 sm:text-sm sm:leading-6">
-                  One picture covers multi-source acquisition, access, VPC placement, raw retention, governance, exact evidence identity, model classification, decision products, DevSecOps, security, operations, and the separate IL4/IL5 target boundary. Select any AWS component for its full contract.
+                  One picture follows live public authorities through source-safe backend polling, raw retention, governance, exact evidence identity, real model receipts, decision products, DevSecOps, security, operations, and the separate IL4/IL5 target boundary. Synthetic rehearsal is isolated and requires an explicit user choice. Select any AWS component for its full contract.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-success/40 bg-success/15 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-[#b6f0cd]">Current commercial AWS</span>
+                <span className="rounded-full border border-success/40 bg-success/15 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-[#b6f0cd]">Source-controlled AWS design</span>
                 <button
                   type="button"
                   onClick={() => setPresentationMode((current) => !current)}
@@ -166,7 +166,7 @@ export function OverallArchitectureMap() {
                     icon="/aws-icons/cloudformation.svg"
                     eyebrow="AWS cloud and Satsyil account boundary"
                     title="Commercial AWS proving environment | us-east-1"
-                    badge="Deployed"
+                    badge="Declared in IaC"
                     id="aws-cloud-boundary-heading"
                   />
 
@@ -221,9 +221,9 @@ export function OverallArchitectureMap() {
               <TargetBoundary />
 
               <div className="grid gap-2 lg:grid-cols-3" aria-label="Architecture truth notes">
-                <TruthNote title="Source cadence truth" detail="The browser periodically refreshes retained receipts without calling a public authority. USAspending, Grants.gov, Crossref, and Federal Register are independent scheduled HTTPS polls at responsible cadences. SBIR uses its public monthly snapshot while its API is degraded. Synthetic pulse data is isolated as load-test evidence." />
-                <TruthNote title="VPC truth" detail="Thirteen database-facing Lambda adapters and Aurora span two private subnets. Eight other Lambda adapters run in the regional managed service plane. One NAT gateway is the current demonstration-cost tradeoff. S3 and DynamoDB gateway endpoints keep those private-subnet service routes off the internet path." />
-                <TruthNote title="Authorization truth" detail="The IL4/IL5 lane is the proposed target. The current commercial deployment is not an ATO, FedRAMP High authorization, or completed Government integration." />
+                <TruthNote title="Source cadence contract" detail="The source-controlled controller keeps running until an operator stops it. EventBridge invokes USAspending, Grants.gov, Crossref, and Federal Register at independent source-safe cadences. The browser reads retained receipts and change events without calling a public authority. SBIR uses its public monthly snapshot while its API is degraded. Synthetic pulse data is isolated behind explicit rehearsal mode. Current execution must be verified from an operational receipt." />
+                <TruthNote title="IaC placement" detail="The application IaC places thirteen database-facing Lambda adapters and Aurora across two private subnets. Eight other Lambda adapters remain in the regional managed service plane. One NAT gateway is the declared demonstration-cost tradeoff. S3 and DynamoDB gateway endpoints keep those private-subnet service routes off the internet path. Stack outputs and runtime evidence confirm the environment actually deployed." />
+                <TruthNote title="Authorization boundary" detail="The IL4/IL5 lane is a proposed target. This source-controlled commercial AWS design is not an ATO, FedRAMP High authorization, or completed Government integration." />
               </div>
             </div>
           </div>
@@ -267,7 +267,7 @@ function ExternalSources({ onSelect }: { onSelect: () => void }) {
       <div className="flex items-center gap-2">
         <span className="grid size-9 place-items-center rounded-md bg-[#e9f1f7] text-[#173d5c]"><UsersRound className="size-5" aria-hidden /></span>
         <div>
-          <p className="text-[8px] font-bold uppercase tracking-[0.13em] text-[#6c7a88]">External boundary</p>
+          <p className="text-[8px] font-bold uppercase tracking-[0.13em] text-[#52626f]">External boundary</p>
           <h3 id="external-source-heading" className="text-[11px] font-bold text-[#162536]">People and source systems</h3>
         </div>
       </div>
@@ -299,7 +299,7 @@ function VpcBoundary({ selectedId, onSelect }: { selectedId: string | null; onSe
     <section className="rounded-xl border-[3px] border-[#2774a6] bg-[#eef7fc] p-3" aria-labelledby="overall-vpc-heading">
       <BoundaryHeader
         icon="/aws-icons/vpc.svg"
-        eyebrow="Customer VPC | Deployed"
+        eyebrow="Customer VPC | IaC declared"
         title="10.42.0.0/16 | Two availability zones"
         badge="Private workloads"
         id="overall-vpc-heading"
@@ -382,7 +382,7 @@ function ArchitectureGroup({
             {group.step ? <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#173d5c] font-mono text-[8px] font-bold text-white">{group.step}</span> : null}
             <h3 className="text-[10px] font-bold text-[#162536]">{group.label}</h3>
           </div>
-          <p className="mt-1 text-[8px] leading-3 text-[#667583]">{group.boundary}</p>
+          <p className="mt-1 text-[8px] leading-3 text-[#52626f]">{group.boundary}</p>
         </div>
         <span className="shrink-0 rounded-full border border-[#bdc8d2] bg-white px-2 py-0.5 font-mono text-[7.5px] font-bold text-[#536575]">{group.componentIds.length}</span>
       </div>
@@ -435,7 +435,7 @@ function MissionSurfaces() {
         <span className="grid size-5 place-items-center rounded-full bg-[#173d5c] font-mono text-[8px] font-bold text-white">7</span>
         <div>
           <h3 id="mission-surface-heading" className="text-[10px] font-bold text-[#162536]">Compass mission product surfaces</h3>
-          <p className="mt-0.5 text-[8px] text-[#667583]">Governed consumer and operator experience</p>
+          <p className="mt-0.5 text-[8px] text-[#52626f]">Governed consumer and operator experience</p>
         </div>
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -548,7 +548,7 @@ function ArchitectureDetailDrawer({ component, onClose, onSelect }: { component:
             <div className="min-w-0 flex-1">
               <p className="text-[9px] font-bold uppercase tracking-[0.13em]" style={{ color: plane.color }}>{plane.label} plane</p>
               <h2 id="architecture-detail-title" className="mt-1 text-lg font-bold leading-tight text-[#162536]">{component.label}</h2>
-              <p className="mt-1 text-[10px] text-[#667583]">{component.service}</p>
+              <p className="mt-1 text-[10px] text-[#52626f]">{component.service}</p>
               <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-wide ${deployment.className}`}>{deployment.label}</span>
             </div>
             <button type="button" onClick={onClose} aria-label="Close details" className="grid size-10 shrink-0 place-items-center rounded-md border border-[#cbd5df] text-[#536575] hover:bg-[#f2f5f7]"><X className="size-4" aria-hidden /></button>
@@ -556,6 +556,9 @@ function ArchitectureDetailDrawer({ component, onClose, onSelect }: { component:
         </header>
 
         <div className="p-5">
+          <div className="mb-4 rounded-lg border border-[#cbd5df] bg-[#f8fafc] p-3 text-[9.5px] leading-4 text-[#52626f]">
+            This drawer describes the source-controlled service contract. Confirm current deployment and execution through stack outputs and retained runtime receipts.
+          </div>
           <p className="text-sm leading-6 text-[#4e5f70]">{component.summary}</p>
           <dl className="mt-5 grid gap-3 sm:grid-cols-3">
             <DrawerDetail label="Receives" value={component.receives} />
@@ -571,7 +574,7 @@ function ArchitectureDetailDrawer({ component, onClose, onSelect }: { component:
 
           {connected.length > 0 ? (
             <section className="mt-5 border-t border-[#cbd5df] pt-4" aria-label="Connected architecture flows">
-              <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#667583]">Connected flows</p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#52626f]">Connected flows</p>
               <div className="mt-2 space-y-2">
                 {connected.map((connection) => {
                   const otherId = connection.source === component.id ? connection.target : connection.source;
@@ -603,7 +606,7 @@ function ArchitectureDetailDrawer({ component, onClose, onSelect }: { component:
 function DrawerDetail({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
   return (
     <div className="rounded-lg border border-[#d3dbe3] bg-[#f8fafc] p-3">
-      <dt className="flex items-center gap-1.5 text-[8.5px] font-bold uppercase tracking-[0.12em] text-[#667583]">{icon}{label}</dt>
+      <dt className="flex items-center gap-1.5 text-[8.5px] font-bold uppercase tracking-[0.12em] text-[#52626f]">{icon}{label}</dt>
       <dd className="mt-1.5 text-[10px] leading-4 text-[#4e5f70]">{value}</dd>
     </div>
   );

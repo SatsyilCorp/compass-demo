@@ -122,8 +122,8 @@ export const BRIEFING_VIEWS: BriefingView[] = [
     label: "Executive flow",
     eyebrow: "One mission path",
     title: "Evidence enters, controls execute, people decide",
-    summary: "The commercial AWS prototype keeps identity, workflow, governed data, model evidence, and human decisions on one traceable path.",
-    truth: "Running in the Satsyil commercial AWS account. This view is operational evidence, not an IL4/IL5 authorization claim.",
+    summary: "The commercial AWS prototype keeps live public acquisition, governed records, real model receipts, cited intelligence, and human decisions on one traceable path.",
+    truth: "Running in the Satsyil commercial AWS account with bounded public evidence as the primary product plane. This view is operational evidence, not an IL4/IL5 authorization claim.",
     lanes: [
       {
         id: "executive-current",
@@ -134,8 +134,8 @@ export const BRIEFING_VIEWS: BriefingView[] = [
           node("mission-user", "Mission user", "Compass browser", "Power user, reviewer, viewer, or operator enters a role-scoped workspace.", "Running now"),
           node("commercial-edge", "Protected web edge", "AWS WAF and CloudFront", "The current public commercial edge serves the static application and screens requests.", "Running now"),
           node("identity-api", "Identity and API", "Cognito, authorizer, API Gateway", "Short-lived claims are verified before a narrow application operation is selected.", "Running now"),
-          node("workflow-data", "Governed processing", "Lambda, Step Functions, SQS, S3, Aurora", "Bounded work validates, transforms, quarantines, persists, and receipts each state change.", "Running now"),
-          node("decisions", "Decision and evidence", "Catalog, intelligence, approval, export", "People inspect cited evidence, approve a decision, and release a checksummed product.", "Running now"),
+          node("workflow-data", "Live governed processing", "EventBridge, Lambda, S3, DynamoDB, Kinesis", "Source-safe backend schedules acquire bounded public changes, validate, classify, link, quarantine, persist, and receipt each state change.", "Running now"),
+          node("decisions", "Decision and evidence", "Catalog, intelligence, model, approval, export", "People inspect cited public evidence and model receipts, approve a decision, and release a checksummed product.", "Running now"),
         ],
         connectors: [
           connector("HTTPS", "WAF access log"),
@@ -146,24 +146,26 @@ export const BRIEFING_VIEWS: BriefingView[] = [
       },
       {
         id: "executive-public",
-        label: "Public evidence ingress",
-        boundary: "External public evidence boundary",
+        label: "Primary public evidence ingress",
+        boundary: "External authorities to governed AWS evidence",
         tone: "external",
         outsideProtectedBoundary: true,
         nodes: [
-          node("public-sources", "Public source families", "USAspending, SBIR, Grants.gov, SAM.gov", "Government public endpoints remain authoritative and independently operated.", "External dependency"),
-          node("public-quarantine", "Public-source quarantine", "Isolated S3 source and quarantine prefixes", "Unaccepted collections remain separate from the governed serving projection.", "Configured"),
-          node("public-snapshot", "Accepted public snapshot", "Manifest and SHA-256 verified index", "Minimized records enter the evidence plane only after source and digest checks pass.", "Running now"),
+          node("public-sources", "Public source families", "USAspending, Grants.gov, Crossref, Federal Register, SBIR snapshot", "Government and research public endpoints remain authoritative and independently operated.", "External dependency"),
+          node("public-schedules", "Continuous source controller", "EventBridge and DynamoDB operator state", "AWS keeps polling active until Stop and invokes each authority only at its responsible bounded cadence.", "Running now"),
+          node("public-quarantine", "Quality and source quarantine", "Isolated S3 source and quarantine prefixes", "Unaccepted collections remain separate from the governed serving projection and keep a reason receipt.", "Running now"),
+          node("public-snapshot", "Accepted public intelligence", "Manifest, identity graph, model receipts, SHA-256 index", "Minimized records enter live catalog and decision surfaces only after source, digest, policy, and model checks pass.", "Running now"),
         ],
         connectors: [
-          connector("HTTPS pull", "source manifest and retrieval time"),
-          connector("S3 object event", "acceptance or quarantine receipt"),
+          connector("Scheduled HTTPS pull", "source, cadence, retrieval, and watermark receipt"),
+          connector("Hash and quality gate", "acceptance or quarantine receipt"),
+          connector("Kinesis change envelope", "identity, model, and serving receipt"),
         ],
       },
     ],
     callouts: [
       "Human approval remains the decision boundary.",
-      "Public evidence never silently merges into the synthetic portfolio.",
+      "Public evidence is the default product plane. Synthetic rehearsal requires explicit selection and never silently replaces a failed live request.",
       "Every mutating operation retains actor, correlation, state, and digest evidence.",
     ],
   },
@@ -248,20 +250,20 @@ export const BRIEFING_VIEWS: BriefingView[] = [
     label: "Data lineage",
     eyebrow: "Source to decision",
     title: "Every accepted record keeps its origin and every rejected record keeps its reason",
-    summary: "File uploads and public-source snapshots enter through distinct gates, then converge only after validation into versioned Bronze, Silver, and Gold evidence.",
-    truth: "The current design retains object, quality, workflow, model, and release evidence. The fast continuous source is synthetic and operator controlled. Scheduled external acquisition stays configured until a recurring official pull is observed live.",
+    summary: "Named public authorities enter the primary governed path through independent source-safe schedules. Explicit rehearsal uploads remain a separate fallback and never replace unavailable live evidence.",
+    truth: "The current design retains source response, object, quality, identity-linkage, narrative-classifier, SageMaker, serving, and release evidence. Continuous public acquisition is backend operated at each source's responsible cadence, while the browser projects retained changes in near real time.",
     lanes: [
       {
         id: "lineage-file",
-        label: "Authorized file drop",
-        boundary: "Interactive governed intake",
+        label: "Explicit rehearsal file drop",
+        boundary: "Separately selected sanitized fallback",
         tone: "commercial",
         nodes: [
-          node("file-source", "Authorized file", "JSON, CSV, or bounded document", "The uploader receives a server-selected destination and immutable correlation identifier.", "Running now"),
+          node("file-source", "Authorized rehearsal file", "JSON, CSV, or bounded document", "Only an explicit rehearsal selection exposes upload. The uploader receives a server-selected destination and immutable correlation identifier.", "Running now"),
           node("immutable-landing", "Immutable landing", "KMS-encrypted S3 object", "The original bytes, object version, media type, size, and SHA-256 are retained.", "Running now"),
           node("inspect-quality", "Inspect and quality gate", "Step Functions and deterministic rules", "Schema, safety, extraction, required fields, relationships, and classification rules decide the path.", "Running now"),
           node("medallion-zones", "Bronze, Silver, Gold", "Versioned lake and curated store", "Raw, normalized, and decision-ready representations remain linked to the same source identity.", "Running now"),
-          node("catalog-consumer", "Catalog to decision", "Lineage, intelligence, dashboard, export", "Consumers see the source, rule outcomes, model evidence, owner, steward, and release status.", "Running now"),
+          node("catalog-consumer", "Rehearsal projection", "Rehearsal catalog, intelligence, dashboard, export", "Consumers see the synthetic label, source, rule outcomes, model evidence, owner, steward, and release status on every screen.", "Running now"),
         ],
         connectors: [
           connector("HTTPS upload plan", "source and actor receipt"),
@@ -272,14 +274,14 @@ export const BRIEFING_VIEWS: BriefingView[] = [
       },
       {
         id: "lineage-continuous",
-        label: "Continuous demonstration source",
-        boundary: "Operator-controlled synthetic source",
+        label: "Synthetic pulse fallback",
+        boundary: "Operator-controlled explicit rehearsal source",
         tone: "evidence",
         nodes: [
-          node("continuous-operator", "Start continuous stream", "One-second or two-second cadence", "A corporate poweruser starts one durable session that remains active until Stop.", "Running now"),
+          node("continuous-operator", "Enter rehearsal and start", "Explicit mode, one-second or two-second cadence", "A corporate poweruser first selects rehearsal, then starts one durable synthetic session that remains active until Stop.", "Running now"),
           node("continuous-session", "Durable session receipt", "DynamoDB control state", "The receipt records the session, cumulative sequence, latest run, and current workflow chunk.", "Running now"),
           node("continuous-rotation", "Workflow rotation", "Step Functions Standard", "A new execution takes over every 250 pulses without ending the visible session.", "Running now"),
-          node("continuous-drop", "Synthetic S3 pulse", "Immutable envelope and SHA-256", "Every pulse enters the same EventBridge, quality, lineage, catalog, and decision path as an authorized structured drop.", "Running now"),
+          node("continuous-drop", "Synthetic S3 pulse", "Immutable envelope and SHA-256", "Every pulse enters the rehearsal EventBridge, quality, lineage, catalog, and decision projection and remains labeled separately from public evidence.", "Running now"),
         ],
         connectors: [
           connector("Protected API command", "actor and session receipt"),
@@ -289,20 +291,20 @@ export const BRIEFING_VIEWS: BriefingView[] = [
       },
       {
         id: "lineage-public",
-        label: "Public-source acquisition",
-        boundary: "Isolated external-source quarantine",
+        label: "Primary live public acquisition",
+        boundary: "External source, retained evidence, and governed serving path",
         tone: "external",
         outsideProtectedBoundary: true,
         nodes: [
           node("external-feed", "Government public endpoint", "Source-owned API or file", "The source remains authoritative and may change independently of Compass.", "External dependency"),
-          node("scheduled-collector", "Bounded collector", "Watermark, allowlist, rate limit", "A scheduled adapter records request time, source URI, terms, watermark, and response digest.", "Configured"),
-          node("source-quarantine", "Public-source quarantine", "Isolated collection prefix", "Malformed, disallowed, duplicate, or unprofiled collections cannot enter the serving projection.", "Configured"),
-          node("accepted-source", "Accepted source snapshot", "Immutable manifest and minimized records", "Only verified, policy-allowed fields move into the governed public evidence plane.", "Running now"),
+          node("scheduled-collector", "Continuous bounded collector", "Operator state, watermark, allowlist, source-safe schedule", "Backend schedules continue until Stop and record request time, authority URI, terms, watermark, and response digest.", "Running now"),
+          node("source-quarantine", "Quality, identity, and model gate", "Isolated quarantine plus narrative classifier", "Malformed, disallowed, duplicate, ambiguous, or unprofiled records cannot enter the serving projection. Accepted narratives retain model version and confidence.", "Running now"),
+          node("accepted-source", "Accepted public intelligence", "Immutable manifest, minimized records, identity graph", "Verified fields, exact cross-source identities, change events, and real model receipts move into the primary governed evidence plane.", "Running now"),
         ],
         connectors: [
-          connector("HTTPS with source policy", "retrieval and watermark receipt"),
-          connector("Hash and schema gate", "quarantine reason receipt"),
-          connector("Manifest promotion", "acceptance digest and snapshot ID"),
+          connector("Scheduled HTTPS with source policy", "controller, retrieval, and watermark receipt"),
+          connector("Hash, schema, identity, and classifier gate", "quarantine reason and model receipt"),
+          connector("Manifest and Kinesis promotion", "acceptance digest, snapshot ID, and change event"),
         ],
       },
       {
@@ -327,7 +329,8 @@ export const BRIEFING_VIEWS: BriefingView[] = [
       "Quarantine is a terminal governed state, not a hidden deletion path.",
       "Physical S3 keys and sensitive fields stay out of browser projections.",
       "Replay starts from the immutable source and creates a new correlated execution receipt.",
-      "The one-second or two-second demonstration feed is synthetic and does not claim that USAspending publishes at that cadence.",
+      "Near-real-time browser updates replay retained AWS change receipts. They do not claim that an external authority publishes every second.",
+      "Synthetic files and one-second or two-second pulses exist only inside explicit rehearsal mode.",
     ],
   },
   {
@@ -388,7 +391,7 @@ export const BRIEFING_VIEWS: BriefingView[] = [
     label: "MLOps",
     eyebrow: "Data to reviewed prediction",
     title: "A registered candidate scores governed records without making the decision",
-    summary: "The current use case estimates a public Navy SBIR Phase I transition proxy from label-excluded records and retains training, evaluation, scoring, cost, and review evidence.",
+    summary: "Accepted public narratives receive a deployed champion taxonomy classification receipt. A separate governed SageMaker use case estimates a public Navy SBIR Phase I transition proxy from label-excluded records and retains training, evaluation, scoring, cost, and review evidence.",
     truth: "SageMaker training, Model Registry, and Batch Transform have executed in commercial AWS. The package remains PendingManualApproval, no persistent endpoint exists, and the result is not ONR mission success.",
     lanes: [
       {
@@ -397,12 +400,12 @@ export const BRIEFING_VIEWS: BriefingView[] = [
         boundary: "Current commercial SageMaker evidence path",
         tone: "commercial",
         nodes: [
-          node("training-snapshot", "Training snapshot", "11,287 public Navy SBIR rows", "A reproducible source manifest, chronological split, feature contract, and hashes bind the training input.", "Running now"),
+          node("training-snapshot", "Public training snapshot", "11,287 public Navy SBIR rows", "A reproducible public source manifest, chronological split, feature contract, and hashes bind the training input.", "Running now"),
           node("training-job", "Network-isolated training", "SageMaker training job", "A calibrated classical classifier trains with fixed images, parameters, time limits, and encrypted artifacts.", "Running now"),
           node("evaluation-gate", "Independent evaluation", "Chronological holdout and metric gates", "ROC AUC, Brier score, F1, calibration, and caveats are retained before registration.", "Running now"),
           node("model-registry", "Registered candidate", "SageMaker Model Registry", "The immutable package remains PendingManualApproval until a person approves promotion.", "Running now"),
           node("batch-scoring", "Ephemeral batch scoring", "SageMaker Batch Transform", "Newer label-excluded public records are scored without an always-on endpoint.", "Running now"),
-          node("reviewed-output", "Prediction evidence", "Compass intelligence and review", "Per-record probabilities, input and output hashes, runtime, estimate-only cost, and review status are visible.", "Running now"),
+          node("reviewed-output", "Live public model evidence", "Compass intelligence and review", "Per-record narrative labels, transition probabilities, model versions, input and output hashes, runtime, estimate-only cost, and review status are visible beside accepted public records.", "Running now"),
         ],
         connectors: [
           connector("S3 manifest", "dataset and split receipt"),
@@ -432,6 +435,7 @@ export const BRIEFING_VIEWS: BriefingView[] = [
     ],
     callouts: [
       "The model ranks evidence for review and never allocates funding or approves an award.",
+      "Every accepted public narrative records the champion classifier version and confidence. SageMaker Batch Transform is a separately governed public SBIR proxy model.",
       "Training evaluation is separate from the newer current cohort used for demonstration scoring.",
       "A persistent endpoint is intentionally absent to reduce idle cost and avoid implying an approved real-time production service.",
     ],

@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/shell/app-shell";
 import { PageHeader } from "@/components/shell/page-header";
+import { LivePublicAnalytics } from "@/components/public-intelligence/live-public-analytics";
 import { TopicList } from "@/components/analytics/topic-list";
 import { TopicTrendChart } from "@/components/analytics/topic-trend-chart";
 import { AnomalyFlags } from "@/components/analytics/anomaly-flags";
 import { RecommendationPanel } from "@/components/analytics/recommendation-panel";
 import {
   ApiError,
-  USE_MOCK,
   getAnalyticsRun,
   getAnomalies,
   postAnalyticsRun,
@@ -28,12 +28,33 @@ import {
 } from "@/lib/mock/analytics";
 import { subscribeScenario, type ScenarioAnalysisRun } from "@/lib/mock/scenario-store";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import type { AnalyticsRunDetail, Anomaly } from "@/lib/types";
 
 type RunStatus = "idle" | "running" | "completed" | "error";
 
 export default function AnalyticsPage() {
+  const { mode } = useEvidenceMode();
+
+  if (mode === "rehearsal") return <RehearsalAnalyticsWorkspace />;
+
+  return (
+    <AppShell requireRole={["poweruser"]}>
+      <PageHeader
+        kicker="Live public evidence | Analytics and model signals"
+        icon={<Network className="size-[18px]" aria-hidden />}
+        title="Analyze source changes, model routes, and review flags"
+        lead="Every chart and queue on this screen is calculated from the latest accepted public-source receipts and their real classifier results. No synthetic portfolio is silently substituted."
+      />
+      <div className="mt-6"><LivePublicAnalytics /></div>
+    </AppShell>
+  );
+}
+
+function RehearsalAnalyticsWorkspace() {
   const auth = useAppAuth();
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
   const [status, setStatus] = useState<RunStatus>("idle");
   const [detail, setDetail] = useState<AnalyticsRunDetail | null>(null);
   const [anomalies, setAnomalies] = useState<Anomaly[] | null>(null);
@@ -64,13 +85,13 @@ export default function AnalyticsPage() {
   }, []);
 
   useEffect(() => {
-    if (!USE_MOCK) return;
+    if (!rehearsal) return;
     const syncHistory = () => setHistory(getAnalyticsHistory());
     syncHistory();
     const latest = getAnalyticsHistory()[0];
     if (latest) void loadRun(latest.run_id);
     return subscribeScenario(syncHistory);
-  }, [loadRun]);
+  }, [loadRun, rehearsal]);
 
   useEffect(() => {
     if (detail) void loadRun(detail.run_id);
@@ -82,7 +103,7 @@ export default function AnalyticsPage() {
     try {
       const { run_id } = await postAnalyticsRun();
       await loadRun(run_id);
-      if (USE_MOCK) setHistory(getAnalyticsHistory());
+      if (rehearsal) setHistory(getAnalyticsHistory());
     } catch (error: unknown) {
       setErrorMessage(
         error instanceof ApiError
@@ -109,10 +130,10 @@ export default function AnalyticsPage() {
   return (
     <AppShell requireRole={["poweruser"]}>
       <PageHeader
-        kicker="Element 5 supporting view | Decision Analytics"
+        kicker="Explicit rehearsal | Decision analytics"
         icon={<Network className="size-[18px]" aria-hidden />}
-        title="Turn the curated portfolio into a decision brief"
-        lead="Run the governed corporate model, compare investment concentration, surface emerging topics and anomalies, and turn the evidence into a recommended next action."
+        title="Rehearse the analytics and review workflow"
+        lead="Run the deterministic rehearsal analysis, compare synthetic investment concentration, surface fixture topics and anomalies, and practice routing a recommended next action without claiming a live model execution."
         actions={
           <button
             type="button"
@@ -140,7 +161,7 @@ export default function AnalyticsPage() {
         }
       />
 
-      {USE_MOCK ? (
+      {rehearsal ? (
         <section
           aria-label="Replay analysis history"
           className="mt-5 rounded-xl border border-gov-primary/20 bg-gov-primary-lighter/50 p-4 shadow-soft"

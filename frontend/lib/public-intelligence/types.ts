@@ -38,7 +38,7 @@ export type PortfolioProgram = {
   recipient: string;
   source: string;
   sourceUrl: string;
-  awardAmountUsd: number;
+  awardAmountUsd: number | null;
   startDate: string;
   endDate: string;
   technologyArea: string | null;
@@ -68,9 +68,9 @@ export type IntelligenceSnapshot = {
   generatedAt: string;
   asOfDate: string;
   corpus: {
-    awards: number;
-    contracts: number;
-    candidateAwardValueUsd: number;
+    awards: number | null;
+    contracts: number | null;
+    candidateAwardValueUsd: number | null;
   };
   sources: PublicSource[];
   fundingFlow: FundingFlow[];
@@ -79,11 +79,16 @@ export type IntelligenceSnapshot = {
   models: ModelCard[];
 };
 
-export type PublicEvidenceClass =
+export type PublicRecordEvidenceClass =
   | EvidenceClass
   | "public_observed"
   | "public_derived"
-  | "public_predicted"
+  | "public_predicted";
+
+export type PublicSnapshotEvidenceClass = "public_evidence";
+
+export type PublicExplanationEvidenceClass =
+  | PublicRecordEvidenceClass
   | "mixed_public_evidence"
   | "none";
 
@@ -93,7 +98,7 @@ export type PublicIntelligenceRecord = {
   title: string;
   summary: string;
   source_url: string;
-  evidence_class: PublicEvidenceClass | string;
+  evidence_class: PublicRecordEvidenceClass;
   model_run_id: string | null;
   uncertainty: unknown;
   snapshot_id: string;
@@ -140,7 +145,7 @@ export type PublicIntelligenceSnapshotResponse = {
   snapshot_version: number;
   generated_at: string;
   as_of_at: string;
-  evidence_class: string;
+  evidence_class: PublicSnapshotEvidenceClass;
   provenance: {
     manifest_sha256: string;
     index_sha256: string;
@@ -167,7 +172,7 @@ export type PublicIntelligenceCitation = {
   source_id: string;
   title: string;
   source_url: string;
-  evidence_class: PublicEvidenceClass | string;
+  evidence_class: PublicRecordEvidenceClass;
   model_run_id: string | null;
   uncertainty: unknown;
   snapshot_id: string;
@@ -182,7 +187,7 @@ export type PublicIntelligenceExplanationResponse = {
   refused: boolean;
   refusal_code: string | null;
   citations: PublicIntelligenceCitation[];
-  evidence_class: PublicEvidenceClass | string;
+  evidence_class: PublicExplanationEvidenceClass;
   model_run_id: string | null;
   model_run_ids: string[];
   explanation_run_id: string;

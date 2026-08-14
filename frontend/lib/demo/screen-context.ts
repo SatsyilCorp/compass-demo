@@ -1,3 +1,5 @@
+import { DEFAULT_EVIDENCE_MODE, type EvidenceMode } from "../evidence-mode";
+
 export type ScreenEvidenceTone = "guide" | "control" | "input" | "synthetic" | "public" | "mixed";
 
 export type ScreenContext = {
@@ -14,6 +16,17 @@ export type ScreenContext = {
 };
 
 const CONTEXTS: ScreenContext[] = [
+  {
+    route: "/rehearsal/",
+    element: "Evidence mode boundary",
+    screen: "Rehearsal landing",
+    evidenceLabel: "Explicit mode selection",
+    source: "A user-selected deterministic synthetic evidence boundary",
+    updateBehavior: "Rehearsal does not start until the user explicitly activates it on this page or in the application shell.",
+    tone: "guide",
+    nextHref: "/admin/demo/",
+    nextLabel: "Open rehearsal guide",
+  },
   {
     route: "/admin/demo/",
     element: "Start here",
@@ -41,7 +54,7 @@ const CONTEXTS: ScreenContext[] = [
     element: "Live public evidence",
     screen: "Public source operations",
     evidenceLabel: "Live public data",
-    source: "USAspending.gov, Grants.gov, FederalRegister.gov, and Crossref",
+    source: "The deployed, protected public-source registry and its current authority receipts",
     updateBehavior: "A source is called only on operator request or its responsible schedule. The browser only refreshes retained receipts.",
     tone: "public",
     nextHref: "/intelligence/",
@@ -51,10 +64,10 @@ const CONTEXTS: ScreenContext[] = [
     route: "/admin/mlops/",
     element: "Element 5 of 7",
     screen: "Model operations",
-    evidenceLabel: "Sanitized model evidence",
-    source: "Sanitized training corpus, registered model artifacts, and AWS execution receipts",
-    updateBehavior: "Model state changes only after an explicit train, evaluate, promote, deploy, or score action.",
-    tone: "mixed",
+    evidenceLabel: "Live model receipts",
+    source: "Accepted public narratives, champion-classifier receipts, model registry evidence, and protected SageMaker execution receipts",
+    updateBehavior: "Public classifier evidence changes after accepted source runs. Training, promotion, drift, and Batch Transform state change only after an explicit protected action.",
+    tone: "public",
     nextHref: "/dashboard/",
     nextLabel: "Continue to Element 6",
   },
@@ -62,10 +75,10 @@ const CONTEXTS: ScreenContext[] = [
     route: "/admin/lineage/",
     element: "Supporting evidence",
     screen: "Operational lineage",
-    evidenceLabel: "Selected run receipt",
-    source: "The exact run identifier in the URL and its retained processing receipts",
+    evidenceLabel: "Protected live run receipt",
+    source: "The exact public acquisition, file intake, model, or release run identifier and its retained AWS processing receipts",
     updateBehavior: "Choose a run to see its source, stages, hashes, outputs, and notifications.",
-    tone: "mixed",
+    tone: "public",
   },
   {
     route: "/admin/requirements/",
@@ -118,22 +131,21 @@ const CONTEXTS: ScreenContext[] = [
     route: "/ingest/",
     element: "Element 3 of 7",
     screen: "File and stream intake",
-    evidenceLabel: "User-selected input",
-    source: "Your submitted sanitized file, or a prepared sample whose public or synthetic status is shown before submission",
-    updateBehavior: "Nothing uploads until you submit a file. Synthetic portfolio updates run only when you start them below.",
-    tone: "input",
+    evidenceLabel: "Live public sources and operator input",
+    source: "The deployed public-source registry or a user-submitted public and PII-minimized file",
+    updateBehavior: "AWS schedules continue until an operator stops them. The screen refreshes retained receipts, while a file changes the system only after an explicit upload.",
+    tone: "public",
     nextHref: "/catalog/",
     nextLabel: "Continue to Element 4",
-    showSyntheticStream: true,
   },
   {
     route: "/catalog/",
     element: "Element 4 of 7",
     screen: "Governed catalog",
-    evidenceLabel: "Synthetic mission data",
-    source: "Curated demo batches created by Element 3 ingestion",
-    updateBehavior: "Rows change only after a completed demo ingestion or synthetic stream event.",
-    tone: "synthetic",
+    evidenceLabel: "Accepted public source products",
+    source: "Latest accepted public acquisition receipts with source hashes, identity keys, governance, model versions, and source links",
+    updateBehavior: "Rows change after a public source page or public file completes quality, classification, and governed publication.",
+    tone: "public",
     nextHref: "/admin/mlops/",
     nextLabel: "Continue to Element 5",
   },
@@ -142,7 +154,7 @@ const CONTEXTS: ScreenContext[] = [
     element: "Live public evidence",
     screen: "Public portfolio intelligence",
     evidenceLabel: "Live public data",
-    source: "Latest accepted snapshots from 12 named public authorities, with source URLs and capture times",
+    source: "Latest accepted snapshots from the deployed public-source registry, with source URLs and capture times",
     updateBehavior: "The corpus changes after an accepted public source run, not on every browser refresh.",
     tone: "public",
     nextHref: "/dashboard/",
@@ -152,10 +164,10 @@ const CONTEXTS: ScreenContext[] = [
     route: "/analytics/",
     element: "Element 5 support",
     screen: "Topic intelligence",
-    evidenceLabel: "Synthetic mission data",
-    source: "The active curated demo portfolio and its retained analysis run",
-    updateBehavior: "Results change only when you run the analysis or change the active evidence set.",
-    tone: "synthetic",
+    evidenceLabel: "Live public model analytics",
+    source: "Latest accepted public-source deltas, record previews, transparent review rules, and champion classifier receipts",
+    updateBehavior: "Charts update from new accepted source receipts. They never estimate the complete ONR portfolio.",
+    tone: "public",
     nextHref: "/dashboard/",
     nextLabel: "Continue to Element 6",
   },
@@ -163,10 +175,10 @@ const CONTEXTS: ScreenContext[] = [
     route: "/dashboard/",
     element: "Element 6 of 7",
     screen: "Decision workspace",
-    evidenceLabel: "Synthetic mission data",
-    source: "The active curated demo portfolio, with linked catalog, model, anomaly, and approval receipts",
-    updateBehavior: "Metrics change after accepted demo ingestion, analysis, or an explicitly selected scale run.",
-    tone: "synthetic",
+    evidenceLabel: "Live public decision evidence",
+    source: "Accepted public-source receipts, observed preview values, model results, change counts, source health, and analyst review flags",
+    updateBehavior: "Metrics change when AWS accepts a new source snapshot. Failed pulls leave the prior accepted snapshot visible with an operator alert.",
+    tone: "public",
     nextHref: "/export/",
     nextLabel: "Continue to Element 7",
   },
@@ -174,19 +186,19 @@ const CONTEXTS: ScreenContext[] = [
     route: "/licenses/",
     element: "Element 4 support",
     screen: "Data vendor lifecycle",
-    evidenceLabel: "Representative policy data",
-    source: "Synthetic license, entitlement, renewal, and dataset relationships",
-    updateBehavior: "This is a governed workflow example, not an authoritative Government license inventory.",
-    tone: "synthetic",
+    evidenceLabel: "Live public source contracts",
+    source: "The deployed public connector registry plus retained health, cadence, owner, steward, and downstream model use",
+    updateBehavior: "Operational health changes with source runs. Access-basis and governance fields change through reviewed configuration.",
+    tone: "public",
   },
   {
     route: "/export/",
     element: "Element 7 of 7",
-    screen: "Governed release",
-    evidenceLabel: "Synthetic mission data",
-    source: "The active curated demo portfolio and the signed-in user's approved scope",
-    updateBehavior: "An export is created only after you request it and any required approval is satisfied.",
-    tone: "synthetic",
+    screen: "Portable browser preview",
+    evidenceLabel: "Browser-generated public preview",
+    source: "The latest accepted bounded public records already loaded in the browser, with acquisition, source, model, review, and lineage fields",
+    updateBehavior: "A local JSON or CSV file and checksum are created only after the user requests them. No protected approval, delivery, audit record, or server receipt is created.",
+    tone: "public",
     nextHref: "/admin/demo/",
     nextLabel: "Return to demo guide",
   },
@@ -204,9 +216,43 @@ const FALLBACK: ScreenContext = {
   nextLabel: "Open demo guide",
 };
 
-export function screenContextForPath(pathname: string): ScreenContext {
+export function screenContextForPath(
+  pathname: string,
+  evidenceMode: EvidenceMode = DEFAULT_EVIDENCE_MODE,
+): ScreenContext {
   const normalized = normalizePath(pathname);
-  return CONTEXTS.find((item) => routeMatches(normalized, item.route)) ?? FALLBACK;
+  const routedPath = normalized !== "/rehearsal/" && normalized.startsWith("/rehearsal/")
+    ? normalizePath(normalized.slice("/rehearsal".length))
+    : normalized;
+  const context = CONTEXTS.find((item) => routeMatches(routedPath, item.route)) ?? FALLBACK;
+  return applyEvidenceModeBoundary(context, evidenceMode);
+}
+
+function applyEvidenceModeBoundary(context: ScreenContext, evidenceMode: EvidenceMode): ScreenContext {
+  if (evidenceMode === "live" && context.tone === "synthetic") {
+    return {
+      ...context,
+      evidenceLabel: "Live mode, no synthetic fallback",
+      source: "Protected live service responses only. Rehearsal fixtures are disabled in the current evidence mode.",
+      updateBehavior: "If live evidence is unavailable, this screen must show unavailable or an error. It must never load synthetic records automatically.",
+      tone: "public",
+      showSyntheticStream: false,
+    };
+  }
+  if (evidenceMode === "rehearsal" && context.tone === "public") {
+    const fixedPublicSnapshot = context.route === "/intelligence/";
+    const releaseRehearsal = context.route === "/export/";
+    return {
+      ...context,
+      screen: releaseRehearsal ? "Governed release rehearsal" : context.screen,
+      evidenceLabel: fixedPublicSnapshot ? "Fixed non-live public snapshot" : releaseRehearsal ? "Explicit synthetic release rehearsal" : "Explicit synthetic rehearsal",
+      source: fixedPublicSnapshot ? "A fixed public evidence package retained for deterministic presentation rehearsal" : "Deterministic fixtures isolated from public-source, production, and operational evidence",
+      updateBehavior: fixedPublicSnapshot ? "This snapshot does not refresh or call public APIs. Return to live mode for current protected receipts." : releaseRehearsal ? "Approval, audit, and receipt behavior is a deterministic rehearsal. It does not claim a live cloud file was delivered." : "Rehearsal changes only after an explicit user action and every result remains labeled synthetic.",
+      tone: "synthetic",
+      showSyntheticStream: context.route === "/ingest/",
+    };
+  }
+  return context;
 }
 
 function normalizePath(pathname: string): string {

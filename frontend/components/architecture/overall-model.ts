@@ -23,7 +23,7 @@ export type OverallArchitectureGroup = {
 
 export const OVERALL_FLOW_STEPS = [
   { number: 1, label: "Access", detail: "WAF, web edge, identity" },
-  { number: 2, label: "Acquire", detail: "Independent real source connectors" },
+  { number: 2, label: "Acquire", detail: "Continuous governed public connectors" },
   { number: 3, label: "Orchestrate", detail: "Events, workflows, queues" },
   { number: 4, label: "Validate", detail: "Normalize, quality, quarantine" },
   { number: 5, label: "Govern", detail: "Lake, catalog, owners, lineage" },
@@ -51,7 +51,6 @@ export const VPC_LAMBDA_COMPONENT_IDS = [
 export const REGIONAL_LAMBDA_COMPONENT_IDS = [
   "authorizer",
   "document-ml",
-  "public-acquisition",
   "operations-api",
   "public-intelligence",
   "scale-control",
@@ -116,10 +115,10 @@ export const OVERALL_ARCHITECTURE_GROUPS: OverallArchitectureGroup[] = [
   },
   {
     id: "ingestion",
-    label: "Ingestion, events, and operational stream",
-    boundary: "AWS regional managed service plane outside the VPC",
+    label: "Public acquisition, governed intake, and event projection",
+    boundary: "AWS regional managed service plane with rehearsal isolated by explicit mode",
     step: 2,
-    componentIds: ["raw-bucket", "demo-stream", "eventbridge", "intake-workflow", "ticker"],
+    componentIds: ["public-acquisition", "raw-bucket", "eventbridge", "intake-workflow", "ticker", "demo-stream"],
   },
   {
     id: "scale",

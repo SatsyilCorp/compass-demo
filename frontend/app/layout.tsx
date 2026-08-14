@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     template: "%s · Compass",
   },
   description:
-    "Compass - a Navy/ONR S&T Portfolio Intelligence prototype: ingest, quality-gate, catalog/lineage, topic-model analytics, and an executive dashboard over a research-grant portfolio. Synthetic data; not a production system.",
+    "Compass is an AWS-hosted Navy and ONR S&T portfolio intelligence proving prototype. It continuously acquires bounded public evidence, preserves quality and lineage receipts, executes governed models, and presents cited decision support. Synthetic data is available only in an explicitly selected rehearsal workspace. This commercial deployment is not an accredited production system.",
 };
 
 export default function RootLayout({

@@ -295,12 +295,13 @@ Supporting routes are `/licenses/`, `/admin/pipeline/`, `/admin/scale/`, and
 newly created batch IDs in a static export, so a post-build live ingest does
 not require a new pre-rendered dynamic page.
 
-## 8. Persistent deterministic replay
+## 8. Persistent deterministic rehearsal
 
-When `NEXT_PUBLIC_USE_MOCK=true`, state-changing portfolio adapters read one
-versioned scenario store. State is persisted in the browser and distributed
-to all subscribers. A fixed logical clock keeps screenshots and rehearsals
-stable. Reference-only fixtures such as the license register remain static.
+Live public evidence is the fail-closed default. The user must explicitly
+activate Rehearsal in the product before any fixture adapter can run.
+Rehearsal state is persisted in the browser and distributed to all subscribers.
+A fixed logical clock keeps screenshots and rehearsals stable. Reference-only
+fixtures such as the rehearsal license register remain static.
 
 Important invariants are tested:
 
@@ -313,7 +314,7 @@ Important invariants are tested:
 - Export approval uses the same exact-fingerprint, expiry, separate-persona,
   and single-use behavior as the live contract.
 
-Replay is deliberately labeled. It is a deterministic rehearsal adapter, not
+Rehearsal is deliberately labeled. It is a deterministic adapter, not
 an AWS execution emulator.
 
 ## 9. Delivery architecture

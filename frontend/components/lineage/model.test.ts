@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { OperationsLineageStage } from "../../lib/types";
+import {
+  evidenceClassPresentation,
+  isLivePublicOperationsEvidenceClass,
+  normalizeOperationsEvidenceClass,
+} from "../../lib/operations-evidence";
 import { isAttentionStatus, lineageProgress, orderedStages, shortDigest } from "./model";
 
 function stage(sequence: number, status: OperationsLineageStage["status"]): OperationsLineageStage {
   return {
     stage_id: `stage-${sequence}`,
+    evidence_class: "unclassified",
     sequence,
     label: `Stage ${sequence}`,
     system: "Test system",
@@ -55,4 +61,22 @@ test("failed, quarantined, and expired runs require attention", () => {
   assert.equal(isAttentionStatus("quarantined"), true);
   assert.equal(isAttentionStatus("expired"), true);
   assert.equal(isAttentionStatus("completed"), false);
+});
+
+test("evidence labels distinguish provenance from the deployed adapter", () => {
+  assert.equal(normalizeOperationsEvidenceClass("synthetic_demo"), "synthetic-demo");
+  assert.equal(evidenceClassPresentation("synthetic-demo").label, "Synthetic demo evidence");
+  assert.equal(evidenceClassPresentation("public-observed").label, "Observed public evidence");
+  assert.equal(evidenceClassPresentation("public-predicted").label, "Predicted public evidence");
+  assert.equal(evidenceClassPresentation("operational-control").label, "Operational control");
+  assert.equal(evidenceClassPresentation("unclassified").label, "Unclassified evidence");
+});
+
+test("live operations allow only public evidence and operational controls", () => {
+  assert.equal(isLivePublicOperationsEvidenceClass("public-observed"), true);
+  assert.equal(isLivePublicOperationsEvidenceClass("public"), true);
+  assert.equal(isLivePublicOperationsEvidenceClass("operational-control"), true);
+  assert.equal(isLivePublicOperationsEvidenceClass("synthetic-demo"), false);
+  assert.equal(isLivePublicOperationsEvidenceClass("mixed-evidence"), false);
+  assert.equal(isLivePublicOperationsEvidenceClass("unclassified"), false);
 });

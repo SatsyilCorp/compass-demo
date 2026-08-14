@@ -49,6 +49,7 @@ class Table:
                 "status": "completed",
                 "source": "document-lake://documents/incoming/doc-safe/report.txt",
                 "source_sha256": "a" * 64,
+                "detail": {"evidence_class": "public-operational"},
                 "updated_at": "2026-08-12T12:00:00+00:00",
             },
             {
@@ -193,3 +194,157 @@ def test_summary_preserves_last_accepted_snapshot_after_failed_attempt(monkeypat
     assert body["latest_public_acquisition"]["run_id"] == "acq-accepted"
     assert body["latest_public_acquisition_attempt"]["run_id"] == "acq-failed"
     assert body["latest_public_acquisition"]["watermark"] == "2026-08-12T12:00:00+00:00"
+
+
+def test_lineage_labels_synthetic_stream_receipts_and_propagates_document_class(monkeypatch):
+    stages = [
+        {
+            "run_id": "run-live-session-00000001",
+            "run_kind": "structured-intake",
+            "sequence": 1,
+            "stage_id": "source",
+            "status": "completed",
+            "source": "landing://drops/00000001.json",
+            "updated_at": "2026-08-12T12:00:00+00:00",
+        },
+        {
+            "run_id": "doc-public",
+            "run_kind": "document-intake",
+            "sequence": 1,
+            "stage_id": "source",
+            "status": "completed",
+            "detail": {"evidence_class": "public"},
+            "updated_at": "2026-08-12T12:01:00+00:00",
+        },
+        {
+            "run_id": "doc-public",
+            "run_kind": "document-intake",
+            "sequence": 2,
+            "stage_id": "gold",
+            "status": "completed",
+            "updated_at": "2026-08-12T12:01:01+00:00",
+        },
+    ]
+    monkeypatch.setattr(
+        app,
+        "_query_index",
+        lambda kind, limit: stages[:limit] if kind == "LINEAGE" else [],
+    )
+    monkeypatch.setattr(
+        app,
+        "_query_run",
+        lambda run_id: [stage for stage in stages if stage["run_id"] == run_id],
+    )
+
+    listed = app.list_lineage()
+    classes = {run["run_id"]: run["evidence_class"] for run in listed["runs"]}
+    assert "run-live-session-00000001" not in classes
+    assert classes["doc-public"] == "public"
+
+    assert app.get_lineage("run-live-session-00000001") is None
+
+    public_lineage = app.get_lineage("doc-public")
+    assert public_lineage is not None
+    assert public_lineage["evidence_class"] == "public"
+    assert [stage["evidence_class"] for stage in public_lineage["stages"]] == [
+        "public",
+        "public",
+    ]
+
+
+def test_signal_labels_content_provenance_independently_from_live_adapter(monkeypatch):
+    signals = [
+        {
+            "event_id": "sig-stream",
+            "category": "demo-stream",
+            "severity": "info",
+            "status": "open",
+            "run_id": "run-live-session-00000001",
+        },
+        {
+            "event_id": "sig-public-document",
+            "category": "document-intake",
+            "severity": "info",
+            "status": "open",
+            "run_id": "doc-public",
+        },
+        {
+            "event_id": "sig-control",
+            "category": "delivery-monitor",
+            "severity": "warning",
+            "status": "open",
+        },
+    ]
+    lineage = [
+        {
+            "run_id": "doc-public",
+            "run_kind": "document-intake",
+            "stage_id": "source",
+            "detail": {"evidence_class": "public"},
+        }
+    ]
+    monkeypatch.setattr(
+        app,
+        "_query_index",
+        lambda kind, limit: signals[:limit] if kind == "SIGNAL" else lineage[:limit],
+    )
+
+    result = app.list_signals()
+
+    assert result["mode"] == "live"
+    assert [signal["evidence_class"] for signal in result["signals"]] == [
+        "public",
+        "operational-control",
+    ]
+    assert result["unacknowledged"] == 1
+
+
+def test_live_summary_counts_only_public_and_operational_control_receipts(monkeypatch):
+    signals = [
+        {
+            "event_id": "sig-synthetic",
+            "category": "demo-stream",
+            "severity": "high",
+            "status": "open",
+            "run_id": "run-live-session-00000001",
+        },
+        {
+            "event_id": "sig-public",
+            "category": "public-acquisition",
+            "severity": "high",
+            "status": "open",
+            "run_id": "acq-public",
+        },
+    ]
+    stages = [
+        {
+            "run_id": "run-live-session-00000001",
+            "run_kind": "structured-intake",
+            "stage_id": "source",
+            "status": "completed",
+            "updated_at": "2026-08-12T12:00:00+00:00",
+        },
+        {
+            "run_id": "acq-public",
+            "run_kind": "public-acquisition",
+            "stage_id": "accepted",
+            "status": "completed",
+            "updated_at": "2026-08-12T12:01:00+00:00",
+        },
+    ]
+    monkeypatch.setattr(
+        app,
+        "_query_index",
+        lambda kind, limit: signals[:limit]
+        if kind == "SIGNAL"
+        else stages[:limit]
+        if kind == "LINEAGE"
+        else [],
+    )
+
+    result = app.summary()
+
+    assert [run["run_id"] for run in result["runs"]] == ["acq-public"]
+    assert result["counts"]["lineage_runs"] == 1
+    assert result["counts"]["signals"] == 1
+    assert result["counts"]["unacknowledged_signals"] == 1

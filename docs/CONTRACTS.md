@@ -137,6 +137,11 @@ viewer.
 | 44 | GET | `/operations/lineage/{runId}` | Read ordered stage receipts, hashes, model, and consumer for one run | 3, 4, 5, and cross-cutting |
 | 45 | GET | `/operations/summary` | Read the current operational scorecard and public-source watermark | Cross-cutting |
 
+The live operations list, lineage, and summary responses declare
+`evidence_scope=public-only`. The service excludes synthetic, mixed, and
+unclassified receipts before calculating counts. Synthetic operational
+receipts are available only through the explicitly selected rehearsal adapter.
+
 The document upload request accepts either `synthetic-demo` input or a
 PII-minimized `public` document. A public upload must explicitly declare
 `contains_cui=false` and `pii_minimized=true`; any other classification is
@@ -339,7 +344,10 @@ The static Next.js application uses these environment values:
 - `NEXT_PUBLIC_COGNITO_REDIRECT_URI`
 - `NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI`
 - `NEXT_PUBLIC_AUTH_DISABLED`
-- `NEXT_PUBLIC_USE_MOCK`
+
+Runtime evidence selection is not an environment switch. Live public evidence
+is the fail-closed default, and a user must explicitly activate the persistent
+Rehearsal mode before fixture-backed adapters can run.
 
 Primary routes are `/login/`, `/dashboard/`, `/ingest/`, `/catalog/`,
 `/catalog/lineage/?batch=<id>`, `/analytics/`, `/licenses/`, `/export/`, and

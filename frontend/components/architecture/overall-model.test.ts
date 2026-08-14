@@ -27,7 +27,7 @@ test("every overall map tile resolves to one architecture component", () => {
   for (const id of overallIds) assert.ok(componentIds.has(id), id);
 });
 
-test("all twenty-one Lambda adapters are split by actual VPC attachment", () => {
+test("all twenty-one Lambda adapters are assigned once by actual service boundary", () => {
   const expectedVpc = [
     "intake",
     "quality",
@@ -46,7 +46,6 @@ test("all twenty-one Lambda adapters are split by actual VPC attachment", () => 
   const expectedRegional = [
     "authorizer",
     "document-ml",
-    "public-acquisition",
     "operations-api",
     "public-intelligence",
     "scale-control",
@@ -58,6 +57,7 @@ test("all twenty-one Lambda adapters are split by actual VPC attachment", () => 
   assert.deepEqual([...REGIONAL_LAMBDA_COMPONENT_IDS], expectedRegional);
   assert.deepEqual(overallGroup("application").componentIds, expectedVpc);
   assert.deepEqual(overallGroup("regional-compute").componentIds, expectedRegional);
+  assert.equal(overallGroup("ingestion").componentIds.includes("public-acquisition"), true);
 
   const modeledLambdaIds = COMPONENTS
     .filter((component) => component.service.includes("Lambda"))
@@ -65,7 +65,7 @@ test("all twenty-one Lambda adapters are split by actual VPC attachment", () => 
   assert.equal(modeledLambdaIds.length, 21);
   assert.deepEqual(
     new Set(modeledLambdaIds),
-    new Set([...expectedVpc, ...expectedRegional]),
+    new Set([...expectedVpc, ...expectedRegional, "public-acquisition"]),
   );
 });
 
@@ -85,4 +85,11 @@ test("S3 and DynamoDB gateway endpoints are route-table controls, not subnet wor
 test("overall groups use distinct stable identifiers", () => {
   const ids = OVERALL_ARCHITECTURE_GROUPS.map((group) => group.id);
   assert.equal(new Set(ids).size, ids.length);
+});
+
+test("primary public acquisition is in the ingestion flow", () => {
+  const ingestion = overallGroup("ingestion");
+  assert.equal(ingestion.componentIds[0], "public-acquisition");
+  assert.match(ingestion.label, /public acquisition/i);
+  assert.match(ingestion.boundary, /rehearsal isolated/i);
 });

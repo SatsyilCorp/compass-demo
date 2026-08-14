@@ -7,6 +7,8 @@ import type {
   PublicIntelligenceSnapshotResponse,
   PublicIntelligenceSnapshotSummary,
   PublicIntelligenceSourceEvidence,
+  PublicExplanationEvidenceClass,
+  PublicRecordEvidenceClass,
   PublicSource,
 } from "./types";
 
@@ -15,6 +17,20 @@ export const PUBLIC_EXPLANATION_MAX_RECORD_IDS = 12;
 export const PUBLIC_EXPLANATION_MAX_TOP_K = 6;
 
 type JsonObject = Record<string, unknown>;
+
+const PUBLIC_RECORD_EVIDENCE_CLASSES = new Set([
+  "observed",
+  "derived",
+  "predicted",
+  "public_observed",
+  "public_derived",
+  "public_predicted",
+]);
+
+const PUBLIC_EXPLANATION_EVIDENCE_CLASSES = new Set([
+  ...PUBLIC_RECORD_EVIDENCE_CLASSES,
+  "mixed_public_evidence",
+]);
 
 function asObject(value: unknown): JsonObject | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -44,6 +60,20 @@ function nonNegativeNumber(value: unknown): number | null {
 function sha256(value: unknown): string | null {
   const digest = cleanText(value, 64).toLowerCase();
   return /^[a-f0-9]{64}$/.test(digest) ? digest : null;
+}
+
+function publicRecordEvidenceClass(value: unknown): PublicRecordEvidenceClass | null {
+  const evidenceClass = cleanText(value, 80).toLowerCase();
+  return PUBLIC_RECORD_EVIDENCE_CLASSES.has(evidenceClass)
+    ? evidenceClass as PublicRecordEvidenceClass
+    : null;
+}
+
+function publicExplanationEvidenceClass(value: unknown): PublicExplanationEvidenceClass | null {
+  const evidenceClass = cleanText(value, 80).toLowerCase();
+  return PUBLIC_EXPLANATION_EVIDENCE_CLASSES.has(evidenceClass)
+    ? evidenceClass as PublicExplanationEvidenceClass
+    : null;
 }
 
 function stringArray(value: unknown, maximum: number): string[] {
@@ -96,18 +126,22 @@ function parseRecord(value: unknown): PublicIntelligenceRecord | null {
   const recordId = cleanText(record.record_id, 240);
   const sourceId = cleanText(record.source_id, 80);
   const title = cleanText(record.title, 500);
-  if (!recordId || !sourceId || !title) return null;
+  const sourceUrl = safeHttpsUrl(record.source_url);
+  const evidenceClass = publicRecordEvidenceClass(record.evidence_class);
+  const snapshotId = cleanText(record.snapshot_id, 160);
+  const recordSha256 = sha256(record.record_sha256);
+  if (!recordId || !sourceId || !title || !sourceUrl || !evidenceClass || !snapshotId || !recordSha256) return null;
   return {
     record_id: recordId,
     source_id: sourceId,
     title,
     summary: cleanText(record.summary, 500),
-    source_url: cleanText(record.source_url, 2_048),
-    evidence_class: cleanText(record.evidence_class, 80),
+    source_url: sourceUrl,
+    evidence_class: evidenceClass,
     model_run_id: optionalText(record.model_run_id, 160),
     uncertainty: record.uncertainty ?? null,
-    snapshot_id: cleanText(record.snapshot_id, 160),
-    record_sha256: cleanText(record.record_sha256, 64),
+    snapshot_id: snapshotId,
+    record_sha256: recordSha256,
   };
 }
 
@@ -115,19 +149,25 @@ function parseCitation(value: unknown): PublicIntelligenceCitation | null {
   const citation = asObject(value);
   if (!citation) return null;
   const recordId = cleanText(citation.record_id, 240);
+  const sourceId = cleanText(citation.source_id, 80);
   const title = cleanText(citation.title, 500);
-  if (!recordId || !title) return null;
+  const sourceUrl = safeHttpsUrl(citation.source_url);
+  const evidenceClass = publicRecordEvidenceClass(citation.evidence_class);
+  const snapshotId = cleanText(citation.snapshot_id, 160);
+  const recordSha256 = sha256(citation.record_sha256);
+  const citationToken = cleanText(citation.citation_token, 180);
+  if (!recordId || !sourceId || !title || !sourceUrl || !evidenceClass || !snapshotId || !recordSha256 || !citationToken) return null;
   return {
     record_id: recordId,
-    source_id: cleanText(citation.source_id, 80),
+    source_id: sourceId,
     title,
-    source_url: cleanText(citation.source_url, 2_048),
-    evidence_class: cleanText(citation.evidence_class, 80),
+    source_url: sourceUrl,
+    evidence_class: evidenceClass,
     model_run_id: optionalText(citation.model_run_id, 160),
     uncertainty: citation.uncertainty ?? null,
-    snapshot_id: cleanText(citation.snapshot_id, 160),
-    record_sha256: cleanText(citation.record_sha256, 64),
-    citation_token: cleanText(citation.citation_token, 180),
+    snapshot_id: snapshotId,
+    record_sha256: recordSha256,
+    citation_token: citationToken,
   };
 }
 
@@ -145,10 +185,11 @@ export function parsePublicIntelligenceSnapshotResponse(
   }
 
   const provenance = asObject(response.provenance);
+  const evidenceClass = response.evidence_class === "public_evidence" ? "public_evidence" : null;
   const manifestSha256 = sha256(provenance?.manifest_sha256);
   const indexSha256 = sha256(provenance?.index_sha256);
   const identityScope = parseIdentityScope(response.identity_scope);
-  if (!manifestSha256 || !indexSha256 || !identityScope.role || !identityScope.org_unit) return null;
+  if (!manifestSha256 || !indexSha256 || !identityScope.role || !identityScope.org_unit || !evidenceClass) return null;
   const summary = asObject(response.snapshot) ?? {};
   const sources = Array.isArray(response.sources)
     ? response.sources.map(parseSource).filter((item): item is PublicIntelligenceSourceEvidence => item !== null)
@@ -156,9 +197,9 @@ export function parsePublicIntelligenceSnapshotResponse(
   const models = Array.isArray(response.models)
     ? response.models.map(parseModel).filter((item): item is PublicIntelligenceModelEvidence => item !== null)
     : [];
-  const records = Array.isArray(response.records)
-    ? response.records.slice(0, 5_000).map(parseRecord).filter((item): item is PublicIntelligenceRecord => item !== null)
-    : [];
+  const rawRecords = Array.isArray(response.records) ? response.records.slice(0, 5_000) : [];
+  const records = rawRecords.map(parseRecord).filter((item): item is PublicIntelligenceRecord => item !== null);
+  if (records.length !== rawRecords.length) return null;
 
   return {
     contract: "compass.public-intelligence.snapshot-response.v1",
@@ -166,7 +207,7 @@ export function parsePublicIntelligenceSnapshotResponse(
     snapshot_version: finiteNumber(response.snapshot_version) ?? 1,
     generated_at: cleanText(response.generated_at, 80),
     as_of_at: cleanText(response.as_of_at, 80),
-    evidence_class: cleanText(response.evidence_class, 80),
+    evidence_class: evidenceClass,
     provenance: {
       manifest_sha256: manifestSha256,
       index_sha256: indexSha256,
@@ -195,10 +236,20 @@ export function parsePublicIntelligenceExplanationResponse(
 
   const grounded = response.grounded === true;
   const refused = response.refused === true;
-  const citations = Array.isArray(response.citations)
-    ? response.citations.slice(0, PUBLIC_EXPLANATION_MAX_TOP_K).map(parseCitation).filter((item): item is PublicIntelligenceCitation => item !== null)
+  const rawCitations = Array.isArray(response.citations)
+    ? response.citations.slice(0, PUBLIC_EXPLANATION_MAX_TOP_K)
     : [];
+  const citations = rawCitations.map(parseCitation).filter((item): item is PublicIntelligenceCitation => item !== null);
+  if (citations.length !== rawCitations.length) return null;
   if (grounded && citations.length === 0) return null;
+
+  const rawEvidenceClass = cleanText(response.evidence_class, 80).toLowerCase();
+  const refusalWithoutEvidence = refused && !grounded && rawEvidenceClass === "none" && citations.length === 0;
+  const evidenceClass = refusalWithoutEvidence
+    ? "none"
+    : publicExplanationEvidenceClass(rawEvidenceClass);
+  if (!evidenceClass || (!refusalWithoutEvidence && (refused || !grounded))) return null;
+  if (citations.some((citation) => citation.snapshot_id !== snapshotId)) return null;
 
   const uncertainty = asObject(response.uncertainty);
   const generation = asObject(response.generation);
@@ -217,7 +268,7 @@ export function parsePublicIntelligenceExplanationResponse(
     refused,
     refusal_code: optionalText(response.refusal_code, 120),
     citations,
-    evidence_class: cleanText(response.evidence_class, 80),
+    evidence_class: evidenceClass,
     model_run_id: optionalText(response.model_run_id, 160),
     model_run_ids: stringArray(response.model_run_ids, 12),
     explanation_run_id: runId,
@@ -276,67 +327,107 @@ export function mergePublicIntelligenceSnapshot(
   if (!live) return bundled;
 
   const candidate = live.snapshot.candidate_scope;
-  const awards = nonNegativeNumber(candidate?.grants) ?? bundled.corpus.awards;
-  const contracts = nonNegativeNumber(candidate?.contracts) ?? bundled.corpus.contracts;
-  const candidateAwardValueUsd =
-    nonNegativeNumber(candidate?.summed_award_amount_usd) ?? bundled.corpus.candidateAwardValueUsd;
-  const asOfDate = cleanText(live.snapshot.as_of_date, 32) || live.as_of_at.slice(0, 10) || bundled.asOfDate;
+  const legacyCorpus = asObject(live.snapshot.corpus);
+  const awards = nonNegativeNumber(candidate?.grants ?? candidate?.award_records ?? legacyCorpus?.awards);
+  const contracts = nonNegativeNumber(candidate?.contracts ?? legacyCorpus?.contracts);
+  const candidateAwardValueUsd = nonNegativeNumber(
+    candidate?.summed_award_amount_usd ?? legacyCorpus?.candidateAwardValueUsd,
+  );
+  const asOfDate = cleanText(live.snapshot.as_of_date, 32) || live.as_of_at.slice(0, 10);
 
   const annual = Array.isArray(live.snapshot.observed_annual_obligations)
     ? live.snapshot.observed_annual_obligations.flatMap((item) => {
         const fiscalYear = finiteNumber(item?.fiscal_year);
         const observedUsd = nonNegativeNumber(item?.observed_obligations_usd);
         if (fiscalYear === null || observedUsd === null) return [];
-        const fallbackPeriod = bundled.fundingFlow.find((period) => period.fiscalYear === fiscalYear);
         return [{
           fiscalYear,
           observedUsd,
           forecastUsd: null,
           lowerUsd: null,
           upperUsd: null,
-          isPartial: fallbackPeriod?.isPartial,
+          isPartial: false,
         }];
       })
     : [];
 
-  const liveSources = new Map(
-    live.sources.map((source) => [normalizedSourceId(source.source_id), source] as const),
-  );
-  const sources = bundled.sources.map((source) => {
-    const current = liveSources.get(normalizedSourceId(source.id));
-    if (!current) return source;
-    const liveUrl = safeHttpsUrl(current.url);
-    return {
-      ...source,
-      recordCount: current.count ?? source.recordCount,
-      recordLabel: current.count !== null ? "records reported by the verified live manifest" : source.recordLabel,
-      status: sourceStatus(current.state, source.status),
-      lastObserved: asOfDate,
-      use: current.scope || source.use,
-      url: liveUrl ?? source.url,
-    };
+  const recordCounts = new Map<string, number>();
+  live.records.forEach((record) => {
+    const sourceId = normalizedSourceId(record.source_id);
+    recordCounts.set(sourceId, (recordCounts.get(sourceId) ?? 0) + 1);
   });
-  const bundledSourceIds = new Set(bundled.sources.map((source) => normalizedSourceId(source.id)));
-  const additionalSources: PublicSource[] = live.sources
-    .filter((source) => !bundledSourceIds.has(normalizedSourceId(source.source_id)))
-    .map((source) => ({
+  const declaredSourceIds = new Set(live.sources.map((source) => normalizedSourceId(source.source_id)));
+  const sources: PublicSource[] = live.sources.map((source) => ({
       id: normalizedSourceId(source.source_id),
       name: sourceDisplayName(source.source_id),
-      authority: "Verified public source",
-      recordCount: source.count,
-      recordLabel: source.count !== null ? "records reported by the verified live manifest" : "count unavailable",
+      authority: "Named authority in the verified public manifest",
+      recordCount: source.count ?? recordCounts.get(normalizedSourceId(source.source_id)) ?? null,
+      recordLabel: source.count !== null ? "records reported by the verified live manifest" : "records in the verified serving projection",
       status: sourceStatus(source.state, "scheduled"),
       lastObserved: asOfDate,
       use: source.scope,
-      url: safeHttpsUrl(source.url) ?? "https://compass.aws.satsyil.com/intelligence/",
+      url: safeHttpsUrl(source.url) ?? "",
     }));
+  for (const [sourceId, count] of recordCounts) {
+    if (declaredSourceIds.has(sourceId)) continue;
+    const first = live.records.find((record) => normalizedSourceId(record.source_id) === sourceId);
+    sources.push({
+      id: sourceId,
+      name: sourceDisplayName(sourceId),
+      authority: "Source named by verified serving records",
+      recordCount: count,
+      recordLabel: "records in the verified serving projection",
+      status: "persisted",
+      lastObserved: asOfDate,
+      use: "Retained public evidence for governed analysis",
+      url: safeHttpsUrl(first?.source_url) ?? "",
+    });
+  }
+
+  const programs = live.records.map((record) => ({
+    id: record.record_id,
+    title: record.title,
+    recipient: sourceDisplayName(record.source_id),
+    source: sourceDisplayName(record.source_id),
+    sourceUrl: safeHttpsUrl(record.source_url) ?? "",
+    awardAmountUsd: null,
+    startDate: asOfDate,
+    endDate: asOfDate,
+    technologyArea: null,
+    transitionProbability: null,
+    impactPercentile: null,
+    confidence: null,
+    scopeNote: live.disclosure,
+    observedFacts: [
+      record.summary || "The source record does not include a compact summary.",
+      `Evidence class: ${record.evidence_class.replaceAll("_", " ")}`,
+      `Record SHA-256: ${record.record_sha256}`,
+    ],
+  }));
+
+  const models = live.models.map((model) => ({
+    id: model.model_id,
+    name: model.model_id,
+    objective: "Model declared in the verified public evidence manifest.",
+    algorithm: "Reported by retained model evidence",
+    target: "Public evidence enrichment and review support",
+    status: model.deployed ? "champion" as const : model.approved ? "validated" as const : model.state.toLowerCase().includes("candidate") ? "candidate" as const : "not-trained" as const,
+    metric: "Retained model receipt",
+    metricValue: null,
+    metricLabel: model.model_run_id ?? "No run identifier reported",
+    trainingRecords: 0,
+    evidenceClass: "derived" as const,
+    caveat: "Only state explicitly reported by the verified manifest is shown. No bundled registry fixture is substituted.",
+  }));
 
   return {
-    ...bundled,
     generatedAt: live.generated_at,
     asOfDate,
     corpus: { awards, contracts, candidateAwardValueUsd },
-    sources: [...sources, ...additionalSources],
-    fundingFlow: annual.length > 0 ? annual : bundled.fundingFlow,
+    sources,
+    fundingFlow: annual,
+    technologyAreas: [],
+    programs,
+    models,
   };
 }

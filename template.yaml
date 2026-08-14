@@ -1889,6 +1889,24 @@ Resources:
             ApiId: !Ref HttpApi
             Method: GET
             Path: /public-intelligence/acquisitions
+        GetContinuousPublicAcquisition:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /public-intelligence/acquisitions/continuous
+        StartContinuousPublicAcquisition:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /public-intelligence/acquisitions/continuous/start
+        StopContinuousPublicAcquisition:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /public-intelligence/acquisitions/continuous/stop
         RunPublicAcquisition:
           Type: HttpApi
           Properties:

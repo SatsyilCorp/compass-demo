@@ -20,3 +20,10 @@ test("run of show remains within the fifty minute limit", () => {
   assert.equal(totalScenarioMinutes(), DEMO_LOGISTICS.scenarioMinutes);
   assert.ok(DEMO_LOGISTICS.scenarioMinutes + DEMO_LOGISTICS.promptMinutes + DEMO_LOGISTICS.closeMinutes <= DEMO_LOGISTICS.maximumMinutes);
 });
+
+test("live portability element does not overclaim protected release execution", () => {
+  const portability = DEMO_ELEMENTS.find((element) => element.number === 7);
+  assert.equal(portability?.screen, "Portable browser preview");
+  assert.match(portability?.boundary ?? "", /does not call POST \/export/i);
+  assert.match(portability?.proof.join(" ") ?? "", /no-server-receipt/i);
+});

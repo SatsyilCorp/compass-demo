@@ -24,8 +24,12 @@ export const AUTH_DISABLED =
   typeof process !== "undefined" &&
   process.env.NEXT_PUBLIC_AUTH_DISABLED === "true";
 
+const COGNITO_AUTHORITY = process.env.NEXT_PUBLIC_COGNITO_AUTHORITY ?? "";
 const COGNITO_DOMAIN = process.env.NEXT_PUBLIC_COGNITO_DOMAIN ?? "";
 const COGNITO_CLIENT_ID = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? "";
+export const AUTH_CONFIGURED = Boolean(
+  COGNITO_AUTHORITY && COGNITO_DOMAIN && COGNITO_CLIENT_ID,
+);
 const POST_LOGOUT_URI =
   process.env.NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI ??
   "http://localhost:3000/login/";
@@ -101,7 +105,21 @@ export function useAppAuth(): AppAuth {
   const ctx = useContext(AuthContext);
   // Read unconditionally (rules of hooks); only consulted in no-login demo mode.
   const demoRole = useDemoPersona();
-  if (AUTH_DISABLED || !ctx) return buildStub(demoRole);
+  if (AUTH_DISABLED) return buildStub(demoRole);
+  if (!ctx) {
+    return {
+      isAuthenticated: false,
+      isLoading: false,
+      user: null,
+      idToken: null,
+      groups: [],
+      role: null,
+      orgUnit: null,
+      displayName: null,
+      signinRedirect: () => {},
+      signoutRedirect: () => {},
+    };
+  }
 
   const profile = ctx.user?.profile as Record<string, unknown> | undefined;
   const groups = normalizeCognitoGroups(profile?.["cognito:groups"]);

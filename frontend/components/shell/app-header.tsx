@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { navItemForPath } from "@/lib/nav/sidebar-config";
 import { NotificationCenter } from "@/components/notifications/notification-center";
+import { evidenceModeHome } from "@/lib/evidence-mode";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { CompassWordmark } from "./brand";
 import { UserMenu } from "./user-menu";
 
@@ -22,6 +24,7 @@ export function AppHeader({
 }) {
   const pathname = usePathname() ?? "";
   const { role } = useAppAuth();
+  const { mode } = useEvidenceMode();
   const currentItem = navItemForPath(pathname, role);
 
   return (
@@ -39,7 +42,7 @@ export function AppHeader({
         </button>
 
         <Link
-          href="/dashboard/"
+          href={evidenceModeHome(mode)}
           aria-label="Compass dashboard"
           className="shrink-0 rounded-md focus-visible:outline-offset-4 lg:hidden"
         >

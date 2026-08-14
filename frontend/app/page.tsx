@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import {
   ArrowRight,
@@ -12,30 +14,39 @@ import {
 } from "lucide-react";
 import { CompassWordmark, TrustIndicator } from "@/components/shell/brand";
 import { SkipNav } from "@/components/shell/skip-nav";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 
 const missionFlow = [
-  { number: "01", label: "Ingest", detail: "Bring structured research data into one controlled path." },
-  { number: "02", label: "Govern", detail: "Apply quality, access, and provenance rules before use." },
-  { number: "03", label: "Discover", detail: "Trace the portfolio and surface emerging concentration." },
-  { number: "04", label: "Decide", detail: "Turn evidence into an executive-ready recommendation." },
-  { number: "05", label: "Release", detail: "Approve, fingerprint, and audit every governed export." },
+  { number: "01", label: "Acquire", detail: "Continuously collect bounded pages from named public authorities, or accept one sanitized public file." },
+  { number: "02", label: "Govern", detail: "Retain hashes, quality outcomes, identities, owners, stewards, and exact processing lineage." },
+  { number: "03", label: "Classify", detail: "Run the champion classifier on accepted public narratives and retain its versioned receipts." },
+  { number: "04", label: "Decide", detail: "Connect source changes, model signals, citations, and review flags in one live workspace." },
+  { number: "05", label: "Release", detail: "Create a portable package with source, model, review, and lineage fields intact." },
+];
+
+const rehearsalMissionFlow = [
+  { number: "01", label: "Select", detail: "Choose an isolated synthetic fixture or explicitly upload a rehearsal file." },
+  { number: "02", label: "Govern", detail: "Exercise hashes, quality outcomes, identities, owners, stewards, and processing lineage." },
+  { number: "03", label: "Classify", detail: "Run deterministic rehearsal model contracts without claiming a live cloud execution." },
+  { number: "04", label: "Review", detail: "Practice the decision workflow with synthetic labels visible on every surface." },
+  { number: "05", label: "Exit", detail: "Return to live public evidence without allowing rehearsal records into the live catalog." },
 ];
 
 const capabilities = [
   {
     Icon: Database,
     title: "A governed data foundation",
-    body: "Quality gates, role-aware access, and end-to-end lineage make every portfolio view explainable.",
+    body: "Named public authorities, quality gates, role-aware access, and end-to-end receipts make every visible record explainable.",
   },
   {
     Icon: BarChart3,
     title: "Decision-ready intelligence",
-    body: "Portfolio signals, topic models, and executive summaries focus attention on what changed and what to do next.",
+    body: "Observed source changes, real classifier outputs, transparent review rules, and citations focus attention without claiming portfolio completeness.",
   },
   {
     Icon: ShieldCheck,
     title: "Evidence in every action",
-    body: "Model runs, approvals, and exports carry traceable evidence so the path from source to decision can be demonstrated.",
+    body: "Model runs, source snapshots, decisions, and releases carry traceable evidence. Synthetic data is available only after explicit rehearsal selection.",
   },
 ];
 
@@ -45,6 +56,10 @@ const capabilities = [
  * Variant A. This synthesis reads as mission software, not a marketing site.
  */
 export default function LandingPage() {
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
+  const workspaceHref = rehearsal ? "/rehearsal/" : "/login/";
+  const steps = rehearsal ? rehearsalMissionFlow : missionFlow;
   return (
     <>
       <SkipNav />
@@ -67,10 +82,10 @@ export default function LandingPage() {
                 Mission capabilities
               </a>
               <Link
-                href="/login/"
+                href={workspaceHref}
                 className="inline-flex min-h-11 items-center gap-2 rounded-md bg-gov-primary px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-gov-primary-vivid sm:px-5"
               >
-                Enter Compass
+                {rehearsal ? "Open rehearsal" : "Enter Compass"}
                 <ArrowRight className="size-4" aria-hidden />
               </Link>
             </nav>
@@ -84,7 +99,7 @@ export default function LandingPage() {
             <div className="max-w-4xl compass-rise">
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold-light">
-                  S&amp;T portfolio intelligence
+                  {rehearsal ? "Explicit synthetic rehearsal" : "Live public S&T evidence intelligence"}
                 </p>
                 <span aria-hidden className="h-px w-10 bg-gold-light/60" />
                 <p className="text-xs font-semibold text-white/60">Technical demonstration</p>
@@ -94,15 +109,16 @@ export default function LandingPage() {
                 <span className="mt-1 block text-gold-light">Prove the path.</span>
               </h1>
               <p className="mt-8 max-w-2xl text-base leading-7 text-white/72 sm:text-xl sm:leading-8">
-                Compass turns complex research portfolio data into governed, explainable evidence
-                for the next mission decision.
+                {rehearsal
+                  ? "Compass is currently isolated in rehearsal mode. Synthetic fixtures remain visibly labeled and never substitute for unavailable live evidence."
+                  : "Compass continuously turns bounded public research evidence into governed records, real model receipts, cited intelligence, and review-ready decisions."}
               </p>
               <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Link
-                  href="/login/"
+                  href={workspaceHref}
                   className="inline-flex min-h-12 items-center justify-center gap-3 rounded-md bg-gold-light px-6 text-sm font-bold text-gov-primary-darker shadow-elevated transition-transform hover:-translate-y-0.5"
                 >
-                  Launch mission workspace
+                  {rehearsal ? "Open rehearsal workspace" : "Launch mission workspace"}
                   <ArrowRight className="size-4" aria-hidden />
                 </Link>
                 <a
@@ -126,7 +142,9 @@ export default function LandingPage() {
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
                     Decision evidence
                   </p>
-                  <h2 className="mt-2 text-lg font-semibold text-white">Portfolio readiness brief</h2>
+                  <h2 className="mt-2 text-lg font-semibold text-white">
+                    {rehearsal ? "Isolated rehearsal path" : "Live evidence path"}
+                  </h2>
                 </div>
                 <span className="grid size-11 shrink-0 place-items-center rounded-full bg-success/15 text-emerald-200">
                   <CheckCircle2 className="size-5" aria-hidden />
@@ -134,10 +152,10 @@ export default function LandingPage() {
               </div>
 
               <div className="divide-y divide-white/10">
-                <ProofRow Icon={FileCheck2} label="Data quality" value="Gates passed" />
-                <ProofRow Icon={Network} label="Source lineage" value="Traceable" />
-                <ProofRow Icon={Sparkles} label="Model evidence" value="Available" />
-                <ProofRow Icon={Braces} label="Release control" value="Approval bound" />
+                <ProofRow Icon={FileCheck2} label={rehearsal ? "Fixture source" : "Public sources"} value={rehearsal ? "Synthetic" : "Named"} />
+                <ProofRow Icon={Network} label="Source lineage" value={rehearsal ? "Isolated" : "Receipt bound"} />
+                <ProofRow Icon={Sparkles} label="Model evidence" value={rehearsal ? "Rehearsed" : "Versioned"} />
+                <ProofRow Icon={Braces} label="Evidence mode" value={rehearsal ? "Rehearsal" : "Live only"} />
               </div>
 
               <div className="mt-5 rounded-lg border border-white/10 bg-black/15 p-4">
@@ -145,8 +163,9 @@ export default function LandingPage() {
                   Recommended next action
                 </p>
                 <p className="mt-2 text-sm font-semibold leading-6 text-white">
-                  Review portfolio concentration, inspect the supporting lineage, then release a
-                  governed decision package.
+                  {rehearsal
+                    ? "Practice the full path, inspect every synthetic label, then return to the live evidence boundary."
+                    : "Inspect what changed at each authority, review the model route and source record, then release a provenance-bound evidence package."}
                 </p>
               </div>
             </aside>
@@ -158,22 +177,23 @@ export default function LandingPage() {
             <div className="max-w-2xl">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-ink">One controlled path</p>
               <h2 id="mission-flow-title" className="mt-3 text-3xl font-bold text-text-strong sm:text-4xl">
-                From source file to mission decision
+                {rehearsal ? "An isolated path for a deterministic rehearsal" : "From named public authority to cited decision"}
               </h2>
               <p className="mt-4 text-base leading-7 text-text-muted">
-                Every stage carries its own proof, with the context preserved for the next person
-                in the decision chain.
+                {rehearsal
+                  ? "Every stage retains the rehearsal label so a presenter can never confuse a fixture with current public evidence."
+                  : "Every stage carries its own proof, with the context preserved for the next person in the decision chain."}
               </p>
             </div>
             <ol className="mt-10 grid border-y border-border sm:grid-cols-2 lg:grid-cols-5">
-              {missionFlow.map((step, index) => (
+              {steps.map((step, index) => (
                 <li
                   key={step.label}
                   className="group relative min-h-52 border-b border-border p-5 last:border-b-0 sm:border-r sm:[&:nth-child(even)]:border-r-0 lg:border-b-0 lg:[&:nth-child(even)]:border-r lg:last:border-r-0"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-xs font-semibold text-gold-ink">{step.number}</span>
-                    {index < missionFlow.length - 1 && (
+                    {index < steps.length - 1 && (
                       <ArrowRight className="hidden size-4 text-border-strong lg:block" aria-hidden />
                     )}
                   </div>
@@ -216,11 +236,11 @@ export default function LandingPage() {
         <section className="bg-gov-primary text-white">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-8 px-5 py-14 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-12">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-light">Ready for the mission brief</p>
-              <h2 className="mt-3 max-w-2xl text-3xl font-bold text-white">Walk the full evidence path in one working prototype.</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-light">{rehearsal ? "Ready to rehearse" : "Ready for the mission brief"}</p>
+              <h2 className="mt-3 max-w-2xl text-3xl font-bold text-white">{rehearsal ? "Practice the full path without mixing synthetic and live evidence." : "Walk the full evidence path in one working prototype."}</h2>
             </div>
-            <Link href="/login/" className="inline-flex min-h-12 shrink-0 items-center justify-center gap-3 rounded-md bg-white px-6 text-sm font-bold text-gov-primary shadow-soft transition-transform hover:-translate-y-0.5">
-              Enter Compass
+            <Link href={workspaceHref} className="inline-flex min-h-12 shrink-0 items-center justify-center gap-3 rounded-md bg-white px-6 text-sm font-bold text-gov-primary shadow-soft transition-transform hover:-translate-y-0.5">
+              {rehearsal ? "Open rehearsal" : "Enter Compass"}
               <ArrowRight className="size-4" aria-hidden />
             </Link>
           </div>

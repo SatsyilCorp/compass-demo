@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   Database,
   Download,
+  FlaskConical,
   KeyRound,
   LayoutDashboard,
   Network,
@@ -21,7 +22,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
-import { sidebarFor, type NavSection } from "@/lib/nav/sidebar-config";
+import { navHrefForEvidenceMode, sidebarFor, type NavSection } from "@/lib/nav/sidebar-config";
+import { evidenceModeHome, type EvidenceMode } from "@/lib/evidence-mode";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { CompassWordmark } from "./brand";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -35,6 +38,7 @@ const ICONS: Record<string, LucideIcon> = {
   "radio-tower": RadioTower,
   workflow: Workflow,
   "clipboard-check": ClipboardCheck,
+  "flask-conical": FlaskConical,
   radar: Network,
   map: Map,
 };
@@ -47,6 +51,7 @@ type SidebarProps = {
 export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }: SidebarProps) {
   const pathname = usePathname() ?? "";
   const { role } = useAppAuth();
+  const { mode } = useEvidenceMode();
   const sections = sidebarFor(role);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -75,6 +80,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }:
         <RailContent
           pathname={pathname}
           sections={sections}
+          homeHref={evidenceModeHome(mode)}
+          evidenceMode={mode}
         />
       </aside>
 
@@ -105,6 +112,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }:
             <RailContent
               pathname={pathname}
               sections={sections}
+              homeHref={evidenceModeHome(mode)}
+              evidenceMode={mode}
               onNavigate={onMobileClose}
               mobile
             />
@@ -118,11 +127,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => undefined }:
 function RailContent({
   pathname,
   sections,
+  homeHref,
+  evidenceMode,
   onNavigate,
   mobile = false,
 }: {
   pathname: string;
   sections: NavSection[];
+  homeHref: string;
+  evidenceMode: EvidenceMode;
   onNavigate?: () => void;
   mobile?: boolean;
 }) {
@@ -130,7 +143,7 @@ function RailContent({
     <>
       <div className="border-b border-white/10 px-5 pb-5 pt-5">
         <Link
-          href="/dashboard/"
+          href={homeHref}
           onClick={onNavigate}
           className="inline-flex min-h-11 items-center rounded-md focus-visible:outline-offset-4"
         >
@@ -141,9 +154,10 @@ function RailContent({
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
         {sections.map((section) => {
-          const sectionActive = section.items.some((item) => (
-            pathname === item.href || pathname.startsWith(`${item.href.replace(/\/$/, "")}/`)
-          ));
+          const sectionActive = section.items.some((item) => {
+            const href = navHrefForEvidenceMode(item.href, evidenceMode);
+            return pathname === href || pathname.startsWith(`${href.replace(/\/$/, "")}/`);
+          });
           if (section.collapsed) {
             return (
               <details key={section.label} open={sectionActive} className="group mb-3 last:mb-0">
@@ -151,7 +165,7 @@ function RailContent({
                   <ChevronDown className="size-4 -rotate-90 text-white/40 transition-transform group-open:rotate-0" aria-hidden />
                   <span>{section.label}</span>
                 </summary>
-                <NavItems pathname={pathname} section={section} onNavigate={onNavigate} nested />
+                <NavItems pathname={pathname} section={section} evidenceMode={evidenceMode} onNavigate={onNavigate} nested />
               </details>
             );
           }
@@ -160,7 +174,7 @@ function RailContent({
               <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.17em] text-gold-light/75">
                 {section.label}
               </p>
-              <NavItems pathname={pathname} section={section} onNavigate={onNavigate} />
+              <NavItems pathname={pathname} section={section} evidenceMode={evidenceMode} onNavigate={onNavigate} />
             </div>
           );
         })}
@@ -177,23 +191,26 @@ function RailContent({
 function NavItems({
   pathname,
   section,
+  evidenceMode,
   onNavigate,
   nested = false,
 }: {
   pathname: string;
   section: NavSection;
+  evidenceMode: EvidenceMode;
   onNavigate?: () => void;
   nested?: boolean;
 }) {
   return (
     <ul className={`m-0 list-none space-y-1 p-0 ${nested ? "pb-2 pl-3" : ""}`}>
       {section.items.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href.replace(/\/$/, "")}/`);
+        const href = navHrefForEvidenceMode(item.href, evidenceMode);
+        const active = pathname === href || pathname.startsWith(`${href.replace(/\/$/, "")}/`);
         const Icon = ICONS[item.icon] ?? CircleDot;
         return (
-          <li key={item.href}>
+          <li key={href}>
             <Link
-              href={item.href}
+              href={href}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={`group relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-[13px] transition-colors ${

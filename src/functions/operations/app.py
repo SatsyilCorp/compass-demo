@@ -100,11 +100,173 @@ def _needs_attention(item: Mapping[str, Any]) -> bool:
     ).lower() == "failed"
 
 
+def _normalized_evidence_class(value: Any) -> str | None:
+    normalized = str(value or "").strip().lower().replace("_", "-").replace(" ", "-")
+    if not normalized or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,79}", normalized):
+        return None
+    return normalized
+
+
+def _declared_evidence_class(item: Mapping[str, Any]) -> str | None:
+    direct = _normalized_evidence_class(item.get("evidence_class"))
+    if direct:
+        return direct
+    detail = item.get("detail")
+    if isinstance(detail, Mapping):
+        return _normalized_evidence_class(detail.get("evidence_class"))
+    return None
+
+
+def _known_synthetic_receipt(item: Mapping[str, Any]) -> bool:
+    run_id = str(item.get("run_id") or "").lower()
+    category = str(item.get("category") or "").lower().replace("_", "-")
+    stream_kind = str(item.get("stream_kind") or "").lower()
+    if run_id.startswith("run-live-") or category == "demo-stream":
+        return True
+    if stream_kind in {"continuous-synthetic", "accelerated-synthetic"}:
+        return True
+    explicit_text = " ".join(
+        str(item.get(key) or "").lower()
+        for key in ("source", "destination", "evidence_uri", "title", "message")
+    )
+    return "live-stream" in explicit_text or "synthetic" in explicit_text
+
+
+def _inferred_evidence_class(
+    item: Mapping[str, Any],
+    *,
+    fallback: str,
+) -> str:
+    if _known_synthetic_receipt(item):
+        return "synthetic-demo"
+    declared = _declared_evidence_class(item)
+    if declared:
+        return declared
+
+    run_kind = str(item.get("run_kind") or "").lower().replace("_", "-")
+    category = str(item.get("category") or "").lower().replace("_", "-")
+    stage_id = str(item.get("stage_id") or "").lower().replace("_", "-")
+    if run_kind == "public-acquisition" or category == "public-acquisition":
+        return "public-observed"
+    if run_kind in {"public-narrative-classification", "sagemaker-batch-inference"}:
+        prediction_tokens = ("classif", "infer", "model", "predict", "publish", "score")
+        if any(token in stage_id for token in prediction_tokens):
+            return "public-predicted"
+        return "public-observed"
+    if "public" in category and any(
+        token in category for token in ("model", "classif", "predict", "infer")
+    ):
+        return "public-predicted"
+    if category.startswith("public"):
+        return "public-observed"
+    return fallback
+
+
+def _run_evidence_class(stages: List[Mapping[str, Any]]) -> str:
+    classes = {
+        _inferred_evidence_class(stage, fallback="unclassified")
+        for stage in stages
+    }
+    classes.discard("unclassified")
+    if not classes:
+        return "unclassified"
+    if any(value.startswith("synthetic") for value in classes):
+        return "synthetic-demo"
+    if len(classes) == 1:
+        return next(iter(classes))
+    if all(value.startswith("public") for value in classes):
+        return "public-derived"
+    return "mixed-evidence"
+
+
+def _is_live_public_evidence_class(value: Any) -> bool:
+    evidence_class = _normalized_evidence_class(value)
+    return bool(
+        evidence_class == "operational-control"
+        or evidence_class == "public"
+        or (evidence_class and evidence_class.startswith("public-"))
+    )
+
+
+def _classify_lineage_stages(stages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_run: Dict[str, List[Dict[str, Any]]] = {}
+    for stage in stages:
+        run_id = str(stage.get("run_id") or "")
+        if run_id:
+            by_run.setdefault(run_id, []).append(stage)
+
+    run_classes = {
+        run_id: _run_evidence_class(run_stages)
+        for run_id, run_stages in by_run.items()
+    }
+    classified = []
+    for stage in stages:
+        run_id = str(stage.get("run_id") or "")
+        evidence_class = _inferred_evidence_class(stage, fallback="unclassified")
+        if evidence_class == "unclassified":
+            evidence_class = run_classes.get(run_id, "unclassified")
+        classified.append({**stage, "evidence_class": evidence_class})
+    return classified
+
+
+def _classify_signal(signal: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        **signal,
+        "evidence_class": _inferred_evidence_class(
+            signal,
+            fallback="operational-control",
+        ),
+    }
+
+
 def list_signals(limit: int = 50) -> Dict[str, Any]:
-    signals = _query_index("SIGNAL", limit=limit)
+    signals = [
+        _classify_signal(signal)
+        for signal in _query_index("SIGNAL", limit=limit)
+    ]
+    unresolved_run_ids = {
+        str(signal.get("run_id") or "")
+        for signal in signals
+        if signal.get("evidence_class") == "operational-control"
+        and signal.get("run_id")
+    }
+    if unresolved_run_ids:
+        lineage_stages = _classify_lineage_stages(
+            _query_index("LINEAGE", limit=MAX_STAGES)
+        )
+        lineage_classes = {
+            run_id: _run_evidence_class(
+                [
+                    stage
+                    for stage in lineage_stages
+                    if str(stage.get("run_id") or "") == run_id
+                ]
+            )
+            for run_id in unresolved_run_ids
+        }
+        signals = [
+            {
+                **signal,
+                "evidence_class": lineage_classes.get(
+                    str(signal.get("run_id") or ""),
+                    "operational-control",
+                ),
+            }
+            if signal.get("evidence_class") == "operational-control"
+            and lineage_classes.get(str(signal.get("run_id") or ""))
+            not in {None, "unclassified"}
+            else signal
+            for signal in signals
+        ]
+    signals = [
+        signal
+        for signal in signals
+        if _is_live_public_evidence_class(signal.get("evidence_class"))
+    ]
     return {
         "contract": "compass.operational-signals.v1",
         "mode": "live",
+        "evidence_scope": "public-only",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "signals": signals,
         "unacknowledged": sum(1 for item in signals if _needs_attention(item)),
@@ -116,7 +278,7 @@ def list_signals(limit: int = 50) -> Dict[str, Any]:
 
 
 def list_lineage(limit: int = 100) -> Dict[str, Any]:
-    stages = _query_index("LINEAGE", limit=limit)
+    stages = _classify_lineage_stages(_query_index("LINEAGE", limit=limit))
     grouped: Dict[str, Dict[str, Any]] = {}
     for stage in stages:
         run_id = str(stage.get("run_id") or "")
@@ -132,6 +294,7 @@ def list_lineage(limit: int = 100) -> Dict[str, Any]:
                 "stage_count": 0,
                 "terminal_stage": stage.get("stage_id"),
                 "source_sha256": stage.get("source_sha256"),
+                "evidence_class": "unclassified",
             },
         )
         run["stage_count"] += 1
@@ -141,18 +304,37 @@ def list_lineage(limit: int = 100) -> Dict[str, Any]:
             run["terminal_stage"] = stage.get("stage_id")
         if stage.get("source_sha256") and not run.get("source_sha256"):
             run["source_sha256"] = stage.get("source_sha256")
-    runs = sorted(grouped.values(), key=lambda item: str(item.get("updated_at")), reverse=True)
+    for run_id, run in grouped.items():
+        run["evidence_class"] = _run_evidence_class(
+            [stage for stage in stages if str(stage.get("run_id") or "") == run_id]
+        )
+    runs = sorted(
+        (
+            run
+            for run in grouped.values()
+            if _is_live_public_evidence_class(run.get("evidence_class"))
+        ),
+        key=lambda item: str(item.get("updated_at")),
+        reverse=True,
+    )
     return {
         "contract": "compass.operational-lineage-list.v1",
         "mode": "live",
+        "evidence_scope": "public-only",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "runs": runs,
     }
 
 
 def get_lineage(run_id: str) -> Dict[str, Any] | None:
-    stages = sorted(_query_run(run_id), key=lambda item: int(item.get("sequence") or 0))
+    stages = sorted(
+        _classify_lineage_stages(_query_run(run_id)),
+        key=lambda item: int(item.get("sequence") or 0),
+    )
     if not stages:
+        return None
+    evidence_class = _run_evidence_class(stages)
+    if not _is_live_public_evidence_class(evidence_class):
         return None
     final = stages[-1]
     source = next((stage.get("source") for stage in stages if stage.get("source")), None)
@@ -181,9 +363,11 @@ def get_lineage(run_id: str) -> Dict[str, Any] | None:
     return {
         "contract": "compass.operational-lineage.v1",
         "mode": "live",
+        "evidence_scope": "public-only",
         "run_id": run_id,
         "run_kind": final.get("run_kind") or "operational-run",
         "status": final.get("status") or "running",
+        "evidence_class": evidence_class,
         "source": source,
         "source_sha256": next(
             (stage.get("source_sha256") for stage in stages if stage.get("source_sha256")),
@@ -213,6 +397,7 @@ def summary() -> Dict[str, Any]:
     return {
         "contract": "compass.operational-summary.v1",
         "mode": "live",
+        "evidence_scope": "public-only",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "counts": {
             "lineage_runs": len(lineage["runs"]),
@@ -256,7 +441,7 @@ def acknowledge(event_id: str, actor: str) -> Dict[str, Any] | None:
         ReturnValues="ALL_NEW",
     )
     item = response.get("Attributes")
-    return _public(item) if item else None
+    return _classify_signal(_public(item)) if item else None
 
 
 def _poweruser(event: Mapping[str, Any]):

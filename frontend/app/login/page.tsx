@@ -295,9 +295,10 @@ function ZeroTrustExplainer() {
           hidden in the UI.
         </li>
         <li>
-          <strong className="text-text-strong">Every export is audited</strong> - writes an immutable{" "}
-          <code className="font-mono text-[11px]">audit_log</code> row, and rows above the export cap require an
-          approval before they'll run.
+          <strong className="text-text-strong">Protected export policy is separate from browser preview</strong> - the
+          configured <code className="font-mono text-[11px]">POST /export</code> workflow is designed to recheck scope,
+          require approval above its cap, and write an immutable <code className="font-mono text-[11px]">audit_log</code>
+          row. The live public portable-preview screen does not call that workflow and makes no approval or audit claim.
         </li>
       </ul>
     </section>

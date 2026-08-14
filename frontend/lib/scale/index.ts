@@ -1,4 +1,4 @@
-import { USE_MOCK } from "@/lib/api";
+import { usesRehearsalEvidence } from "@/lib/evidence-mode";
 import { liveScaleAdapter } from "./live-adapter";
 import { replayScaleAdapter } from "./replay-adapter";
 
@@ -9,5 +9,5 @@ export { isTerminalScaleStatus } from "./types";
 export type * from "./types";
 
 export function getScaleAdapter() {
-  return USE_MOCK ? replayScaleAdapter : liveScaleAdapter;
+  return usesRehearsalEvidence() ? replayScaleAdapter : liveScaleAdapter;
 }

@@ -513,6 +513,18 @@ export type SystemEvidenceResponse = {
 
 export type OperationsEvidenceMode = "live" | "replay";
 
+export type OperationsEvidenceClass =
+  | "public"
+  | "public-observed"
+  | "public-derived"
+  | "public-predicted"
+  | "synthetic"
+  | "synthetic-demo"
+  | "operational-control"
+  | "mixed-evidence"
+  | "unclassified"
+  | (string & {});
+
 export type OperationsRunStatus =
   | "queued"
   | "running"
@@ -560,6 +572,7 @@ export type OperationsRunSummary = {
   run_id: string;
   run_kind: string;
   label: string;
+  evidence_class: OperationsEvidenceClass;
   status: OperationsRunStatus;
   current_stage: string;
   started_at: string;
@@ -612,6 +625,7 @@ export type OperationsSignalDelivery = {
 
 export type OperationsSignal = {
   event_id: string;
+  evidence_class: OperationsEvidenceClass;
   signal_type: string;
   severity: OperationsSignalSeverity;
   title: string;
@@ -648,6 +662,7 @@ export type OperationsSignalAcknowledgeResponse = {
 
 export type OperationsLineageStage = {
   stage_id: string;
+  evidence_class: OperationsEvidenceClass;
   sequence: number;
   label: string;
   system: string;

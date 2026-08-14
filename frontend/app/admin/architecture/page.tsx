@@ -44,8 +44,8 @@ export default function ArchitecturePage() {
           <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-6">
             <PageHeader
               kicker="Element 7 of 7 | Architecture, Interoperability, and Operational Proof"
-              title="AWS architecture and VPC map"
-              lead="See the deployed network boundary first, then follow data, delivery, model, security, scale, and recovery paths. Every component is labeled as running, configured, target-only, or externally provided."
+              title="Compass evidence architecture and VPC map"
+              lead="See the complete product boundary in one view: the primary live public path, the separately selected rehearsal path, networking, data, models, decision surfaces, delivery, and operations. Every component is labeled as running, configured, target-only, or externally provided."
               icon={<Network className="size-5" aria-hidden />}
               actions={(
                 <div className="flex flex-wrap gap-2">

@@ -55,6 +55,11 @@ def _safe_text(value: Any, *, maximum: int = MAX_TEXT) -> str:
     return " ".join(str(value or "").replace("\u2014", " - ").split())[:maximum]
 
 
+def _safe_evidence_class(value: Any) -> str | None:
+    normalized = _safe_text(value, maximum=80).lower().replace("_", "-").replace(" ", "-")
+    return normalized or None
+
+
 def _safe_detail(value: Mapping[str, Any] | None) -> Dict[str, Any]:
     allowed = {
         "accepted_records",
@@ -180,6 +185,7 @@ def record_stage(
     output_sha256: str | None = None,
     actor: str = "system-workload",
     detail: Mapping[str, Any] | None = None,
+    evidence_class: str | None = None,
     occurred_at: str | None = None,
 ) -> bool:
     """Upsert one idempotent stage receipt and return whether it was written."""
@@ -189,6 +195,10 @@ def record_stage(
     if normalized_status not in ALLOWED_STATUSES:
         normalized_status = "failed"
     timestamp = occurred_at or utc_now()
+    safe_detail = _safe_detail(detail)
+    safe_evidence_class = _safe_evidence_class(
+        evidence_class or safe_detail.get("evidence_class")
+    )
     receipt = {
         "contract": "compass.operational-stage.v1",
         "run_id": _safe_text(run_id, maximum=180),
@@ -203,7 +213,8 @@ def record_stage(
         "input_sha256": _safe_text(input_sha256, maximum=64) if input_sha256 else None,
         "output_sha256": _safe_text(output_sha256, maximum=64) if output_sha256 else None,
         "actor": _safe_text(actor, maximum=160),
-        "detail": _safe_detail(detail),
+        "detail": safe_detail,
+        "evidence_class": safe_evidence_class,
         "updated_at": timestamp,
     }
     receipt["receipt_sha256"] = canonical_digest(receipt)
@@ -240,6 +251,7 @@ def record_signal(
     run_id: str | None = None,
     evidence_uri: str | None = None,
     detail: Mapping[str, Any] | None = None,
+    evidence_class: str | None = None,
     event_id: str | None = None,
     occurred_at: str | None = None,
     publish: bool = True,
@@ -261,6 +273,10 @@ def record_signal(
     safe_severity = severity.lower()
     if safe_severity not in ALLOWED_SEVERITIES:
         safe_severity = "medium"
+    safe_detail = _safe_detail(detail)
+    safe_evidence_class = _safe_evidence_class(
+        evidence_class or safe_detail.get("evidence_class")
+    )
     item = {
         "contract": "compass.operational-signal.v1",
         "pk": f"SIGNAL#{stable_id}",
@@ -275,7 +291,8 @@ def record_signal(
         "message": _safe_text(message, maximum=500),
         "run_id": safe_run,
         "evidence_uri": _safe_text(evidence_uri, maximum=300) if evidence_uri else None,
-        "detail": _safe_detail(detail),
+        "detail": safe_detail,
+        "evidence_class": safe_evidence_class,
         "status": "open",
         "acknowledged_at": None,
         "created_at": timestamp,
@@ -305,6 +322,7 @@ def record_signal(
                     "message",
                     "run_id",
                     "evidence_uri",
+                    "evidence_class",
                     "created_at",
                     "receipt_sha256",
                 )

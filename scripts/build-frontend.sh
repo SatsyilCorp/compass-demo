@@ -5,8 +5,9 @@
 # and the optional CustomDomainUrl
 # from the CFN stack outputs and exports them as the NEXT_PUBLIC_* vars read
 # by frontend/lib/api.ts and frontend/lib/auth/{providers.tsx,use-app-auth.ts}
-# (see frontend/.env.example / docs/RUNBOOK.md §7). Live mode only - this
-# script always sets USE_MOCK=false and AUTH_DISABLED=false.
+# (see frontend/.env.example / docs/RUNBOOK.md §7). The deployed product keeps
+# authentication enabled and uses live public evidence as its fail-closed
+# runtime default.
 #
 # Usage: ./scripts/build-frontend.sh [stack-name] [aws-profile]
 set -euo pipefail
@@ -61,7 +62,6 @@ for name_val in "ApiBaseUrl:$API_BASE_URL" "CognitoDomain:$COGNITO_DOMAIN_HOST" 
   fi
 done
 
-export NEXT_PUBLIC_USE_MOCK=false
 export NEXT_PUBLIC_AUTH_DISABLED=false
 export NEXT_PUBLIC_API_BASE_URL="$API_BASE_URL"
 export NEXT_PUBLIC_COGNITO_AUTHORITY="https://cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}"
@@ -71,7 +71,6 @@ export NEXT_PUBLIC_COGNITO_REDIRECT_URI="${PUBLIC_WEB_ORIGIN}/login/"
 export NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI="${PUBLIC_WEB_ORIGIN}/login/"
 
 echo "==> Frontend env:"
-echo "  NEXT_PUBLIC_USE_MOCK=$NEXT_PUBLIC_USE_MOCK"
 echo "  NEXT_PUBLIC_AUTH_DISABLED=$NEXT_PUBLIC_AUTH_DISABLED"
 echo "  NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL"
 echo "  NEXT_PUBLIC_COGNITO_AUTHORITY=$NEXT_PUBLIC_COGNITO_AUTHORITY"
