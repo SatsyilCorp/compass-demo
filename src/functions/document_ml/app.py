@@ -44,6 +44,7 @@ ALLOWED_CONTENT_TYPES = {
 }
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+DOCUMENT_EVIDENCE_CLASSES = {"public-operational", "synthetic-rehearsal"}
 _REPOSITORY = None
 
 
@@ -91,15 +92,26 @@ def _actor(claims: http.Claims) -> str:
 
 
 def _document_evidence_class(record: Mapping[str, Any]) -> str:
-    declared = str(record.get("evidence_class") or "").strip().lower()
-    if declared:
-        return declared
     boundary = record.get("data_boundary")
-    if isinstance(boundary, Mapping) and str(
-        boundary.get("classification") or ""
-    ).strip().lower() == "public":
-        return "public-operational"
+    if isinstance(boundary, Mapping):
+        classification = str(boundary.get("classification") or "").strip().lower()
+        if classification == "public":
+            return "public-operational"
+        if classification == "synthetic-demo":
+            return "synthetic-rehearsal"
+    declared = str(record.get("evidence_class") or "").strip().lower()
+    if declared in DOCUMENT_EVIDENCE_CLASSES:
+        return declared
     return "synthetic-rehearsal"
+
+
+def _document_run_evidence_class(
+    run_id: str, stage_input: Mapping[str, Any]
+) -> str:
+    durable_run = _repo().get_record("run", run_id)
+    if durable_run:
+        return _document_evidence_class(durable_run)
+    return _document_evidence_class(stage_input)
 
 
 def _safe_filename(filename: str) -> str:
@@ -304,6 +316,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
             "gate": "quarantine",
             "reason": str(exc),
             "source": _logical_uri(key),
+            "evidence_class": evidence_class,
             "updated_at": now,
         }
         _repo().merge_record("run", run_id, failure)
@@ -325,6 +338,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
             message="The uploaded source failed inspection or digest verification and was not published.",
             run_id=run_id,
             evidence_uri=_logical_uri(key),
+            evidence_class=evidence_class,
             detail={"rejected_records": 1},
         )
         return {**failure, "source_bucket": bucket, "source_key": key}
@@ -407,7 +421,7 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
 
 def quality_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
-    evidence_class = _document_evidence_class(event)
+    evidence_class = _document_run_evidence_class(run_id, event)
     bronze_key = str(event["bronze_key"])
     extracted = _repo().get_json(bronze_key)
     receipt = engine.quality_receipt(extracted)
@@ -672,7 +686,7 @@ def classify_public_records(event: Mapping[str, Any]) -> Dict[str, Any]:
 
 def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
-    evidence_class = _document_evidence_class(event)
+    evidence_class = _document_run_evidence_class(run_id, event)
     bronze = _repo().get_json(str(event["bronze_key"]))
     model, model_state = _champion_or_baseline()
     prediction = engine.predict(model, str(bronze.get("extracted_text") or ""))
@@ -804,6 +818,7 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
 
 def quarantine_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
+    evidence_class = _document_run_evidence_class(run_id, event)
     source_bucket = str(event["source_bucket"])
     source_key = str(event["source_key"])
     quarantine_key = f"documents/quarantine/{run_id}/{PurePosixPath(source_key).name}"
@@ -813,6 +828,7 @@ def quarantine_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "status": "quarantined",
         "stage": "quarantine",
         "quarantine_uri": uri,
+        "evidence_class": evidence_class,
         "reason": event.get("reason")
         or "document failed one or more blocking quality rules",
         "updated_at": engine.utc_now(),
@@ -826,6 +842,7 @@ def quarantine_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "quarantined",
         source=_logical_uri(source_key),
         destination=uri,
+        evidence_class=evidence_class,
         detail={"rejected_records": 1, "consumer": "Human quality review"},
     )
     operational_evidence.record_signal(
@@ -835,6 +852,7 @@ def quarantine_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         message="Blocking validation or quality rules prevented Silver and Gold publication.",
         run_id=run_id,
         evidence_uri=uri,
+        evidence_class=evidence_class,
         detail={"rejected_records": 1},
     )
     return update
@@ -855,6 +873,7 @@ def workflow_failure_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     failure_code = str(error.get("Error") or "WorkflowStageFailed")[:120]
     source = _logical_uri(source_key) if source_key else "document-lake://unknown"
     now = engine.utc_now()
+    evidence_class = _document_run_evidence_class(run_id, failure)
     if _repo().get_record("run", run_id):
         _repo().merge_record(
             "run",
@@ -863,6 +882,7 @@ def workflow_failure_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
                 "status": "failed",
                 "stage": "workflow-failed",
                 "failure_code": failure_code,
+                "evidence_class": evidence_class,
                 "updated_at": now,
             },
         )
@@ -874,6 +894,7 @@ def workflow_failure_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "failed",
         source=source,
         actor="compass-document-workflow",
+        evidence_class=evidence_class,
         detail={"failed_records": 1, "failure_code": failure_code},
     )
     operational_evidence.record_signal(
@@ -883,9 +904,15 @@ def workflow_failure_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         message="A document stage exhausted its bounded retries. No unverified Gold record was published.",
         run_id=run_id,
         evidence_uri=source,
+        evidence_class=evidence_class,
         detail={"failed_records": 1, "failure_code": failure_code},
     )
-    return {"run_id": run_id, "status": "failed", "failure_code": failure_code}
+    return {
+        "run_id": run_id,
+        "status": "failed",
+        "failure_code": failure_code,
+        "evidence_class": evidence_class,
+    }
 
 
 def _training_samples(body: Mapping[str, Any]) -> List[engine.TrainingSample]:

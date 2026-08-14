@@ -52,6 +52,7 @@ States:
         source_key.$: $.source_key
         bronze_key.$: $.bronze_key
         org_unit.$: $.org_unit
+        evidence_class.$: $.evidence_class
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException
@@ -93,6 +94,7 @@ States:
         bronze_key.$: $.bronze_key
         quality_key.$: $.quality_key
         org_unit.$: $.org_unit
+        evidence_class.$: $.evidence_class
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException
@@ -121,6 +123,7 @@ States:
         source_bucket.$: $.source_bucket
         source_key.$: $.source_key
         reason.$: $.reason
+        evidence_class.$: $.evidence_class
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException

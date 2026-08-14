@@ -115,7 +115,7 @@ def api_event(method, path, body=None, *, role="poweruser", org_unit="ONR-Corpor
     }
 
 
-def run_public_document_pipeline(monkeypatch):
+def run_public_document_pipeline(monkeypatch, *, project_state_machine_payloads=False):
     fake = FakeRepository()
     monkeypatch.setattr(app, "_REPOSITORY", fake)
     stages = {}
@@ -166,8 +166,33 @@ def run_public_document_pipeline(monkeypatch):
             }
         }
     )
-    quality = app.quality_stage(inspected)
-    completed = app.curate_stage(quality)
+    quality_input = inspected
+    if project_state_machine_payloads:
+        quality_input = {
+            key: inspected[key]
+            for key in (
+                "run_id",
+                "source_bucket",
+                "source_key",
+                "bronze_key",
+                "org_unit",
+            )
+        }
+    quality = app.quality_stage(quality_input)
+    curate_input = quality
+    if project_state_machine_payloads:
+        curate_input = {
+            key: quality[key]
+            for key in (
+                "run_id",
+                "source_bucket",
+                "source_key",
+                "bronze_key",
+                "quality_key",
+                "org_unit",
+            )
+        }
+    completed = app.curate_stage(curate_input)
     return planned, completed, stages, signals
 
 
@@ -358,6 +383,30 @@ def test_public_document_completion_signal_carries_run_evidence_class(monkeypatc
         and signal["title"] == "Document pipeline completed"
     )
 
+    assert completion["evidence_class"] == "public-operational"
+
+
+def test_public_document_recovers_evidence_class_after_payload_projection(monkeypatch):
+    planned, completed, stages, signals = run_public_document_pipeline(
+        monkeypatch, project_state_machine_payloads=True
+    )
+    run_id = planned["run_id"]
+    run_stages = [
+        receipt
+        for (receipt_run_id, _sequence, _stage_id), receipt in stages.items()
+        if receipt_run_id == run_id
+    ]
+    completion = next(
+        signal
+        for signal in signals
+        if signal["run_id"] == run_id
+        and signal["title"] == "Document pipeline completed"
+    )
+
+    assert completed["evidence_class"] == "public-operational"
+    assert {receipt["evidence_class"] for receipt in run_stages} == {
+        "public-operational"
+    }
     assert completion["evidence_class"] == "public-operational"
 
 
