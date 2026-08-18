@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useRehearsalIdentity } from "./use-rehearsal-identity";
 import clsx from "clsx";
 import {
   Check,
@@ -111,7 +112,8 @@ function stepIndex(phase: Phase): number {
 }
 
 export function ExportView() {
-  const { role, orgUnit, idToken, displayName } = useAppAuth();
+  const { role: signedInRole, orgUnit: signedInOrgUnit, idToken, displayName } = useAppAuth();
+  const { role, orgUnit } = useRehearsalIdentity(signedInRole, signedInOrgUnit);
   const { mode } = useEvidenceMode();
   const rehearsal = mode === "rehearsal";
 
@@ -645,6 +647,7 @@ export function ExportView() {
       </div>
 
       <ApprovalInbox
+        signedInRole={signedInRole}
         data={approvals.data}
         error={approvals.error}
         loading={approvals.loading}

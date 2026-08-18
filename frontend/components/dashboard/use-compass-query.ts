@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useSyncExternalStore, useCallback, useEffect, useRef, useState } from "react";
+import { useEvidenceModeOptional } from "@/lib/evidence-mode-context";
+import { ORG_UNIT_FOR_ROLE } from "@/lib/auth/identity-contract";
+import {
+  getRehearsalPersonaOverride,
+  subscribeRehearsalPersona,
+} from "@/lib/mock/rehearsal-persona";
 import { ApiError, setAuthContext } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 
@@ -57,11 +63,23 @@ export function useCompassQuery<T>(
 
   const { isLoading, idToken, role, orgUnit } = auth;
 
+  // Rehearsal-only acting-persona override: on deployments with real sign-in
+  // it lets one presenter play both sides of four-eyes. Live mode ignores it.
+  const evidenceMode = useEvidenceModeOptional();
+  const personaOverride = useSyncExternalStore(
+    subscribeRehearsalPersona,
+    getRehearsalPersonaOverride,
+    () => null,
+  );
+  const rehearsalOverride = evidenceMode?.mode === "rehearsal" ? personaOverride : null;
+  const effRole = rehearsalOverride ?? role;
+  const effOrgUnit = rehearsalOverride ? ORG_UNIT_FOR_ROLE[rehearsalOverride] : orgUnit;
+
   useEffect(() => {
     if (isLoading) return;
     let cancelled = false;
 
-    setAuthContext({ bearerToken: idToken, role, orgUnit });
+    setAuthContext({ bearerToken: idToken, role: effRole, orgUnit: effOrgUnit });
     setLoading(true);
     setError(null);
 
@@ -82,7 +100,7 @@ export function useCompassQuery<T>(
     return () => {
       cancelled = true;
     };
-  }, [isLoading, idToken, role, orgUnit, nonce, queryKey]);
+  }, [isLoading, idToken, effRole, effOrgUnit, nonce, queryKey]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   return { data, error, loading, reload };
@@ -102,6 +120,15 @@ export function useCompassAction<TArgs extends unknown[], TResult>(
   clearError: () => void;
 } {
   const { idToken, role, orgUnit } = useAppAuth();
+  const evidenceMode = useEvidenceModeOptional();
+  const personaOverride = useSyncExternalStore(
+    subscribeRehearsalPersona,
+    getRehearsalPersonaOverride,
+    () => null,
+  );
+  const rehearsalOverride = evidenceMode?.mode === "rehearsal" ? personaOverride : null;
+  const effRole = rehearsalOverride ?? role;
+  const effOrgUnit = rehearsalOverride ? ORG_UNIT_FOR_ROLE[rehearsalOverride] : orgUnit;
   const actionRef = useRef(action);
   actionRef.current = action;
 
@@ -110,7 +137,7 @@ export function useCompassAction<TArgs extends unknown[], TResult>(
 
   const run = useCallback(
     async (...args: TArgs): Promise<TResult> => {
-      setAuthContext({ bearerToken: idToken, role, orgUnit });
+      setAuthContext({ bearerToken: idToken, role: effRole, orgUnit: effOrgUnit });
       setPending(true);
       setError(null);
       try {
@@ -122,7 +149,7 @@ export function useCompassAction<TArgs extends unknown[], TResult>(
         setPending(false);
       }
     },
-    [idToken, role, orgUnit],
+    [idToken, effRole, effOrgUnit],
   );
 
   return { run, pending, error, clearError: useCallback(() => setError(null), []) };

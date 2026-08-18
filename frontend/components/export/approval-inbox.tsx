@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RehearsalPersonaSwitch } from "./rehearsal-persona-switch";
 import clsx from "clsx";
 import {
   ArrowRight,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { dateTimeShort } from "@/components/dashboard/format";
-import type { Approval, ApprovalsListResponse } from "@/lib/types";
+import type { Approval, ApprovalsListResponse , Role } from "@/lib/types";
 
 export type ApprovalHandoff = {
   approval: Approval;
@@ -24,6 +25,7 @@ export type ApprovalHandoff = {
 };
 
 type ApprovalInboxProps = {
+  signedInRole: Role | null;
   data: ApprovalsListResponse | null;
   error: string | null;
   loading: boolean;
@@ -34,6 +36,7 @@ type ApprovalInboxProps = {
 };
 
 export function ApprovalInbox({
+  signedInRole,
   data,
   error,
   loading,
@@ -101,7 +104,7 @@ export function ApprovalInbox({
         <HandoffStep
           number="02"
           title="Independent reviewer"
-          body="Open this page in another session, select the power-user persona, then approve."
+          body="Switch the acting persona below to the power-user reviewer, then approve. Rehearsal simulates the separate session inside this browser."
         />
         <HandoffStep
           number="03"
@@ -120,6 +123,7 @@ export function ApprovalInbox({
               <p className="mt-0.5 text-[11px] text-text-muted">
                 Acting as <span className="font-semibold text-text-strong">{data?.actor ?? "Loading actor"}</span>
               </p>
+              <RehearsalPersonaSwitch signedInRole={signedInRole} onSwitched={onRefresh} />
             </div>
             {data ? (
               <span

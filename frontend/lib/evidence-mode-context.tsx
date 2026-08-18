@@ -92,6 +92,11 @@ export function EvidenceModeProvider({ children }: { children: React.ReactNode }
   return <EvidenceModeContext.Provider value={value}>{children}</EvidenceModeContext.Provider>;
 }
 
+/** Tolerant variant: null outside the provider (e.g. isolated tests). */
+export function useEvidenceModeOptional(): EvidenceModeContextValue | null {
+  return useContext(EvidenceModeContext);
+}
+
 export function useEvidenceMode(): EvidenceModeContextValue {
   const value = useContext(EvidenceModeContext);
   if (!value) throw new Error("useEvidenceMode must be used inside EvidenceModeProvider");
