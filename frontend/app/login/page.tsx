@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CodeTourButton } from "@/components/shell/code-tour";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -68,6 +69,7 @@ export default function LoginPage() {
     <>
       <SkipNav />
       <GovBanner />
+      <div className="fixed bottom-5 right-5 z-40"><CodeTourButton route="element-1" /></div>
       <div className="min-h-screen bg-bg">
         <header className="border-b border-border-2 bg-surface">
           <div className="mx-auto flex max-w-[1200px] items-center justify-between px-4 py-4 sm:px-6">
@@ -215,7 +217,7 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
     <div className="min-w-0">
       <dt className="text-[9.5px] font-semibold uppercase tracking-wide text-text-subtle">{label}</dt>
       <dd className={`mt-0.5 text-text-strong ${mono ? "font-mono text-[11.5px]" : ""}`}>{value}</dd>
-    </div>
+</div>
   );
 }
 

@@ -18,6 +18,7 @@ import { evidenceModeLabel } from "@/lib/evidence-mode";
 import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { navHrefForEvidenceMode } from "@/lib/nav/sidebar-config";
 import { LiveDemoStreamBar } from "./live-demo-stream-bar";
+import { CodeTourButton } from "./code-tour";
 
 const TONE: Record<ScreenEvidenceTone, {
   icon: LucideIcon;
@@ -91,6 +92,7 @@ export function ScreenContextBar() {
               </div>
             </div>
           </div>
+          <CodeTourButton route={context.route} />
           {context.nextHref && context.nextLabel ? (
             <Link href={navHrefForEvidenceMode(context.nextHref, mode)} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-gov-primary/25 bg-white px-3 text-[10px] font-bold text-gov-primary hover:bg-gov-primary-lighter">
               {context.nextLabel} <ArrowRight className="size-3.5" aria-hidden />
