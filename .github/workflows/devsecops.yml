@@ -27,10 +27,15 @@ jobs:
           python-version: "3.12"
 
       - name: Install security scanners
-        run: python -m pip install --disable-pip-version-check bandit==1.8.6 pip-audit==2.9.0
+        run: python -m pip install --disable-pip-version-check bandit==1.8.6 pip-audit==2.9.0 semgrep==1.174.0
 
       - name: Bandit SAST
         run: bandit -r src scripts -x "*/tests/*" -ll -ii
+
+      # Second SAST lens, adopted from the golden-pipeline standard. --error
+      # makes findings fail the build - this gate blocks, it does not report.
+      - name: Semgrep SAST
+        run: semgrep scan --config p/owasp-top-ten --config p/python src scripts --metrics=off --error
 
       - name: Dependency audit
         run: |
@@ -80,6 +85,14 @@ jobs:
         run: |
           terraform -chdir=infra/terraform init -backend=false
           terraform -chdir=infra/terraform validate
+
+      # IaC security scanning (not just syntax), adopted from the
+      # golden-pipeline standard. Baseline skips live in .checkov.yml with
+      # written justifications; anything new fails the build.
+      - name: Checkov IaC security scan
+        run: |
+          python -m pip install --disable-pip-version-check checkov==3.3.13
+          checkov --config-file .checkov.yml
 
       - name: Set up AWS SAM
         uses: aws-actions/setup-sam@v2

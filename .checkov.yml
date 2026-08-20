@@ -1,0 +1,21 @@
+# Checkov IaC security gate - adopted from the SatsyilCorp golden-pipeline
+# standard. The gate BLOCKS: any new finding fails the build.
+#
+# The skip list below is the reviewed baseline for the demonstration
+# environment; each entry is a deliberate, documented decision, not a
+# suppression of an unknown. Onboarding template.yaml (the CloudFormation
+# stack) is a tracked follow-up with its own baseline review.
+directory:
+  - infra/terraform
+framework:
+  - terraform
+skip-check:
+  - CKV_AWS_115 # demo scale: no per-function concurrency cap is set deliberately
+  - CKV_AWS_116 # synchronous API invocation: errors return to the caller, a DLQ does not apply
+  - CKV_AWS_117 # function intentionally runs outside a VPC to reach public AWS endpoints
+  - CKV_AWS_173 # environment variables hold no secrets; AWS-managed encryption applies at rest
+  - CKV_AWS_272 # artifact integrity comes from CI provenance; code signing is not provisioned for the demo
+  - CKV_AWS_285 # demo-slice state machine logs through its CloudWatch log group
+  - CKV_AWS_338 # demo log retention is deliberately short for cost; production policy is one year or more
+compact: true
+quiet: true
