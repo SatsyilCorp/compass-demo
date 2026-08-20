@@ -10,6 +10,7 @@ import type {
   Role,
 } from "@/lib/types";
 import { replayActor } from "./actors";
+import { effectiveRehearsalRole } from "./rehearsal-persona";
 import {
   opaqueApprovalToken,
   replayCapabilityHash,
@@ -21,6 +22,7 @@ export async function createOrAdvanceApproval(
   req: ApprovalRequest,
   role: Role,
 ): Promise<ApprovalResponse> {
+  role = effectiveRehearsalRole(role);
   const actor = replayActor(role);
   let capabilitySecret: string | null = null;
   let capabilityHash: string | undefined;
@@ -63,6 +65,7 @@ export async function createOrAdvanceApproval(
 }
 
 export function listPendingApprovals(role: Role): ApprovalsListResponse {
+  role = effectiveRehearsalRole(role);
   const state = getScenarioState();
   const actor = replayActor(role);
   const now = new Date(state.logical_now).getTime();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import {
   Activity,
   AlertTriangle,
@@ -137,7 +138,7 @@ export function ModelOperations() {
           if (!active) return;
           const message = cause instanceof Error
             ? cause.message
-            : "Live model evidence is unavailable.";
+            : (SINGLE_LIVE_MODE ? "Model evidence is unavailable." : "Live model evidence is unavailable.");
           setModelEvidenceError(message);
           setError(message);
         })
@@ -303,7 +304,7 @@ export function ModelOperations() {
       <section className="overflow-hidden rounded-xl border border-gov-primary/20 bg-gov-primary text-white shadow-card">
         <div className="compass-grid-overlay grid gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] lg:px-6">
           <div>
-            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-gold-light/30 bg-gold-light/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-gold-light">Element 5 of 7</span><span className="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white/70">{isLive ? "Live AWS adapter" : "Explicit rehearsal adapter"}</span></div>
+            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-gold-light/30 bg-gold-light/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-gold-light">Element 5 of 7</span><span className="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white/70">{isLive ? (SINGLE_LIVE_MODE ? "AWS adapter" : "Live AWS adapter") : "Explicit rehearsal adapter"}</span></div>
             <h2 className="mt-3 text-2xl font-bold">Classical document MLOps control room</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-white/70">{isLive ? "Inspect returned classifier, registry, drift, and SageMaker Batch Transform receipts. Training and promotion stay unavailable until a verified non-synthetic training manifest is present." : "Replay the deterministic training, evaluation, registry, promotion, and drift workflow with explicitly synthetic fixtures."}</p>
           </div>

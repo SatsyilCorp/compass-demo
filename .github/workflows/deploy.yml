@@ -317,6 +317,7 @@ jobs:
         env:
           NEXT_PUBLIC_USE_MOCK: "false"
           NEXT_PUBLIC_AUTH_DISABLED: "false"
+          NEXT_PUBLIC_SINGLE_MODE: "true"
           NEXT_PUBLIC_API_BASE_URL: ${{ env.API_BASE_URL }}
           NEXT_PUBLIC_COGNITO_AUTHORITY: https://cognito-idp.${{ env.AWS_REGION }}.amazonaws.com/${{ env.USER_POOL_ID }}
           NEXT_PUBLIC_COGNITO_DOMAIN: https://${{ env.COGNITO_DOMAIN }}
@@ -330,6 +331,8 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm typecheck
           pnpm build
+          echo "Assert single-mode flag embedded in the shipped bundle"
+          grep -rq "Opening the live workspace" out/rehearsal/ || { echo "single-mode redirect missing from out/rehearsal"; exit 1; }
 
       - name: Publish immutable frontend build
         run: |

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useRehearsalIdentity } from "./use-rehearsal-identity";
 import clsx from "clsx";
 import {
   Check,
@@ -111,9 +112,14 @@ function stepIndex(phase: Phase): number {
 }
 
 export function ExportView() {
-  const { role, orgUnit, idToken, displayName } = useAppAuth();
+  const { role: signedInRole, orgUnit: signedInOrgUnit, idToken, displayName } = useAppAuth();
   const { mode } = useEvidenceMode();
   const rehearsal = mode === "rehearsal";
+  // The rehearsal acting persona must never alter live-mode scoping: gate the
+  // override on the active mode (mirrors use-compass-query.ts).
+  const rehearsalIdentity = useRehearsalIdentity(signedInRole, signedInOrgUnit);
+  const role = rehearsal ? rehearsalIdentity.role : signedInRole;
+  const orgUnit = rehearsal ? rehearsalIdentity.orgUnit : signedInOrgUnit;
 
   const dashboard = useCompassQuery(getDashboard);
   const approvals = useCompassQuery(getApprovals);
@@ -645,6 +651,7 @@ export function ExportView() {
       </div>
 
       <ApprovalInbox
+        signedInRole={signedInRole}
         data={approvals.data}
         error={approvals.error}
         loading={approvals.loading}
@@ -694,6 +701,7 @@ function ReleasedPanel({
         <Field label="requested" value={requestedFormat} />
         <Field label="delivered" value={result.format} />
         <Field label="audited" value={String(result.audited)} />
+        {result.audit_id != null ? <Field label="audit_id" value={String(result.audit_id)} /> : null}
         <Field label="approval" value={approval ? "one-time capability consumed" : "not required"} />
         <Field label="control" value={approval ? "independent reviewer" : "within threshold"} />
       </dl>

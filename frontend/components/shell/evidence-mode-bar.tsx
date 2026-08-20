@@ -3,7 +3,7 @@
 import { FlaskConical, RadioTower } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { evidenceModeDisclosure, type EvidenceMode } from "@/lib/evidence-mode";
+import { SINGLE_LIVE_MODE, evidenceModeDisclosure, type EvidenceMode } from "@/lib/evidence-mode";
 import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { useMissionDataContext } from "@/lib/mission-data-context";
 
@@ -28,6 +28,9 @@ const OPTIONS: Array<{
 ];
 
 export function EvidenceModeBar() {
+  // Single-mode presentation build: the mode is constant, so the toggle
+  // disappears entirely. Constant condition - hook order stays stable.
+  if (SINGLE_LIVE_MODE) return null;
   const router = useRouter();
   const { hydrated, mode, selectMode } = useEvidenceMode();
   const { selectCurated } = useMissionDataContext();

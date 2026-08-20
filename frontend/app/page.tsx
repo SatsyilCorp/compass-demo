@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import {
   ArrowRight,
   BarChart3,
@@ -46,7 +47,9 @@ const capabilities = [
   {
     Icon: ShieldCheck,
     title: "Evidence in every action",
-    body: "Model runs, source snapshots, decisions, and releases carry traceable evidence. Synthetic data is available only after explicit rehearsal selection.",
+    body: SINGLE_LIVE_MODE
+      ? "Model runs, source snapshots, decisions, and releases carry traceable evidence, and synthetic demonstration content is always labeled."
+      : "Model runs, source snapshots, decisions, and releases carry traceable evidence. Synthetic data is available only after explicit rehearsal selection.",
   },
 ];
 
@@ -155,7 +158,7 @@ export default function LandingPage() {
                 <ProofRow Icon={FileCheck2} label={rehearsal ? "Fixture source" : "Public sources"} value={rehearsal ? "Synthetic" : "Named"} />
                 <ProofRow Icon={Network} label="Source lineage" value={rehearsal ? "Isolated" : "Receipt bound"} />
                 <ProofRow Icon={Sparkles} label="Model evidence" value={rehearsal ? "Rehearsed" : "Versioned"} />
-                <ProofRow Icon={Braces} label="Evidence mode" value={rehearsal ? "Rehearsal" : "Live only"} />
+                {SINGLE_LIVE_MODE ? null : <ProofRow Icon={Braces} label="Evidence mode" value={rehearsal ? "Rehearsal" : "Live only"} />}
               </div>
 
               <div className="mt-5 rounded-lg border border-white/10 bg-black/15 p-4">

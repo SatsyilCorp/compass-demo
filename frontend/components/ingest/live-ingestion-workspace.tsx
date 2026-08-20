@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import { ArrowRight, FileInput, RadioTower, ShieldCheck } from "lucide-react";
 
 import { PublicSourceOperations } from "@/components/acquisition/public-source-operations";
@@ -48,8 +49,8 @@ export function LiveIngestionWorkspace() {
 
       <section id="public-file-intake" className="scroll-mt-24 rounded-xl border border-info/20 bg-info-soft/20 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><p className="text-[9px] font-bold uppercase tracking-wide text-info">Optional live file intake</p><h2 className="mt-1 text-lg font-bold text-text-strong">Send public bytes through the same governed path</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted">This input accepts public, PII-minimized content only. Synthetic fixtures are isolated in the rehearsal workspace and never appear here.</p></div>
-          <Link href="/rehearsal/" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-warn/30 bg-white px-3 text-[10px] font-bold text-warn hover:bg-warn-soft"><ShieldCheck className="size-3.5" aria-hidden /> Open synthetic rehearsal</Link>
+          <div><p className="text-[9px] font-bold uppercase tracking-wide text-info">Optional live file intake</p><h2 className="mt-1 text-lg font-bold text-text-strong">Send public bytes through the same governed path</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted">{SINGLE_LIVE_MODE ? "This input accepts public, PII-minimized content only." : "This input accepts public, PII-minimized content only. Synthetic fixtures are isolated in the rehearsal workspace and never appear here."}</p></div>
+          {SINGLE_LIVE_MODE ? null : <Link href="/rehearsal/" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-warn/30 bg-white px-3 text-[10px] font-bold text-warn hover:bg-warn-soft"><ShieldCheck className="size-3.5" aria-hidden /> Open synthetic rehearsal</Link>}
         </div>
         <DocumentDropZone mode="live-public" />
       </section>

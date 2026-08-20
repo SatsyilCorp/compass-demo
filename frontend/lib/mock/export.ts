@@ -10,6 +10,7 @@ import type {
   Role,
 } from "@/lib/types";
 import { replayActor } from "./actors";
+import { effectiveRehearsalIdentity } from "./rehearsal-persona";
 import { visibleGrants } from "./grants";
 import {
   dynamicPortfolioAggregates,
@@ -226,6 +227,7 @@ export async function runExport(
   role: Role | null,
   orgUnit: string | null,
 ): Promise<ExportResponse> {
+  ({ role, orgUnit } = effectiveRehearsalIdentity(role, orgUnit));
   const filters = normalizeFilters(req.filters);
   const columns = normalizeColumns(req.columns, role);
   const matchedRowCount = filteredRowCount(filters, role, orgUnit);

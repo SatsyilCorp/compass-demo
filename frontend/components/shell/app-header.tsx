@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import { Menu, Presentation } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
@@ -60,7 +61,7 @@ export function AppHeader({
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {role === "poweruser" ? <NotificationCenter /> : null}
-          <button
+          {SINGLE_LIVE_MODE ? null : <button
             type="button"
             onClick={onPresenterToggle}
             aria-pressed={presenterOpen}
@@ -73,7 +74,7 @@ export function AppHeader({
           >
             <Presentation className="size-4" aria-hidden />
             <span className="hidden xl:inline">{presenterOpen ? "Guide active" : "Presenter guide"}</span>
-          </button>
+          </button>}
           <UserMenu />
         </div>
       </div>

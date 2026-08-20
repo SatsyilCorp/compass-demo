@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import {
   AlertCircle,
   ArrowRight,
@@ -52,7 +53,7 @@ export function PublicSourceOperations() {
   const [oldDemoLink, setOldDemoLink] = useState(false);
 
   useEffect(() => {
-    setOldDemoLink(new URLSearchParams(window.location.search).get("mode") === "demo");
+    setOldDemoLink(!SINGLE_LIVE_MODE && new URLSearchParams(window.location.search).get("mode") === "demo");
   }, []);
 
   const runSource = useCallback(async (sourceId: string) => {

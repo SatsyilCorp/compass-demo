@@ -21,9 +21,11 @@ test("run of show remains within the fifty minute limit", () => {
   assert.ok(DEMO_LOGISTICS.scenarioMinutes + DEMO_LOGISTICS.promptMinutes + DEMO_LOGISTICS.closeMinutes <= DEMO_LOGISTICS.maximumMinutes);
 });
 
-test("live portability element does not overclaim protected release execution", () => {
+test("live portability element claims the governed release without overreach", () => {
   const portability = DEMO_ELEMENTS.find((element) => element.number === 7);
-  assert.equal(portability?.screen, "Portable browser preview");
-  assert.match(portability?.boundary ?? "", /does not call POST \/export/i);
-  assert.match(portability?.proof.join(" ") ?? "", /no-server-receipt/i);
+  assert.equal(portability?.screen, "Portable preview and governed release");
+  assert.match(portability?.action ?? "", /428/);
+  assert.match(portability?.proof.join(" ") ?? "", /fingerprint-bound single-use approval/i);
+  assert.match(portability?.proof.join(" ") ?? "", /audit receipt/i);
+  assert.match(portability?.boundary ?? "", /remain configured interfaces/i);
 });

@@ -337,7 +337,7 @@ deploy_pass() {
     --no-fail-on-empty-changeset \
     --parameter-overrides \
       "DatabaseResilienceMode=$database_mode" \
-      "ExportMaxRows=5000" \
+      "ExportMaxRows=250" \
       "WafRateLimit=2000" \
       "StreamTickerState=ENABLED" \
       "DeploySecurityBaseline=false" \

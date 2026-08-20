@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import { AuthGuard } from "@/components/shell/auth-guard";
 import { SkipNav } from "@/components/shell/skip-nav";
 import { GovBanner } from "@/components/shell/gov-banner";
@@ -76,7 +77,7 @@ export function AppShell({
           <AppFooter />
         </div>
       </div>
-      <PresenterGuide open={presenterOpen} onClose={togglePresenter} />
+      {SINGLE_LIVE_MODE ? null : <PresenterGuide open={presenterOpen} onClose={togglePresenter} />}
     </AuthGuard>
   );
 }

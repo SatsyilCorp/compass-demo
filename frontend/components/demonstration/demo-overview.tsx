@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import {
   ArrowRight,
   BadgeCheck,
@@ -87,7 +88,7 @@ export function DemoOverview() {
         </ol>
       </section>
 
-      <section className="rounded-xl border border-warn/25 bg-warn-soft/35 p-4 shadow-card sm:p-5" aria-labelledby="public-path-heading">
+      {SINGLE_LIVE_MODE ? null : <section className="rounded-xl border border-warn/25 bg-warn-soft/35 p-4 shadow-card sm:p-5" aria-labelledby="public-path-heading">
         <div className="flex items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-warn text-white"><FileInput className="size-5" aria-hidden /></span>
           <div className="min-w-0 flex-1">
@@ -102,7 +103,7 @@ export function DemoOverview() {
             </div>
           </div>
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import {
   AlertTriangle,
   ArrowRight,
@@ -234,7 +235,7 @@ export function DocumentDropZone({ mode = "live-public" }: { mode?: "live-public
                 {value === "public" ? "Public, PII-minimized" : "Synthetic demo"}
               </button>
             ))}
-          </div> : <div className="mt-4 flex items-start gap-2 rounded-lg border border-success/30 bg-success-soft p-3"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /><div><p className="text-xs font-bold text-success">Public, PII-minimized boundary is active</p><p className="mt-1 text-[9px] leading-4 text-text-muted">Synthetic samples are available only from the separate rehearsal workspace.</p></div></div>}
+          </div> : <div className="mt-4 flex items-start gap-2 rounded-lg border border-success/30 bg-success-soft p-3"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /><div><p className="text-xs font-bold text-success">Public, PII-minimized boundary is active</p><p className="mt-1 text-[9px] leading-4 text-text-muted">{SINGLE_LIVE_MODE ? "Only public, PII-minimized content passes this boundary." : "Synthetic samples are available only from the separate rehearsal workspace."}</p></div></div>}
 
           <input
             ref={inputRef}
