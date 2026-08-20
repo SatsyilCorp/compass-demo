@@ -17,7 +17,8 @@ test("live overview preserves the public evidence story", () => {
   assert.match(overview.heroTitle, /live public/i);
   assert.match(overview.elements[3].source, /public-source registry/i);
   assert.equal(overview.sourceCountValue, "API");
-  assert.match(overview.elements[7].label, /browser-generated preview/i);
-  assert.match(overview.elements[7].action, /no server release, approval, delivery, or audit receipt/i);
+  assert.match(overview.elements[7].label, /governed release/i);
+  assert.match(overview.elements[7].action, /428/);
+  assert.match(overview.elements[7].action, /fingerprint-bound/i);
   assert.doesNotMatch(overview.elements[7].action, /request a governed/i);
 });

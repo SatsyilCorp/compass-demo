@@ -113,9 +113,13 @@ function stepIndex(phase: Phase): number {
 
 export function ExportView() {
   const { role: signedInRole, orgUnit: signedInOrgUnit, idToken, displayName } = useAppAuth();
-  const { role, orgUnit } = useRehearsalIdentity(signedInRole, signedInOrgUnit);
   const { mode } = useEvidenceMode();
   const rehearsal = mode === "rehearsal";
+  // The rehearsal acting persona must never alter live-mode scoping: gate the
+  // override on the active mode (mirrors use-compass-query.ts).
+  const rehearsalIdentity = useRehearsalIdentity(signedInRole, signedInOrgUnit);
+  const role = rehearsal ? rehearsalIdentity.role : signedInRole;
+  const orgUnit = rehearsal ? rehearsalIdentity.orgUnit : signedInOrgUnit;
 
   const dashboard = useCompassQuery(getDashboard);
   const approvals = useCompassQuery(getApprovals);

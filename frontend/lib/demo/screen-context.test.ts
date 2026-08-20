@@ -50,11 +50,13 @@ test("rehearsal child routes reuse the matching mission context", () => {
   assert.equal(screenContextForPath("/rehearsal/export/", "rehearsal").screen, "Governed release rehearsal");
 });
 
-test("live export context identifies a local preview and rejects server evidence claims", () => {
+test("live export context names the preview and the governed release path", () => {
   const context = screenContextForPath("/export/", "live");
-  assert.equal(context.screen, "Portable browser preview");
+  assert.equal(context.screen, "Portable preview and governed release");
   assert.match(context.evidenceLabel, /browser-generated/i);
-  assert.match(context.updateBehavior, /No protected approval, delivery, audit record, or server receipt/i);
+  assert.match(context.updateBehavior, /makes? no server claim/i);
+  assert.match(context.updateBehavior, /428/);
+  assert.match(context.updateBehavior, /fingerprint-bound approval/i);
 });
 
 test("the specific catalog lineage route wins over the catalog prefix", () => {
