@@ -54,10 +54,14 @@ env:
 
 jobs:
   golden-pipeline:
-    uses: SatsyilCorp/golden-pipelines/.github/workflows/enterprise-golden-pipeline.yml@dev
+    # Pinned to golden-pipelines dev @ 2026-08-19 (51b0327...). A mutable @dev
+    # ref would run whatever lands on that branch with this repo's inherited
+    # secrets; bump the SHA deliberately when adopting pipeline updates.
+    uses: SatsyilCorp/golden-pipelines/.github/workflows/enterprise-golden-pipeline.yml@51b03273b59f0003d4b7383905d76fcaffa3a822
     with:
       action: ${{ inputs.action || 'plan_only' }}
-      target_env: ${{ inputs.target_env != '' && inputs.target_env != 'auto' && inputs.target_env || (github.event_name == 'workflow_dispatch' && 'prod') || (startsWith(github.ref, 'refs/tags/v') && 'release') || (github.ref == 'refs/heads/main' && 'test') || 'dev' }}
+      # Manual dispatch without an explicit environment targets dev, never prod.
+      target_env: ${{ inputs.target_env != '' && inputs.target_env != 'auto' && inputs.target_env || (startsWith(github.ref, 'refs/tags/v') && 'release') || (github.ref == 'refs/heads/main' && 'test') || 'dev' }}
       deploy_type: ${{ inputs.deploy_type || 'auto' }}
       release_tag: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
       infra_dir: 'infra/terraform'
