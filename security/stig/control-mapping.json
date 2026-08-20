@@ -152,16 +152,21 @@
     {
       "id": "DEVSECOPS-01",
       "control_family": "Secure software delivery",
-      "implementation": "GitHub Actions runs content, SAST, dependency, secret, IaC, policy, test, SBOM, build, protected deployment, and optional DAST gates.",
+      "implementation": "The SatsyilCorp golden pipeline (consumed as a SHA-pinned reusable workflow) runs SAST, dependency, secret, SBOM, IaC-security, build, and plan gates; the repository keeps the CloudFormation-specific gates (SAM validation, policy-as-code, STIG evidence) and optional DAST.",
       "evidence": [
+        {
+          "path": ".github/workflows/pipeline.yml",
+          "contains": [
+            "SatsyilCorp/golden-pipelines/.github/workflows/enterprise-golden-pipeline.yml",
+            "secrets: inherit"
+          ]
+        },
         {
           "path": ".github/workflows/devsecops.yml",
           "contains": [
-            "Bandit SAST",
-            "Dependency audit",
-            "Secret scan",
-            "Terraform and policy validation",
-            "Generate CycloneDX SBOM"
+            "SAM and CloudFormation validation",
+            "Strict policy-as-code validation",
+            "Validate STIG-aligned evidence index"
           ]
         },
         {
