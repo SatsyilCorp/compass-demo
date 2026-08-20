@@ -1,4 +1,11 @@
-name: DevSecOps evidence gates
+name: CloudFormation policy gates
+
+# Compass-specific gates the golden pipeline cannot express yet: the org
+# standard (SatsyilCorp/golden-pipelines, consumed by pipeline.yml) owns SAST,
+# dependency, secret, SBOM, and Terraform/OpenTofu scanning. This file keeps
+# only the CloudFormation side - template validation, policy-as-code, and the
+# STIG-aligned evidence index for template.yaml. When golden-pipelines gains a
+# CloudFormation mode, this file retires.
 
 on:
   pull_request:
@@ -14,8 +21,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  application-security:
-    name: SAST, dependency, secret, and SBOM evidence
+  cloudformation-policy:
+    name: SAM validation, policy-as-code, and STIG evidence
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -25,74 +32,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install security scanners
-        run: python -m pip install --disable-pip-version-check bandit==1.8.6 pip-audit==2.9.0 semgrep==1.174.0
-
-      - name: Bandit SAST
-        run: bandit -r src scripts -x "*/tests/*" -ll -ii
-
-      # Second SAST lens, adopted from the golden-pipeline standard. --error
-      # makes findings fail the build - this gate blocks, it does not report.
-      - name: Semgrep SAST
-        run: semgrep scan --config p/owasp-top-ten --config p/python src scripts --metrics=off --error
-
-      - name: Dependency audit
-        run: |
-          pip-audit --no-deps --disable-pip \
-            -r src/common/requirements.txt \
-            -r src/functions/analytics/requirements.txt \
-            -r src/functions/document_ml/requirements.txt
-
-      - name: Secret scan
-        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.2 detect --source=/repo --config=/repo/.gitleaks.toml --no-banner --redact
-
-      - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          path: .
-          format: cyclonedx-json
-          output-file: compass-sbom.cdx.json
-
-      - name: Publish SBOM evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: compass-cyclonedx-sbom
-          path: compass-sbom.cdx.json
-          retention-days: 30
-
-  infrastructure-security:
-    name: Terraform and policy validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.9.8"
-
-      - name: Terraform formatting
-        run: terraform fmt -check -recursive infra/terraform
-
-      - name: Terraform validation
-        run: |
-          terraform -chdir=infra/terraform init -backend=false
-          terraform -chdir=infra/terraform validate
-
-      # IaC security scanning (not just syntax), adopted from the
-      # golden-pipeline standard. Baseline skips live in .checkov.yml with
-      # written justifications; anything new fails the build.
-      - name: Checkov IaC security scan
-        run: |
-          python -m pip install --disable-pip-version-check checkov==3.3.13
-          checkov --config-file .checkov.yml
 
       - name: Set up AWS SAM
         uses: aws-actions/setup-sam@v2
