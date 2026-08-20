@@ -28,6 +28,13 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # Kept beside the golden pipeline deliberately: golden's secret gate is
+      # currently non-blocking (`|| true`) and unredacted, so this remains the
+      # one enforcing, redacted scan under the reviewed policy. Retires when
+      # golden-pipelines' security-secrets action blocks and redacts.
+      - name: Secret scan
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.2 detect --source=/repo --config=/repo/.gitleaks.toml --no-banner --redact
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
