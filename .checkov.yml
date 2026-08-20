@@ -14,7 +14,7 @@ skip-check:
   - CKV_AWS_116 # synchronous API invocation: errors return to the caller, a DLQ does not apply
   - CKV_AWS_117 # function intentionally runs outside a VPC to reach public AWS endpoints
   - CKV_AWS_173 # environment variables hold no secrets; AWS-managed encryption applies at rest
-  - CKV_AWS_272 # artifact integrity comes from CI provenance; code signing is not provisioned for the demo
+  - CKV_AWS_272 # no CodeSigningConfig exists in this demo environment; the artifact comes from the stack-controlled private bucket. Production provisions signing and removes this skip.
   - CKV_AWS_285 # demo-slice state machine logs through its CloudWatch log group
   - CKV_AWS_338 # demo log retention is deliberately short for cost; production policy is one year or more
 compact: true
