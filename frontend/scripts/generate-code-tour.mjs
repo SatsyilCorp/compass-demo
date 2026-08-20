@@ -20,9 +20,12 @@ const MANIFEST = {
       note: "MFA and the role-to-row-scope mapping are declared configuration, not a promise." },
   ],
   "/admin/delivery/": [
+    { path: ".github/workflows/pipeline.yml",
+      title: "Golden pipeline consumption (org standard)",
+      note: "The project consumes the organization's golden pipeline as a SHA-pinned reusable workflow - this file only routes triggers and overrides project variables." },
     { path: ".github/workflows/devsecops.yml",
-      title: "The seven-gate pipeline",
-      note: "This YAML is the pipeline you see on screen - each gate a job with retained evidence." },
+      title: "CloudFormation policy gates",
+      note: "The gates the golden standard cannot express yet: SAM validation, policy-as-code, the STIG evidence index, and the enforcing secret scan." },
   ],
   "/ingest/": [
     { path: "src/functions/intake/pipeline.py", start: 1, end: 160,
