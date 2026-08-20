@@ -1,0 +1,67 @@
+name: Enterprise Golden CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - 'iac'
+      - 'dev'
+      - 'development'
+      - 'feature/**'
+      - 'fix/**'
+      - 'codex/public-onr-intelligence'
+      - 'main'
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  pull_request:
+    branches:
+      - 'iac'
+      - 'dev'
+      - 'development'
+      - 'codex/public-onr-intelligence'
+      - 'main'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform: plan_only (default), apply, or destroy'
+        required: false
+        default: 'plan_only'
+        type: choice
+        options:
+          - 'plan_only'
+          - 'apply'
+          - 'destroy'
+      release_tag:
+        description: 'Release Tag to deploy (e.g., v1.0.0)'
+        required: false
+      deploy_type:
+        description: 'Deploy Type: auto, all, container, opentofu, databricks_dab, or comma-separated'
+        required: false
+        default: 'auto'
+      target_env:
+        description: 'Override Target Environment (dev, test, prod)'
+        required: false
+        default: 'auto'
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write
+  packages: write
+  actions: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  golden-pipeline:
+    uses: SatsyilCorp/golden-pipelines/.github/workflows/enterprise-golden-pipeline.yml@dev
+    with:
+      action: ${{ inputs.action || 'plan_only' }}
+      target_env: ${{ inputs.target_env != '' && inputs.target_env != 'auto' && inputs.target_env || (github.event_name == 'workflow_dispatch' && 'prod') || (startsWith(github.ref, 'refs/tags/v') && 'release') || (github.ref == 'refs/heads/main' && 'test') || 'dev' }}
+      deploy_type: ${{ inputs.deploy_type || 'auto' }}
+      release_tag: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
+      infra_dir: 'infra/terraform'
+      src_dir: 'src'
+      databricks_dir: 'databricks'
+      dockerfile_path: 'Dockerfile'
+    secrets: inherit
