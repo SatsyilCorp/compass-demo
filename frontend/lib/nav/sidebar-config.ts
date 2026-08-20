@@ -1,4 +1,5 @@
 import type { Role } from "@/lib/types";
+import { SINGLE_LIVE_MODE } from "../evidence-mode";
 import type { EvidenceMode } from "@/lib/evidence-mode";
 
 export type NavItem = {
@@ -72,6 +73,15 @@ export const SIDEBAR_SECTIONS: NavSection[] = [
 
 export function sidebarFor(role: Role | null): NavSection[] {
   return SIDEBAR_SECTIONS
+    // Single-mode presentation: the mode-selection section disappears, and the
+    // Scale Lab entry goes with it (its page is rehearsal-gated - a dead end
+    // when rehearsal cannot be activated).
+    .filter((section) => !(SINGLE_LIVE_MODE && section.label === "Evidence mode"))
+    .map((section) =>
+      SINGLE_LIVE_MODE
+        ? { ...section, items: section.items.filter((item) => item.href !== "/admin/scale/") }
+        : section,
+    )
     .filter((section) => !section.roles || (role && section.roles.includes(role)))
     .map((section) => ({
       ...section,

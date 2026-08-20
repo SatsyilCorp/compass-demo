@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 import {
   DEFAULT_EVIDENCE_MODE,
   EVIDENCE_MODE_STORAGE_KEY,
+  SINGLE_LIVE_MODE,
   evidenceModeForPath,
   parseEvidenceMode,
   persistEvidenceMode,
@@ -32,6 +33,37 @@ export type EvidenceModeContextValue = {
 const EvidenceModeContext = createContext<EvidenceModeContextValue | null>(null);
 
 export function EvidenceModeProvider({ children }: { children: React.ReactNode }) {
+  if (SINGLE_LIVE_MODE) return <SingleLiveProvider>{children}</SingleLiveProvider>;
+  return <SelectableProvider>{children}</SelectableProvider>;
+}
+
+/**
+ * Single-mode presentation: the mode is a constant. `hydrated` still flips in
+ * an effect so the AppShell prerender/first-paint sequencing stays identical
+ * to the selectable provider (see plan C1 - returning hydrated=true
+ * synchronously would prerender the whole shell subtree).
+ */
+function SingleLiveProvider({ children }: { children: React.ReactNode }) {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setRuntimeEvidenceMode("live");
+    setHydrated(true);
+  }, []);
+
+  const selectMode = useCallback((_next: EvidenceMode) => {
+    // Mode selection is disabled in the single-mode presentation build.
+  }, []);
+
+  const value = useMemo<EvidenceModeContextValue>(
+    () => ({ hydrated, mode: "live", selectMode }),
+    [hydrated, selectMode],
+  );
+
+  return <EvidenceModeContext.Provider value={value}>{children}</EvidenceModeContext.Provider>;
+}
+
+function SelectableProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const [mode, setMode] = useState<EvidenceMode>(DEFAULT_EVIDENCE_MODE);
   const [hydrated, setHydrated] = useState(false);

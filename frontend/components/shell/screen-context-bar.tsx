@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import { usePathname } from "next/navigation";
 import {
   ArrowRight,
@@ -82,7 +83,7 @@ export function ScreenContextBar() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">{context.element}</span>
-                <span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${mode === "live" ? "border-success/30 bg-success-soft text-success" : "border-warn/30 bg-warn-soft text-warn"}`}>{evidenceModeLabel(mode)}</span>
+                {SINGLE_LIVE_MODE ? null : <span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${mode === "live" ? "border-success/30 bg-success-soft text-success" : "border-warn/30 bg-warn-soft text-warn"}`}>{evidenceModeLabel(mode)}</span>}
                 <span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${style.badge}`}>{context.evidenceLabel}</span>
                 <span className="text-xs font-bold text-text-strong">{context.screen}</span>
               </div>

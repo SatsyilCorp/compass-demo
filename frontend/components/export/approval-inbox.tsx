@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import { RehearsalPersonaSwitch } from "./rehearsal-persona-switch";
 import clsx from "clsx";
 import {
@@ -104,7 +105,7 @@ export function ApprovalInbox({
         <HandoffStep
           number="02"
           title="Independent reviewer"
-          body="Switch the acting persona below to the power-user reviewer, then approve. Rehearsal simulates the separate session inside this browser."
+          body={SINGLE_LIVE_MODE ? "A different signed-in reviewer opens this page in their own session and approves the matching subject." : "Switch the acting persona below to the power-user reviewer, then approve. Rehearsal simulates the separate session inside this browser."}
         />
         <HandoffStep
           number="03"
@@ -123,7 +124,7 @@ export function ApprovalInbox({
               <p className="mt-0.5 text-[11px] text-text-muted">
                 Acting as <span className="font-semibold text-text-strong">{data?.actor ?? "Loading actor"}</span>
               </p>
-              <RehearsalPersonaSwitch signedInRole={signedInRole} onSwitched={onRefresh} />
+              {SINGLE_LIVE_MODE ? null : <RehearsalPersonaSwitch signedInRole={signedInRole} onSwitched={onRefresh} />}
             </div>
             {data ? (
               <span

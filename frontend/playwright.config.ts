@@ -18,7 +18,7 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: "NEXT_PUBLIC_AUTH_DISABLED=true pnpm build && python3 -m http.server 4173 --directory out",
+    command: "NEXT_PUBLIC_SINGLE_MODE=false NEXT_PUBLIC_AUTH_DISABLED=true pnpm build && python3 -m http.server 4173 --directory out",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

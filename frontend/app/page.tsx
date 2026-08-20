@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import {
   ArrowRight,
   BarChart3,
@@ -155,7 +156,7 @@ export default function LandingPage() {
                 <ProofRow Icon={FileCheck2} label={rehearsal ? "Fixture source" : "Public sources"} value={rehearsal ? "Synthetic" : "Named"} />
                 <ProofRow Icon={Network} label="Source lineage" value={rehearsal ? "Isolated" : "Receipt bound"} />
                 <ProofRow Icon={Sparkles} label="Model evidence" value={rehearsal ? "Rehearsed" : "Versioned"} />
-                <ProofRow Icon={Braces} label="Evidence mode" value={rehearsal ? "Rehearsal" : "Live only"} />
+                {SINGLE_LIVE_MODE ? null : <ProofRow Icon={Braces} label="Evidence mode" value={rehearsal ? "Rehearsal" : "Live only"} />}
               </div>
 
               <div className="mt-5 rounded-lg border border-white/10 bg-black/15 p-4">
