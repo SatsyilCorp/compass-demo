@@ -358,7 +358,8 @@ class CredentialStore:
         self.private_directory.mkdir(mode=0o700, exist_ok=True)
         if not self.private_directory.is_dir():
             raise ProvisioningError("The protected artifact parent is not a directory")
-        os.chmod(self.private_directory, 0o700)
+        # 0o700 is owner-only - the restrictive mode the rule asks for.
+        os.chmod(self.private_directory, 0o700)  # nosemgrep
 
     @contextlib.contextmanager
     def locked(self) -> Iterator[None]:
