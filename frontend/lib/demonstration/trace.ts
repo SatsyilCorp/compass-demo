@@ -66,7 +66,7 @@ export const DEMO_ELEMENTS: DemoElement[] = [
     proof: ["Cognito authentication flow", "JWT authorizer and fixed role mapping", "Viewer funding redaction and database RLS"],
     source: ["template.yaml", "src/functions/authorizer/app.py", "db/migrations/003_security_hardening.sql"],
     state: "working",
-    boundary: "Presenter and reviewer identities enroll authenticator TOTP; remaining team-preview accounts stay password-only for collaboration. The formal recording uses the MFA identities and approved security posture.",
+    boundary: "The dedicated presenter identity enrolls authenticator TOTP; team-preview accounts stay password-only for collaboration. The formal recording uses the MFA identity and approved security posture.",
   },
   {
     number: 2,
@@ -152,7 +152,7 @@ export const DEMO_ELEMENTS: DemoElement[] = [
     number: 7,
     title: "Interoperability, Data Portability, and Secure Export",
     shortTitle: "Governed export",
-    action: "Filter accepted public evidence, create a portable JSON or CSV preview with source fields and a local checksum, then execute the governed export: the aggregation guard answers HTTP 428, a second reviewer records a fingerprint-bound single-use approval, and the release lands with an audit receipt.",
+    action: "Create a portable JSON or CSV preview of the accepted public records on screen, then execute the governed release of the labeled synthetic demonstration portfolio: the aggregation guard answers HTTP 428, a second reviewer records a fingerprint-bound single-use approval, and the release lands with an audit receipt.",
     focus: "Show open-format portability, source identity, standard interface seams, and the governed release path - server-side approval, single-use consumption, and audit evidence protecting bulk export.",
     durationMinutes: 4,
     presenter: "Chief Enterprise Architect",
@@ -162,7 +162,7 @@ export const DEMO_ELEMENTS: DemoElement[] = [
     proof: ["Filtered portable preview with source fields and a local checksum", "HTTP 428 aggregation guard and fingerprint-bound single-use approval", "Server export audit receipt"],
     source: ["src/functions/export/app.py", "src/functions/export/openapi.py", "docs/CONTRACTS.md"],
     state: "live",
-    boundary: "The governed export releases bounded public evidence under server approval, audit, and expiration receipts. Advana, Cloud One, and Government transfer endpoints remain configured interfaces until execution and connectivity are verified - no Government-integration claim is made.",
+    boundary: "The governed export releases the labeled synthetic demonstration portfolio through the real protected service - the approval, audit, and delivery controls are genuine, and every exported object carries its synthetic-data label. Advana, Cloud One, and Government transfer endpoints remain configured interfaces until execution and connectivity are verified.",
   },
 ];
 

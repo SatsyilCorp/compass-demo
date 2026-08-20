@@ -40,8 +40,8 @@ export function EvidenceModeProvider({ children }: { children: React.ReactNode }
 /**
  * Single-mode presentation: the mode is a constant. `hydrated` still flips in
  * an effect so the AppShell prerender/first-paint sequencing stays identical
- * to the selectable provider (see plan C1 - returning hydrated=true
- * synchronously would prerender the whole shell subtree).
+ * to the selectable provider - returning hydrated=true synchronously would
+ * prerender the whole shell subtree.
  */
 function SingleLiveProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);

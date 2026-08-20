@@ -85,7 +85,7 @@ const LIVE_ELEMENTS: Record<number, DemoOverviewElement> = {
     label: "Governed release evidence",
     source: "The signed-in portfolio scope behind the protected export service, plus the accepted public previews already loaded in the browser",
     changes: "After a guarded export request, its fingerprint-bound approval, or an explicit local preview download",
-    action: "Run the guarded export to raise HTTP 428, clear it with a fingerprint-bound single-use approval decided by a second reviewer, inspect the audit receipt, and optionally download the labeled local preview.",
+    action: "Run the guarded export of the labeled demonstration portfolio to raise HTTP 428, clear it with a fingerprint-bound single-use approval decided by a second reviewer, inspect the audit receipt, and optionally download the labeled local preview.",
     href: "/export/",
     evidence: "public",
   },

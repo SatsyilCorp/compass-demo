@@ -30,7 +30,16 @@ function RedirectToLive() {
 
   return (
     <div className="grid min-h-screen place-items-center bg-bg">
-      <p className="animate-pulse text-[12px] font-semibold text-text-muted">Opening the live workspace…</p>
+      <div className="text-center">
+        <p className="animate-pulse text-[12px] font-semibold text-text-muted">Opening the live workspace…</p>
+        <noscript>
+          <p className="mt-3 text-[12px]">
+            <a className="font-semibold text-gov-primary underline" href="/">
+              Continue to the live workspace
+            </a>
+          </p>
+        </noscript>
+      </div>
     </div>
   );
 }

@@ -30,12 +30,12 @@ const MANIFEST = {
       note: "Open-source Python doing the work inside each state - hashing, normalization, quality." },
   ],
   "/catalog/": [
-    { path: "db/migrations/002_rls.sql",
+    { path: "db/migrations/002_rls.sql", start: 5,
       title: "Row-level security policy",
       note: "FORCE ROW LEVEL SECURITY - the role-to-rows rule as source-controlled SQL." },
   ],
   "/catalog/lineage/": [
-    { path: "db/migrations/002_rls.sql",
+    { path: "db/migrations/002_rls.sql", start: 5,
       title: "Row-level security policy",
       note: "FORCE ROW LEVEL SECURITY - the role-to-rows rule as source-controlled SQL." },
   ],
@@ -58,9 +58,12 @@ const MANIFEST = {
       note: "KPIs computed server-side from the same receipts, per caller scope." },
   ],
   "/export/": [
-    { path: "src/functions/export/app.py", start: 250, end: 400,
-      title: "Aggregation guard + single-use approval",
+    { path: "src/functions/export/app.py", start: 250, end: 430,
+      title: "Approval fingerprint + single-use consume",
       note: "The fingerprint that binds an approval to one exact query, and the FOR UPDATE consume that makes tokens single-use." },
+    { path: "src/functions/export/app.py", start: 640, end: 790,
+      title: "HTTP 428 guard + governed release",
+      note: "The server-side row count, the 428 'approval required' answer, and the release path that writes the audit receipt." },
   ],
 };
 

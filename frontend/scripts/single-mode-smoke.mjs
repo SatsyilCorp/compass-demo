@@ -9,7 +9,11 @@ import { chromium } from "@playwright/test";
 
 const PORT = 4199;
 const BASE = `http://127.0.0.1:${PORT}`;
-const ROUTES = ["/", "/login/", "/admin/delivery/", "/ingest/", "/catalog/", "/admin/mlops/", "/dashboard/", "/export/"];
+const ROUTES = [
+  "/", "/login/", "/admin/delivery/", "/ingest/", "/catalog/", "/admin/mlops/", "/dashboard/", "/export/",
+  "/admin/architecture/", "/admin/demo/", "/admin/scale/",
+  "/admin/acquisition/?mode=demo",
+];
 const FORBIDDEN = [
   "Persistent evidence mode",
   "Rehearsal landing",
@@ -17,6 +21,11 @@ const FORBIDDEN = [
   "Open synthetic rehearsal",
   "Switch the acting persona",
   "Act as",
+  "Synthetic rehearsal now has its own boundary",
+  "Enter the separate rehearsal workspace",
+  "Activate rehearsal",
+  "Open rehearsal boundary",
+  "until the operator selects rehearsal",
 ];
 
 const server = spawn("python3", ["-m", "http.server", String(PORT), "--directory", "out"], { stdio: "ignore" });

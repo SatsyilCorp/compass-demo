@@ -197,7 +197,7 @@ const CONTEXTS: ScreenContext[] = [
     screen: "Portable preview and governed release",
     evidenceLabel: "Browser-generated public preview",
     source: "The latest accepted bounded public records already loaded in the browser, with acquisition, source, model, review, and lineage fields",
-    updateBehavior: "A local preview file and checksum are created only on request and make no server claim. The governed release calls the protected export service: requests over the threshold answer HTTP 428 until a fingerprint-bound approval clears them, and every attempt is audited.",
+    updateBehavior: "A local preview file and checksum are created only on request and make no server claim. The governed release calls the protected export service: requests over the threshold answer HTTP 428 until a fingerprint-bound approval clears them, and requests, denials, approvals, and releases are audited.",
     tone: "public",
     nextHref: "/admin/demo/",
     nextLabel: "Return to demo guide",

@@ -284,7 +284,7 @@ export const REQUIREMENTS: RequirementTrace[] = [
       iac: ["template.yaml: HttpApi JWT authorizer, export function, and encrypted buckets"],
     },
     differentiator: "The live screen proves data portability and the governed release on the same page: a local preview never masquerades as a release, and the server export runs only under approval policy with receipts.",
-    caveat: "Bulk release is guarded: POST /export answers HTTP 428 until a second reviewer records a fingerprint-bound single-use approval, and each release writes approval, audit, and expiration receipts. Advana and Cloud One transfer endpoints remain configured interfaces until connectivity is verified.",
+    caveat: "Bulk release is guarded: above the row threshold, POST /export answers HTTP 428 until a second reviewer records a fingerprint-bound single-use approval. Releases return an audit id, presigned deliveries carry expiration, and requests, denials, approvals, and releases land in compass.audit_log. Advana and Cloud One transfer endpoints remain configured interfaces until connectivity is verified.",
     tags: ["API", "export", "approval", "checksum", "audit"],
   },
   {

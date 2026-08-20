@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import {
   ArrowDown,
   ArrowRight,
@@ -48,7 +49,8 @@ const PRODUCT_SURFACES = [
   { label: "Portable preview and governed release", href: "/export/" },
   { label: "License posture", href: "/licenses/" },
   { label: "MLOps", href: "/admin/mlops/" },
-  { label: "Scale Lab", href: "/admin/scale/" },
+  // Scale Lab is rehearsal-gated; the single-mode presentation hides its entry.
+  ...(SINGLE_LIVE_MODE ? [] : [{ label: "Scale Lab", href: "/admin/scale/" }]),
   { label: "Requirements proof", href: "/admin/requirements/" },
 ] as const;
 

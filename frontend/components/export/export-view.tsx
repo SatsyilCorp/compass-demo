@@ -701,6 +701,7 @@ function ReleasedPanel({
         <Field label="requested" value={requestedFormat} />
         <Field label="delivered" value={result.format} />
         <Field label="audited" value={String(result.audited)} />
+        {result.audit_id != null ? <Field label="audit_id" value={String(result.audit_id)} /> : null}
         <Field label="approval" value={approval ? "one-time capability consumed" : "not required"} />
         <Field label="control" value={approval ? "independent reviewer" : "within threshold"} />
       </dl>

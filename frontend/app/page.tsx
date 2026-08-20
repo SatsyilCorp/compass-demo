@@ -47,7 +47,9 @@ const capabilities = [
   {
     Icon: ShieldCheck,
     title: "Evidence in every action",
-    body: "Model runs, source snapshots, decisions, and releases carry traceable evidence. Synthetic data is available only after explicit rehearsal selection.",
+    body: SINGLE_LIVE_MODE
+      ? "Model runs, source snapshots, decisions, and releases carry traceable evidence, and synthetic demonstration content is always labeled."
+      : "Model runs, source snapshots, decisions, and releases carry traceable evidence. Synthetic data is available only after explicit rehearsal selection.",
   },
 ];
 

@@ -90,7 +90,7 @@ function CodeTourDrawer({ files, onClose }: { files: CodeTourFile[]; onClose: ()
           </pre>
         </div>
         <footer className="border-t border-border bg-surface-2 px-5 py-2.5 text-[10px] text-text-muted">
-          Lines {current.startLine}-{current.endLine} of {current.totalLines} · read from the repository at build time · revision <span className="font-mono font-bold">{CODE_TOUR_REVISION}</span> · open source
+          Lines {current.startLine}-{current.endLine} of {current.totalLines} · sliced from the repository at revision <span className="font-mono font-bold">{CODE_TOUR_REVISION}</span> · open source
         </footer>
       </aside>
     </div>
