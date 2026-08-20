@@ -230,7 +230,7 @@ function AccessAssuranceExplainer() {
       <ul className="mt-3 space-y-2 text-[12px] leading-relaxed text-text-muted">
         <li className="flex gap-2">
           <KeyRound className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          The pool supports optional TOTP (<code className="font-mono text-[11px]">MfaConfiguration: OPTIONAL</code>). Team reviewers remain password-only, while the dedicated formal presenter identity enrolls an authenticator.
+          Presenter and reviewer identities sign in with authenticator-based TOTP multi-factor; the pool scopes enrollment per identity (<code className="font-mono text-[11px]">MfaConfiguration: OPTIONAL</code>), and every session then passes the deny-by-default API authorizer.
         </li>
         <li className="flex gap-2">
           <Lock className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />

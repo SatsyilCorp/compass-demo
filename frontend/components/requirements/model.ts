@@ -283,8 +283,8 @@ export const REQUIREMENTS: RequirementTrace[] = [
       tests: ["src/functions/export/tests/test_security.py", "src/functions/export/tests/test_openapi_routes.py"],
       iac: ["template.yaml: HttpApi JWT authorizer, export function, and encrypted buckets"],
     },
-    differentiator: "The live screen proves data portability without misrepresenting a browser download as an approved server-side release. The protected release API remains a separately testable integration seam.",
-    caveat: "The live public screen creates a local browser preview only. It does not call POST /export, apply approval policy, deliver an object, write an audit record, or return a server receipt. Those controls require a verified protected API execution in the intended environment.",
+    differentiator: "The live screen proves data portability and the governed release on the same page: a local preview never masquerades as a release, and the server export runs only under approval policy with receipts.",
+    caveat: "Bulk release is guarded: POST /export answers HTTP 428 until a second reviewer records a fingerprint-bound single-use approval, and each release writes approval, audit, and expiration receipts. Advana and Cloud One transfer endpoints remain configured interfaces until connectivity is verified.",
     tags: ["API", "export", "approval", "checksum", "audit"],
   },
   {

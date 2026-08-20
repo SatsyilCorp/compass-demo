@@ -45,7 +45,7 @@ const PRODUCT_SURFACES = [
   { label: "Governed catalog", href: "/catalog/" },
   { label: "Topic intelligence", href: "/intelligence/" },
   { label: "Decision brief", href: "/dashboard/" },
-  { label: "Portable browser preview", href: "/export/" },
+  { label: "Portable preview and governed release", href: "/export/" },
   { label: "License posture", href: "/licenses/" },
   { label: "MLOps", href: "/admin/mlops/" },
   { label: "Scale Lab", href: "/admin/scale/" },

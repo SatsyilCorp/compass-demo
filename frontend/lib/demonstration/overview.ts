@@ -49,7 +49,7 @@ const LIVE_ELEMENTS: Record<number, DemoOverviewElement> = {
     label: "Live public acquisition",
     source: "The current deployed public-source registry through protected AWS connectors",
     changes: "At each source-safe backend poll, or after an operator requests a bounded pull",
-    action: "Inspect continuous source control and follow one accepted authority receipt through quality and classification.",
+    action: "Drop a raw public grants file at the protected intake, watch the quality gate quarantine a defective batch, and follow one accepted authority receipt through quality and classification.",
     href: "/ingest/",
     evidence: "public",
   },
