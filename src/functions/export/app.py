@@ -595,8 +595,15 @@ def deliver(payload: bytes, key_name: str, content_type: str) -> Dict[str, Any]:
     """Return ``{download_url, delivery, ...}`` or raise ``FilterError(413)``."""
     if EXPORT_BUCKET:
         import boto3
+        from botocore.config import Config as BotoConfig
 
-        s3 = boto3.client("s3", region_name=config.aws_region())
+        # The exports bucket default-encrypts with SSE-KMS; KMS-encrypted objects
+        # reject presigned URLs unless they are signed with Signature Version 4.
+        s3 = boto3.client(
+            "s3",
+            region_name=config.aws_region(),
+            config=BotoConfig(signature_version="s3v4"),
+        )
         now = datetime.now(timezone.utc)
         key = f"{EXPORT_PREFIX}/{now:%Y/%m/%d}/{key_name}"
         # The bucket enforces SSE-KMS by default (template.yaml), so no explicit
