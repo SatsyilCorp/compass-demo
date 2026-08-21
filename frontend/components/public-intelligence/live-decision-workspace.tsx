@@ -263,7 +263,7 @@ function CuratedPortfolioFilter() {
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-busy={loading}>
           <MiniKpi label="Records in scope" value={kpis.total_grants.toLocaleString("en-US")} />
           <MiniKpi label="Total funding" value={kpis.total_funding_usd === null ? "Masked for this role" : `$${kpis.total_funding_usd.toLocaleString("en-US")}`} />
-          <MiniKpi label="Avg quality score" value={kpis.avg_quality_score === null ? "—" : kpis.avg_quality_score.toFixed(1)} />
+          <MiniKpi label="Avg quality score" value={kpis.avg_quality_score === null ? "Unavailable" : kpis.avg_quality_score.toFixed(1)} />
           <MiniKpi label="Open anomalies" value={kpis.open_anomalies.toLocaleString("en-US")} />
         </div>
       ) : null}
