@@ -21,7 +21,7 @@ concurrency:
 jobs:
   deploy:
     name: Build, deploy, migrate, verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     environment: ${{ inputs.environment }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
