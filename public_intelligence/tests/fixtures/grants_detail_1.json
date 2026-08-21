@@ -1,0 +1,50 @@
+{
+  "errorcode": 0,
+  "msg": "Webservice Succeeds",
+  "data": {
+    "id": 350001,
+    "opportunityNumber": "N00014-25-S-F001",
+    "opportunityTitle": "Maritime autonomy research opportunity",
+    "owningAgencyCode": "DOD-ONR",
+    "docType": "synopsis",
+    "opportunityCategory": {
+      "category": "D",
+      "description": "Discretionary"
+    },
+    "agencyDetails": {
+      "agencyName": "Office of Naval Research",
+      "agencyCode": "DOD-ONR"
+    },
+    "topAgencyDetails": {
+      "agencyName": "Department of Defense",
+      "agencyCode": "DOD"
+    },
+    "synopsis": {
+      "postingDateStr": "2025-01-15-00-00-00",
+      "responseDateStr": "2025-04-15-00-00-00",
+      "synopsisDesc": "Develop <strong>trusted autonomy</strong>. Do not retain grants.poc@example.mil or 703-555-0101.",
+      "agencyContactName": "Taylor Example",
+      "agencyContactEmail": "grants.poc@example.mil",
+      "agencyContactPhone": "703-555-0101",
+      "costSharing": false,
+      "awardFloor": "100000",
+      "awardCeiling": "2500000",
+      "fundingInstruments": [
+        {"id": "G", "description": "Grant"}
+      ],
+      "fundingActivityCategories": [
+        {"id": "ST", "description": "Science and Technology"}
+      ],
+      "applicantTypes": [
+        {"id": "99", "description": "Unrestricted"}
+      ]
+    },
+    "cfdas": [
+      {"cfdaNumber": "12.300", "programTitle": "Basic and Applied Scientific Research"}
+    ],
+    "synopsisAttachmentFolders": [
+      {"synopsisAttachments": [{"id": 1, "fileName": "notice.pdf"}]}
+    ],
+    "relatedOpps": []
+  }
+}

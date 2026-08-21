@@ -11,6 +11,7 @@ import type { CatalogEntry, LineageResponse } from "@/lib/types";
 import { ScoreChip } from "./score-chip";
 import { LineageGraph } from "./lineage-graph";
 import { formatInt } from "./format";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 
 /**
  * Element 4 - end-to-end lineage graph for one dataset (batch).
@@ -25,6 +26,7 @@ import { formatInt } from "./format";
  *      and any existing bookmarks.
  */
 export function LineageView() {
+  const { mode } = useEvidenceMode();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const id = searchParams?.get("batch") || params?.id || "";
@@ -35,7 +37,7 @@ export function LineageView() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || mode !== "rehearsal") return;
     let cancelled = false;
     setStatus("loading");
     setEntry(null);
@@ -61,7 +63,11 @@ export function LineageView() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, mode]);
+
+  if (mode !== "rehearsal") {
+    return <AppShell><PageHeader kicker="Live public evidence | Lineage" icon={<GitBranch className="size-[18px]" aria-hidden />} title="Use operational lineage for live records" lead="Legacy batch lineage belongs to the explicit synthetic rehearsal. Live source records, file uploads, model runs, and releases are traced through the protected operational lineage contract." /><section className="mt-6 rounded-xl border border-info/25 bg-info-soft/35 p-6"><p className="text-sm font-bold text-text-strong">No synthetic batch has been opened</p><p className="mt-2 text-xs leading-5 text-text-muted">Open the current operational graph to inspect real run IDs, source and artifact hashes, model versions, stages, timing, counts, and receipt locators.</p><Link href="/admin/lineage/" className="mt-4 inline-flex min-h-11 items-center rounded-md bg-gov-primary px-4 text-xs font-bold text-white hover:bg-gov-primary-dark">Open operational lineage</Link></section></AppShell>;
+  }
 
   return (
     <AppShell>
@@ -74,13 +80,13 @@ export function LineageView() {
       </Link>
 
       <PageHeader
-        kicker="Mission flow | Trace"
+        kicker="Explicit rehearsal | Synthetic lineage trace"
         icon={<GitBranch className="size-[18px]" aria-hidden />}
         title={entry ? entry.dataset_name : "Dataset lineage"}
         lead={
           entry
-            ? `End-to-end trace for run ${entry.run_id} - source file → quality gate → curated table → topic model → executive dashboard.`
-            : "Source file → quality gate → curated table → topic model → executive dashboard."
+            ? `Synthetic end-to-end trace for rehearsal run ${entry.run_id}: source file → quality gate → curated table → topic model → rehearsal dashboard.`
+            : "Synthetic source file → quality gate → curated table → topic model → rehearsal dashboard."
         }
         actions={
           entry ? (

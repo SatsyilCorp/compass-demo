@@ -1,0 +1,15 @@
+{
+  "source": "Grants.gov",
+  "source_url": "https://www.grants.gov/search-results-detail/40903",
+  "opportunity_number": "ONRBAA08-007",
+  "agency": "Office of Naval Research",
+  "title": "Basic Research Challenge Program",
+  "published_date": "2008-03-04",
+  "close_date": "2008-05-21",
+  "summary": "The public opportunity sought high-risk basic research addressing quantum information sciences, autonomous devices for advanced personnel treatment, mobile brain imaging, and compressed sensing for networked information processing.",
+  "data_boundary": {
+    "classification": "public",
+    "contains_cui": false,
+    "pii_minimized": true
+  }
+}

@@ -3,6 +3,7 @@ import { ArrowUpRight, GitBranch } from "lucide-react";
 import type { CatalogEntry } from "@/lib/types";
 import { ScoreChip, scoreTone } from "./score-chip";
 import { formatDateTime, formatInt, freshnessTone, humanizeRule, timeAgo } from "./format";
+import { catalogLineageHref } from "./lineage-route";
 
 const FRESHNESS_CLASSES: Record<string, string> = {
   success: "text-success",
@@ -108,13 +109,21 @@ export function QualityPanel({ entry }: { entry: CatalogEntry }) {
             <dd className="text-right font-medium text-text">{entry.classification_band}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-text-subtle">Owner</dt>
+            <dt className="text-text-subtle">Business owner</dt>
             <dd className="text-right text-text">{entry.owner}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-text-subtle">Data steward</dt>
+            <dd className="text-right text-text">{entry.steward}</dd>
           </div>
         </dl>
 
+        <p className="rounded border border-warn/30 bg-warn-soft px-2.5 py-2 text-[11px] leading-relaxed text-text-muted">
+          These are representative governance roles. Government data owners and stewards must be assigned before operational use.
+        </p>
+
         <Link
-          href={`/catalog/${encodeURIComponent(entry.id)}/`}
+          href={catalogLineageHref(entry.id)}
           className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-gov-primary/30 bg-accent-soft px-3 py-1.5 text-xs font-semibold text-gov-primary transition-colors hover:bg-gov-primary hover:text-white"
         >
           <GitBranch className="size-3.5" aria-hidden />
@@ -122,6 +131,34 @@ export function QualityPanel({ entry }: { entry: CatalogEntry }) {
           <ArrowUpRight className="size-3.5" aria-hidden />
         </Link>
       </div>
+
+      <details className="rounded-md border border-border bg-surface lg:col-span-2">
+        <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-text-strong">
+          Open governed data dictionary ({entry.data_dictionary.length} fields)
+        </summary>
+        <div className="overflow-x-auto border-t border-border">
+          <table className="w-full min-w-[720px] text-left text-xs">
+            <thead className="bg-surface-2 text-[10.5px] uppercase tracking-wide text-text-subtle">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Field</th>
+                <th className="px-3 py-2 font-semibold">Type</th>
+                <th className="px-3 py-2 font-semibold">Business definition</th>
+                <th className="px-3 py-2 font-semibold">Access control</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entry.data_dictionary.map((field) => (
+                <tr key={field.field} className="border-t border-border-2 align-top">
+                  <td className="px-3 py-2 font-mono font-semibold text-text">{field.field}</td>
+                  <td className="px-3 py-2 font-mono text-text-muted">{field.data_type}</td>
+                  <td className="px-3 py-2 text-text-muted">{field.definition}</td>
+                  <td className="px-3 py-2 text-text-muted">{field.security}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }

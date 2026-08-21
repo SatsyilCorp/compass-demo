@@ -25,6 +25,13 @@ export type QualityRuleResult = {
   details?: Record<string, unknown>;
 };
 
+export type CatalogFieldDefinition = {
+  field: string;
+  data_type: string;
+  definition: string;
+  security: string;
+};
+
 // ---------------------------------------------------------------------------
 // GET /me  (element 1)
 // ---------------------------------------------------------------------------
@@ -58,6 +65,8 @@ export type CatalogEntry = {
   classification_band: string;
   ingested_at: string; // ISO 8601
   owner: string;
+  steward: string;
+  data_dictionary: CatalogFieldDefinition[];
 };
 export type CatalogResponse = { datasets: CatalogEntry[] };
 
@@ -107,12 +116,64 @@ export type IngestStatusResponse = { batches: IngestBatch[] };
 export type StreamRecord = {
   id: string;
   at: string;
-  kind: "ingest" | "quality" | "anomaly" | "export" | "approval" | "analytics";
+  kind: "ingest" | "quality" | "anomaly" | "export" | "approval" | "analytics" | "public-feed";
   message: string;
   grant_no?: string;
   org_unit?: string;
 };
 export type StreamRecentResponse = { records: StreamRecord[] };
+
+// ---------------------------------------------------------------------------
+// Accelerated synthetic demo stream
+// ---------------------------------------------------------------------------
+export type LiveDemoStreamStatus = "idle" | "running" | "completed" | "stopped" | "failed";
+export type LiveDemoStreamMode = "continuous" | "bounded";
+
+export type LiveDemoStreamSession = {
+  session_id: string | null;
+  status: LiveDemoStreamStatus;
+  stream_mode: LiveDemoStreamMode;
+  cadence_seconds: 1 | 2;
+  total_events: number | null;
+  emitted_events: number;
+  started_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+  execution_chunk_number: number;
+};
+
+export type LiveDemoStreamEvent = {
+  sequence: number;
+  run_id: string | null;
+  event_id: string;
+  occurred_at: string;
+  message: string;
+};
+
+export type LiveDemoStreamResponse = {
+  contract: "compass.demo-stream.v1";
+  mode: "live" | "replay";
+  generated_at: string;
+  stream_kind?: "continuous-synthetic" | "accelerated-synthetic";
+  session: LiveDemoStreamSession;
+  latest_event: LiveDemoStreamEvent | null;
+  safeguards?: {
+    operator_stop_required: boolean;
+    workflow_chunk_events: number;
+    raw_retention_days: number;
+    estimated_events_per_hour: number;
+  };
+  disclosure: string;
+};
+
+export type LiveDemoStreamStartRequest = {
+  cadence_seconds: 1 | 2;
+  stream_mode: "continuous";
+};
+
+export type LiveDemoStreamStopRequest = {
+  session_id: string;
+};
 
 // ---------------------------------------------------------------------------
 // POST /analytics/run, GET /analytics/{run_id}  (element 5)
@@ -214,6 +275,9 @@ export type Anomaly = {
   id: number;
   grant_id: number | null;
   grant_no?: string;
+  title?: string;
+  program_area?: string;
+  org_unit?: string;
   kind: string;
   severity: "low" | "medium" | "high" | "critical";
   reason: string;
@@ -440,5 +504,198 @@ export type SystemEvidenceResponse = {
     status: "enforced" | "configured" | "verified";
     evidence: string;
   }[];
+  disclosure: string;
+};
+
+// ---------------------------------------------------------------------------
+// Unified operations: signals, summary, and cross-workflow lineage
+// ---------------------------------------------------------------------------
+
+export type OperationsEvidenceMode = "live" | "replay";
+
+export type OperationsEvidenceClass =
+  | "public"
+  | "public-observed"
+  | "public-derived"
+  | "public-predicted"
+  | "synthetic"
+  | "synthetic-demo"
+  | "operational-control"
+  | "mixed-evidence"
+  | "unclassified"
+  | (string & {});
+
+export type OperationsRunStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "quarantined"
+  | "failed"
+  | "expired"
+  | "cancelled";
+
+export type OperationsStageStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "quarantined"
+  | "failed"
+  | "skipped";
+
+export type OperationsSignalSeverity = "info" | "warning" | "critical";
+export type OperationsSignalStatus = "open" | "acknowledged" | "resolved";
+export type OperationsDeliveryState =
+  | "pending"
+  | "recorded"
+  | "published"
+  | "delivered"
+  | "failed"
+  | "not_configured";
+
+export type OperationsResourceRef = {
+  id: string;
+  label: string;
+  kind: string;
+  uri?: string | null;
+  sha256?: string | null;
+  version?: string | null;
+};
+
+export type OperationsRunCounts = {
+  input_records: number | null;
+  output_records: number | null;
+  quarantined_records: number | null;
+  artifacts: number | null;
+};
+
+export type OperationsRunSummary = {
+  run_id: string;
+  run_kind: string;
+  label: string;
+  evidence_class: OperationsEvidenceClass;
+  status: OperationsRunStatus;
+  current_stage: string;
+  started_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  completed_stages: number;
+  stage_count: number;
+  source: OperationsResourceRef;
+  model: OperationsResourceRef | null;
+  consumer: OperationsResourceRef | null;
+  counts: OperationsRunCounts;
+};
+
+export type OperationsSourceWatermark = {
+  source_id: string;
+  label: string;
+  status: "current" | "running" | "late" | "failed";
+  last_attempt_at: string | null;
+  last_accepted_at: string | null;
+  watermark: string | null;
+  added_records: number;
+  changed_records: number;
+  unchanged_records: number;
+  not_observed_records: number;
+  run_id: string | null;
+};
+
+export type OperationsSummaryResponse = {
+  contract: "compass.operations.summary.v1";
+  mode: OperationsEvidenceMode;
+  generated_at: string;
+  counts: {
+    runs_total: number;
+    runs_active: number;
+    runs_attention: number;
+    signals_unread: number;
+  };
+  runs: OperationsRunSummary[];
+  source_watermarks: OperationsSourceWatermark[];
+  disclosure: string;
+};
+
+export type OperationsSignalDelivery = {
+  channel: "in_app" | "email" | "sns" | "webhook";
+  state: OperationsDeliveryState;
+  attempted_at: string | null;
+  delivered_at: string | null;
+  detail: string | null;
+};
+
+export type OperationsSignal = {
+  event_id: string;
+  evidence_class: OperationsEvidenceClass;
+  signal_type: string;
+  severity: OperationsSignalSeverity;
+  title: string;
+  message: string;
+  status: OperationsSignalStatus;
+  occurred_at: string;
+  updated_at: string;
+  run_id: string | null;
+  run_kind: string | null;
+  href: string | null;
+  source: string;
+  deliveries: OperationsSignalDelivery[];
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+};
+
+export type OperationsSignalsResponse = {
+  contract: "compass.operations.signals.v1";
+  mode: OperationsEvidenceMode;
+  generated_at: string;
+  unread_count: number;
+  signals: OperationsSignal[];
+  disclosure: string;
+};
+
+export type OperationsSignalAcknowledgeResponse = {
+  contract: "compass.operations.signal-acknowledgement.v1";
+  mode: OperationsEvidenceMode;
+  event_id: string;
+  status: "acknowledged";
+  acknowledged_at: string;
+  acknowledged_by: string;
+};
+
+export type OperationsLineageStage = {
+  stage_id: string;
+  evidence_class: OperationsEvidenceClass;
+  sequence: number;
+  label: string;
+  system: string;
+  status: OperationsStageStatus;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  source_sha256: string | null;
+  input_sha256: string | null;
+  output_sha256: string | null;
+  record_count: number | null;
+  artifact_count: number | null;
+  receipt: string | null;
+  attempt: number;
+  actor: string | null;
+  source_revision: string | null;
+  failure_code: string | null;
+  detail: string;
+};
+
+export type OperationsLineageEdge = {
+  from_stage: string;
+  to_stage: string;
+  label: string;
+};
+
+export type OperationsLineageResponse = {
+  contract: "compass.operations.lineage.v1";
+  mode: OperationsEvidenceMode;
+  generated_at: string;
+  run: OperationsRunSummary;
+  stages: OperationsLineageStage[];
+  edges: OperationsLineageEdge[];
   disclosure: string;
 };

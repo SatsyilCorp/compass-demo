@@ -2,25 +2,26 @@
 
 import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { evidenceModeDisclosure, evidenceModeLabel } from "@/lib/evidence-mode";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 
 export function GovBanner() {
   const [open, setOpen] = useState(false);
   const contentId = useId();
-  const replay = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
+  const { mode } = useEvidenceMode();
+  const live = mode === "live";
 
   return (
     <section aria-label="Environment status and prototype disclosure" className="relative z-40 border-b border-border bg-surface-2">
       <div className="mx-auto flex min-h-11 max-w-[1480px] items-center gap-2 px-4 text-xs text-text-muted sm:gap-3 sm:px-6 xl:px-8">
         <span
           aria-hidden
-          className={`size-2 shrink-0 rounded-full ring-4 ${
-            replay ? "bg-gold ring-gold-soft" : "bg-success ring-success-soft"
-          }`}
+          className={`size-2 shrink-0 rounded-full ring-4 ${live ? "bg-success ring-success-soft" : "bg-warn ring-warn-soft"}`}
         />
         <p className="min-w-0 flex-1 truncate">
-          <strong className="text-text-strong">{replay ? "Replay mode" : "Live services"}</strong>
+          <strong className="text-text-strong">{evidenceModeLabel(mode)}</strong>
           <span className="mx-2 text-border-strong" aria-hidden>|</span>
-          Technical prototype using synthetic data
+          {live ? "Protected public services, no synthetic fallback" : "Explicit synthetic rehearsal, never presented as live"}
         </p>
         <button
           type="button"
@@ -44,10 +45,7 @@ export function GovBanner() {
             demonstration prepared for evaluation of an S&amp;T portfolio intelligence concept. It
             is not deployed, operated, or endorsed by the U.S. Navy, ONR, or any federal agency.
           </p>
-          <p>
-            Every grant, amount, dataset, and identity shown here is synthetically generated. No
-            screen reflects a real program, awardee, or funding decision.
-          </p>
+          <p>{evidenceModeDisclosure(mode)} No screen represents an authoritative ONR inventory or an approved Government funding decision.</p>
         </div>
       </div>
     </section>

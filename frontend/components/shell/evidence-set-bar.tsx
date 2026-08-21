@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { Database, FlaskConical, RadioTower, RotateCcw } from "lucide-react";
 
-import { USE_MOCK } from "@/lib/api";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { useMissionDataContext } from "@/lib/mission-data-context";
 import { curatedEvidenceSourceLabel } from "@/lib/mission-data-source";
 
 export function EvidenceSetBar() {
   const { hydrated, selection, selectCurated } = useMissionDataContext();
+  const { mode } = useEvidenceMode();
 
   if (!hydrated) {
     return (
@@ -51,7 +52,7 @@ export function EvidenceSetBar() {
           </p>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <p className="min-w-0 truncate text-xs font-bold text-text-strong">
-              {scaleSelected ? "Selected Scale Run" : "Curated demo"}
+              {scaleSelected ? "Selected Scale Run" : mode === "rehearsal" ? "Synthetic baseline" : "Accepted public evidence"}
             </p>
             {scaleSelected ? (
               <code className="max-w-full truncate font-mono text-[10px] text-text-muted" title={selection.runId}>
@@ -59,16 +60,16 @@ export function EvidenceSetBar() {
               </code>
             ) : (
               <span className="text-[10.5px] text-text-muted">
-                {curatedEvidenceSourceLabel(USE_MOCK)}
+                {curatedEvidenceSourceLabel(mode)}
               </span>
             )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-success/35 bg-success-soft px-2.5 text-[9px] font-bold uppercase tracking-[0.1em] text-success">
+          <span className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-bold uppercase tracking-[0.1em] ${mode === "rehearsal" ? "border-warn/35 bg-warn-soft text-warn" : "border-success/35 bg-success-soft text-success"}`}>
             <FlaskConical className="size-3" aria-hidden />
-            Synthetic only
+            {mode === "rehearsal" ? "Synthetic rehearsal" : "Live public"}
           </span>
           {scaleSelected ? (
             <button
@@ -77,7 +78,7 @@ export function EvidenceSetBar() {
               className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-[10px] font-bold text-text-muted transition-colors hover:bg-surface-2 hover:text-text-strong"
             >
               <RotateCcw className="size-3.5" aria-hidden />
-              Use curated baseline
+              Use rehearsal baseline
             </button>
           ) : null}
           <Link

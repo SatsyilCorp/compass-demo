@@ -1,5 +1,7 @@
-export function curatedEvidenceSourceLabel(useMock: boolean): string {
-  return useMock
-    ? "Fixture-backed serving projection"
-    : "Aurora serving projection";
+import type { EvidenceMode } from "@/lib/evidence-mode";
+
+export function curatedEvidenceSourceLabel(mode: EvidenceMode): string {
+  return mode === "rehearsal"
+    ? "Explicit fixture-backed rehearsal projection"
+    : "Protected live public serving projection";
 }

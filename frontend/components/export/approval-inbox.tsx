@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
+import { RehearsalPersonaSwitch } from "./rehearsal-persona-switch";
 import clsx from "clsx";
 import {
   ArrowRight,
@@ -16,7 +18,7 @@ import {
 } from "lucide-react";
 
 import { dateTimeShort } from "@/components/dashboard/format";
-import type { Approval, ApprovalsListResponse } from "@/lib/types";
+import type { Approval, ApprovalsListResponse , Role } from "@/lib/types";
 
 export type ApprovalHandoff = {
   approval: Approval;
@@ -24,6 +26,7 @@ export type ApprovalHandoff = {
 };
 
 type ApprovalInboxProps = {
+  signedInRole: Role | null;
   data: ApprovalsListResponse | null;
   error: string | null;
   loading: boolean;
@@ -34,6 +37,7 @@ type ApprovalInboxProps = {
 };
 
 export function ApprovalInbox({
+  signedInRole,
   data,
   error,
   loading,
@@ -42,6 +46,11 @@ export function ApprovalInbox({
   onRefresh,
   onDecide,
 }: ApprovalInboxProps) {
+  // Four-eyes is a two-person control: the acting-persona simulation exists
+  // only in the explicitly synthetic rehearsal workspace. On the live plane a
+  // second reviewer must decide in their own authenticated session.
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -101,7 +110,7 @@ export function ApprovalInbox({
         <HandoffStep
           number="02"
           title="Independent reviewer"
-          body="Open this page in another session, select the power-user persona, then approve."
+          body={rehearsal ? "Switch the acting persona below to the power-user reviewer, then approve. Rehearsal simulates the separate session inside this browser." : "A different signed-in reviewer opens this page in their own session and approves the matching subject."}
         />
         <HandoffStep
           number="03"
@@ -120,6 +129,7 @@ export function ApprovalInbox({
               <p className="mt-0.5 text-[11px] text-text-muted">
                 Acting as <span className="font-semibold text-text-strong">{data?.actor ?? "Loading actor"}</span>
               </p>
+              {rehearsal ? <RehearsalPersonaSwitch signedInRole={signedInRole} onSwitched={onRefresh} /> : null}
             </div>
             {data ? (
               <span

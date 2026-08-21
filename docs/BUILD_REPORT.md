@@ -1,24 +1,31 @@
 # Compass candidate verification report
 
-**Report date:** 2026-08-11
+**Report date:** 2026-08-12
 **Purpose:** evaluator orientation and recording release gate
 
 This report distinguishes deployed resources from accepted execution evidence.
-The current Satsyil stack is deployed with 33 protected
-operations, 18 Lambda functions, 13 alarms, 2 dashboards, and 3 state machines.
+The current Satsyil stack is deployed with 38 protected
+operations across 35 URL paths, 19 Lambda functions, 15 alarms, 2 dashboards,
+and 3 state machines.
 The HA stack, identity preparation, fixed baseline, four Scale Runs, governed
 exports, interactive browser path, document success and quarantine paths,
 model training, Champion promotion, and drift evaluation have accepted live
-receipts. No SageMaker training job or endpoint was started. The working tree is
-not yet an exact committed revision
-with GitHub workflow evidence. The candidate is not the recording release until
-the applicable evidence and one timed human rehearsal pass exist.
+receipts. The authentic public SBIR candidate completed a 109-second SageMaker
+training job and entered Model Registry as `PendingManualApproval`. A bounded
+25-record Batch Transform run on a label-excluded public cohort after the
+evaluation cutoff then completed in 72 observed seconds with a hash-bound
+terminal receipt and $0.0023 estimate-only compute. All 25 predictions are
+available in the protected Intelligence and MLOps surfaces for human review.
+The temporary model was deleted and no endpoint was created. The exact revision
+still requires clean GitHub workflow evidence and protected-environment release
+evidence. The candidate is not the recording release until those gates and one
+timed human rehearsal pass exist.
 
 ## 1. Current implementation by source inspection
 
 | Area | Current evidence |
 |---|---|
-| API | 33 JWT-protected method-and-path operations across 31 URL paths, including eight Scale operations, eight document MLOps operations, the reviewer inbox, and `GET /system/evidence` |
+| API | 38 JWT-protected method-and-path operations across 35 URL paths, including eight Scale operations, eight document MLOps operations, three public-model execution operations, the reviewer inbox, and `GET /system/evidence` |
 | Identity | Shared Cognito group normalization for native JWT and request-authorizer events; verified groups override forwarded roles and conflicting organizations fail closed |
 | CORS | Exact-origin allowlist in API Gateway and shared Lambda response helpers |
 | Database security | FORCE RLS, non-owner runtime role, corporate GUC gate, explicit runtime grants, and append-only audit trigger |
@@ -27,14 +34,15 @@ the applicable evidence and one timed human rehearsal pass exist.
 | Delivery | Pull-request quality workflow and manually dispatched protected-environment deployment through AWS OIDC |
 | Demo preparation | Explicitly confirmed, synthetic-only bounded reset and seed; fixed non-triggering staged fixtures; real baseline analytics; redacted readiness receipt; one-shot live drop release |
 | Scale data plane | Deterministic six-domain generator, maximum 25,000 records per partition, one-active-run gate, Standard workflow, SQS and DLQ, DynamoDB ledger, governed lake zones, Glue, Athena, and asynchronous Parquet export |
-| Observability | 14-day API, workflow, and centralized application log groups, function-specific streams, X-Ray, 13 deployed alarms, and 2 CloudWatch dashboards |
+| Observability | 14-day API, workflow, and centralized application log groups, function-specific streams, X-Ray, 15 deployed alarms, and 2 CloudWatch dashboards |
 | Database resilience | Source supports demo and HA modes; the accepted Satsyil live revision uses one private encrypted writer and one reader, 14-day backups, and deletion protection |
 | Frontend | Responsive mission shell, mobile drawer, server-backed scoped dashboard filters, tab-scoped evidence selection, Scale receipt Decision Brief, presenter rehearsal guide, accessible interactions, interactive Scale Lab, and static deployment |
 | Replay | One persistent deterministic scenario shared by ingest, catalog, lineage, analytics, dashboard, approvals, export, stream, and evidence |
 | Lineage | Query-based `/catalog/lineage/?batch=<id>` route supports batches created after static frontend build |
 | Activity ticker | Ordered database projection is authoritative; recent Kinesis receipts merge by stable ID; missing transport organization scope is corporate-only |
-| Application compute | 18 deployed Lambda functions behind the narrow API, workflow, queue, and data adapters |
+| Application compute | 19 deployed Lambda functions behind the narrow API, workflow, queue, public-intelligence, and data adapters |
 | Document intelligence and MLOps | Deployed eight-operation document and model contract with a bounded Step Functions workflow, Lambda classifier, optional SageMaker submission seam, accepted success and quarantine runs, 1.0 accuracy and macro F1 training evidence, exact-version Champion promotion, and shifted-data drift evidence |
+| Public SBIR model execution | Package version 2 remained `PendingManualApproval` while one network-isolated 25-record Batch Transform current-cohort run completed with 25 predictions, input and output digests, a durable receipt digest, 72 observed seconds, $0.0023 estimate-only compute, temporary-model deletion, and zero endpoints |
 
 ## 2. Required automated gate
 
@@ -111,24 +119,25 @@ The following checks passed against the current Satsyil HA deployment on
 
 | Observed check | Result |
 |---|---|
-| Stack | Deployment completed with 18 functions, 13 alarms, 2 dashboards, and 3 workflows |
+| Stack | Deployment completed with 19 functions, 15 alarms, 2 dashboards, and 3 workflows |
 | Database | Private encrypted Aurora writer and reader available, 14-day backups configured, deletion protection enabled, all four migrations applied, and runtime-role bootstrap granted |
 | Identity | Poweruser, reviewer, and viewer accounts enabled for password-only team access; a separate presenter identity is enrolled with TOTP |
 | Preparation | Redacted receipt reported ready with all 19 of 19 checks passing |
-| API contract | OpenAPI described 33 protected operations across 31 URL paths; unauthenticated protected requests returned 401 |
+| API contract | OpenAPI describes 38 protected operations across 35 URL paths; unauthenticated protected requests return 401 |
 | Browser | Real password-only poweruser login loaded the current dashboard with 480 grants across eight program areas and no `Failed to fetch` or console errors; the MLOps screen trained, promoted, and evaluated the exact live model version |
 | Document intelligence | One document reached `gold-published` with a `technical_report` classification at 0.999991 confidence; one failed extractable-content and produced a quarantine receipt |
 | MLOps | Model `doc-nb-f828a29acd1e` reached 1.0 accuracy, 1.0 macro F1, and 6 of 6 classes; Champion promotion and shifted drift with PSI 11.51, 91 percent OOV, and `retrain-and-review` passed |
 | Public protection | CSP, Permissions Policy, HSTS, and WAF were present on the live boundary |
 | Scale data plane | 1K, 10K, 100K, and 1M runs completed, reconciled, and produced ready governed Parquet exports |
-| Local automation | 229 backend tests, 42 frontend scenarios, lint, typecheck, a 31-page production build, SAM validation, git whitespace checks, and the repository no-em-dash policy passed |
+| Current public SBIR scoring | Execution `sbir-batch-20260812T215434-d6230e7c` scored 25 post-cutoff public Phase I records, returned 25 predictions and 21 positive proxy signals, preserved source and selection provenance, deleted its temporary model, and remained candidate-only with no endpoint |
+| Local automation | 305 aggregate offline contract and function tests, 62 frontend scenarios, lint, typecheck, a 32-page production build, SAM validation, git whitespace checks, and the repository no-em-dash policy passed |
 
 The direct acceptance path invoked the deployed Scale Control Lambda through
 AWS IAM with a staged `/prod` event. It exercised the production route handler
 and live SQS, Lambda, S3, DynamoDB, Step Functions, Glue, Athena, and export
 flow. It bypassed Cognito, API Gateway transport, WAF, and the browser. Those
 interfaces were verified separately through the real Cognito browser pass and
-the 25-operation CORS check.
+the recorded CORS boundary checks.
 
 | Profile | Partitions | Duration | Quality | Passed | Quarantined | Anomalies | Export rows | Planned | Accrued estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -157,10 +166,13 @@ records and a continuous human rehearsal between 38 and 40 minutes.
 
 ## 7. Scale posture
 
-Exhibit B provides a target baseline of approximately 500 to 1,000 users, 100
-to 200 concurrent users, 10 to 20 sources, 1 to 20 TB, three ingestion
-velocities, 5 to 10 applications, 20 to 30 dashboards, and 10 to 20 production
-models.
+Exhibit B provides target baselines of 500 to 1,000 total users, 200 to 300
+power users, 10 to 20 sources, 1 to 20 TB managed data, at least 1 TB of annual
+growth, daily incremental and full refresh patterns, modular parameterized
+infrastructure-as-code pipelines, and 50 to 75 Tier 1 and Tier 2 tickets per
+month. QASP targets include 99 percent uptime during core hours and 95 percent
+ticket service-level attainment, with cloud-log inspection, FinOps, and
+Responsible AI review. See `docs/OPPORTUNITY_REQUIREMENTS_BOUNDARY.md`.
 
 The demonstration now includes bounded measured evidence through 1,000,000
 synthetic records, 41 partitions, a ready 989,852-row Parquet export, and
@@ -168,10 +180,11 @@ full-corpus deterministic intelligence over 200,000 grants. Aurora Serverless
 scaling, stateless Lambda handlers, event-driven intake, on-demand Kinesis,
 static web delivery, and replaceable adapters also provide design evidence.
 
-This is not evidence for the Exhibit B user or concurrency ranges, sustained
-load, unlimited load, 1 to 20 TB, the stated application, dashboard, or model
-counts, Government data, or an accredited environment. Those claims require
-separate tests in the target landing zone.
+This is not evidence for the Exhibit B total-user or power-user ranges,
+sustained load, unlimited load, 1 to 20 TB, annual growth, daily refresh service
+levels, monthly ticket volume, Government data, QASP attainment, or an
+accredited environment. Those claims require separate tests and operational
+records in the target landing zone.
 
 ## 8. Recording constraints
 

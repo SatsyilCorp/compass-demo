@@ -8,15 +8,16 @@ Actions workflows.
 
 Compass is one AWS SAM stack in `us-east-1` plus a statically exported Next.js
 application. The web application is public at the CloudFront edge, but every
-application API route requires a Cognito token. Data-touching functions and
-Aurora are in private subnets.
+application API route requires a Cognito token. Relational portfolio functions
+and Aurora are in private subnets. The public-intelligence function is isolated
+from that database path and reads only its dedicated KMS-encrypted S3 prefix.
 
 ```mermaid
 flowchart LR
   U["User browser"]
   CF["CloudFront and WAF\nPrivate S3 origin through OAC"]
   COG["Cognito hosted UI\npassword-only team access, TOTP presenter, OIDC"]
-  API["HTTP API\n25 JWT-protected operations when Scale Run is enabled"]
+  API["HTTP API\n48 JWT-protected operations"]
 
   subgraph VPC["Private application boundary across two AZs"]
     L["Application Lambdas\nShared identity, HTTP, DB, AI, and audit layer"]
@@ -25,22 +26,43 @@ flowchart LR
   end
 
   RAW[("KMS-encrypted raw bucket")]
+  CTRL["Continuous synthetic controller\nStandard workflow with rotation"]
   EB["EventBridge"]
   SFN["Express Step Functions\nFetch, validate, gate, persist or quarantine"]
   KIN["Kinesis activity stream"]
   BR["Amazon Bedrock"]
+  PI["Public intelligence Lambda\nManifest verification and cited retrieval"]
+  PUB[("KMS-encrypted public evidence\nImmutable source snapshots and serving index")]
   CW["CloudWatch logs, alarms, dashboard, and X-Ray"]
+  OPS["Operations evidence\nDynamoDB stage ledger and encrypted SNS"]
+  USA["USAspending public API\nFive-minute bounded poll"]
+  ACQ["Public acquisition Lambda\nversion, minimize, hash, compare"]
 
   U -->|"HTTPS"| CF
   U -->|"OIDC"| COG
   U -->|"JWT over HTTPS"| API
   API --> L
+  API -->|"Start, status, Stop"| CTRL
+  CTRL -->|"One immutable pulse every 1 or 2 seconds"| RAW
   RAW --> EB --> SFN --> L
   L <--> KIN
   L --> BR
+  API --> PI
+  PUB --> PI
+  PI --> BR
   API --> CW
   L --> CW
   SFN --> CW
+  USA -->|"bounded HTTPS request"| ACQ
+  ACQ --> RAW
+  ACQ -->|"change events"| KIN
+  L --> OPS
+  CTRL --> OPS
+  CTRL --> CW
+  SFN --> OPS
+  PI --> OPS
+  ACQ --> OPS
+  API --> OPS
 ```
 
 ## 2. Deployable inventory
@@ -49,31 +71,42 @@ The template provisions:
 
 - A VPC with two public and two private subnets across two availability zones
 - One NAT gateway for the cost-controlled demonstration mode
+- S3 and DynamoDB gateway endpoints for private application service traffic
 - A customer-managed KMS key with rotation enabled
 - An Aurora Serverless v2 PostgreSQL 16.9 cluster and managed master secret
 - Cognito with password-only team accounts, a dedicated TOTP presenter,
   admin-created users, and poweruser and viewer groups
 - An HTTP API with the JWT authorizer as its default
-- Fourteen Lambda functions and one shared Lambda layer
+- Eighteen core application Lambda functions, one CloudFront path rewrite
+  function, and one shared Lambda layer
 - A KMS-encrypted raw S3 bucket with EventBridge notifications
+- An operator-controlled continuous synthetic ingestion session whose Standard
+  workflow rotates every 250 pulses and runs until Stop
 - An on-demand Kinesis stream
+- A five-minute bounded USAspending acquisition with immutable snapshots,
+  watermarks, hash-based deltas, and Kinesis change events
+- A KMS-encrypted operational stage and signal table plus encrypted SNS topic
 - An Express Step Functions intake workflow
 - A private S3 web bucket, CloudFront OAC, path rewrite function, and WAF
 - Explicit 14-day API and centralized Lambda log groups
-- Four service alarms and one CloudWatch operations dashboard
+- Eleven service alarms and one CloudWatch operations dashboard
 - Optional account-level GuardDuty, Security Hub, and Macie resources
 
 When `ScaleFeatureEnabled=true`, the same template adds three Lambda functions,
 one Standard Step Functions workflow, one DynamoDB run and partition ledger,
 one encrypted Scale Run S3 lake, worker and Export Job SQS queues with dead
 letter queues, six Glue tables, one bounded Athena workgroup, scale-specific
-alarms, and scale dashboard widgets. The enabled stack therefore has seventeen
-functions. These resources are conditional and their presence in source does
-not establish that a live deployment or measured Scale Run exists.
+alarms, and scale dashboard widgets. The enabled stack therefore has twenty-one
+application functions, one edge rewrite function, eighteen alarms, and two
+dashboards. These resources are conditional
+and their presence in source does not establish that a live deployment or
+measured Scale Run exists.
 
-The fourteen functions are authorizer, intake, quality gate, catalog,
+The eighteen core functions are authorizer, intake, quality gate, catalog,
 analytics, dashboard, summarize, RAG chat, approvals, license, export, evidence,
-RMF artifact, and migrator.
+RMF artifact, migrator, document ML, public intelligence, public acquisition,
+and operations. The three scale functions are scale control, scale worker, and
+scale export.
 
 ## 3. Record life cycle
 
@@ -98,6 +131,16 @@ the governed database projection. The service merges recent Kinesis transport
 receipts by stable event identifier when present. A receipt with no
 organization scope is corporate-only, so missing transport metadata cannot
 widen a scoped viewer's feed.
+
+The continuous demonstration source is separate from official public-source
+acquisition. A corporate poweruser starts one one-second or two-second
+synthetic cadence. Each pulse receives a cumulative sequence, immutable S3
+object, source digest, intake run identifier, quality decision, lineage chain,
+catalog row, and decision projection. The visible session has no event-count
+cutoff. The Standard controller rotates its underlying execution every 250
+pulses so one execution history cannot grow without limit. Stop is
+authoritative across rotation, deterministic object keys make retry safe, and
+raw pulse objects expire after seven days.
 
 Workers exchange batch and run manifests. They do not pass the complete
 record set through Step Functions state.
@@ -132,7 +175,7 @@ Forward migrations 003 and 004 provide five database safeguards:
 
 ## 5. API and CORS boundary
 
-The 33 method-and-path operations across 31 URL paths are listed in
+The 48 method-and-path operations across 45 URL paths are listed in
 `docs/CONTRACTS.md`. The default JWT authorizer protects every operation,
 including the eight conditional Scale Run operations, OpenAPI document, and
 System Inspector. Scale Run operations apply an additional corporate
@@ -145,6 +188,49 @@ development is explicitly listed. No wildcard origin is returned.
 ## 6. Evidence architecture
 
 The mission UI separates product decisions from system proof and scale proof.
+
+The public evidence plane is also separate from the synthetic portfolio. Its
+source collectors create minimized canonical records and immutable sidecar
+manifests. The accepted S3 serving manifest binds a compact index by SHA-256.
+`GET /public-intelligence/snapshot` verifies both objects before returning any
+record, and `POST /public-intelligence/explain` retrieves only from that
+verified index. Unsupported questions produce an explicit refusal. The full
+source snapshots never pass through the browser.
+
+Every processing path publishes a compact, safe projection after its
+authoritative domain write. The operations table keys each stage by run,
+sequence, and stage identifier. It retains logical source and destination
+locators, SHA-256 digests, counts, model version, consumer, actor, status, and
+receipt time. The protected operations API lists recent runs, renders one
+directed stage chain, exposes source watermarks, and supports append-preserving
+signal acknowledgement. Operational signals are always visible in the
+application and can also be published to the encrypted SNS topic. Email is
+active only after the named recipient confirms the subscription.
+
+USAspending is not a streaming source. The public acquisition function sends a
+bounded request every five minutes, retains the raw response and PII-minimized
+canonical records as versioned objects, compares stable record hashes with the
+previous accepted snapshot, advances a watermark, and emits only the accepted
+change summary to Kinesis. A source or processing failure creates a failed run
+and signal while the prior accepted snapshot remains active.
+
+The same isolated function exposes a cost-bounded public model execution
+Adapter. It selects only from a digest-bound, PII-minimized current public
+Phase I pool whose records occur after the model evaluation cutoff and exclude
+outcome labels,
+verifies one exact Model Registry package, reads one exact S3 object version,
+checks the registry bundle bytes against the pinned bundle SHA-256 value, and executes a
+per-run versioned, write-once copy with a digest-qualified image. It then
+creates one network-isolated Batch Transform job on one `ml.m5.large` instance.
+An S3 lock limits execution to one active run. Versioned KMS-encrypted input,
+output, history pointers, and terminal receipts preserve provenance across
+browser refreshes. The protected receipt endpoint and a per-run EventBridge
+Scheduler cleanup guard both reconcile active work, enforce the bounded runtime,
+validate every prediction, remove the temporary SageMaker Model after a terminal
+result, and release the lock. The guard begins after five minutes, runs once per
+minute, self-deletes after terminal cleanup, and keeps a bounded 24-hour retry
+window with a dead-letter alarm. No endpoint or approval change is allowed by
+the interface.
 
 ```mermaid
 flowchart LR
@@ -209,12 +295,13 @@ Supporting routes are `/licenses/`, `/admin/pipeline/`, `/admin/scale/`, and
 newly created batch IDs in a static export, so a post-build live ingest does
 not require a new pre-rendered dynamic page.
 
-## 8. Persistent deterministic replay
+## 8. Persistent deterministic rehearsal
 
-When `NEXT_PUBLIC_USE_MOCK=true`, state-changing portfolio adapters read one
-versioned scenario store. State is persisted in the browser and distributed
-to all subscribers. A fixed logical clock keeps screenshots and rehearsals
-stable. Reference-only fixtures such as the license register remain static.
+Live public evidence is the fail-closed default. The user must explicitly
+activate Rehearsal in the product before any fixture adapter can run.
+Rehearsal state is persisted in the browser and distributed to all subscribers.
+A fixed logical clock keeps screenshots and rehearsals stable. Reference-only
+fixtures such as the rehearsal license register remain static.
 
 Important invariants are tested:
 
@@ -227,7 +314,7 @@ Important invariants are tested:
 - Export approval uses the same exact-fingerprint, expiry, separate-persona,
   and single-use behavior as the live contract.
 
-Replay is deliberately labeled. It is a deterministic rehearsal adapter, not
+Rehearsal is deliberately labeled. It is a deterministic adapter, not
 an AWS execution emulator.
 
 ## 9. Delivery architecture

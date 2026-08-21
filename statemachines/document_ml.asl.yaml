@@ -24,7 +24,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: InspectionGate
 
   InspectionGate:
@@ -36,7 +36,7 @@ States:
       - Variable: $.gate
         StringEquals: continue
         Next: Quality
-    Default: Failed
+    Default: RecordFailure
 
   Quality:
     Type: Task
@@ -52,6 +52,7 @@ States:
         source_key.$: $.source_key
         bronze_key.$: $.bronze_key
         org_unit.$: $.org_unit
+        evidence_class.$: $.evidence_class
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException
@@ -64,7 +65,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     Next: QualityGate
 
   QualityGate:
@@ -76,7 +77,7 @@ States:
       - Variable: $.gate
         StringEquals: quarantine
         Next: Quarantine
-    Default: Failed
+    Default: RecordFailure
 
   Curate:
     Type: Task
@@ -93,6 +94,7 @@ States:
         bronze_key.$: $.bronze_key
         quality_key.$: $.quality_key
         org_unit.$: $.org_unit
+        evidence_class.$: $.evidence_class
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException
@@ -105,7 +107,7 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     End: true
 
   Quarantine:
@@ -121,6 +123,7 @@ States:
         source_bucket.$: $.source_bucket
         source_key.$: $.source_key
         reason.$: $.reason
+        evidence_class.$: $.evidence_class
     Retry:
       - ErrorEquals:
           - Lambda.ServiceException
@@ -133,8 +136,32 @@ States:
     Catch:
       - ErrorEquals: [States.ALL]
         ResultPath: $.error
-        Next: Failed
+        Next: RecordFailure
     End: true
+
+  RecordFailure:
+    Type: Task
+    Comment: Publish a sanitized operational failure receipt before failing closed.
+    Resource: arn:aws:states:::lambda:invoke
+    Parameters:
+      FunctionName: ${DocumentMlFunctionArn}
+      Payload:
+        action: workflow_failure
+        failure.$: $
+        execution_id.$: $$.Execution.Name
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 2
+        MaxAttempts: 2
+        BackoffRate: 2
+    Catch:
+      - ErrorEquals: [States.ALL]
+        Next: Failed
+    Next: Failed
 
   Failed:
     Type: Fail

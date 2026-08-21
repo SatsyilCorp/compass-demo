@@ -223,6 +223,15 @@ kbd,
   animation: compass-drawer-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes compass-drawer-enter-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.compass-drawer-enter-right {
+  animation: compass-drawer-enter-right 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

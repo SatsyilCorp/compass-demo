@@ -15,7 +15,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleGate } from "@/components/shell/role-gate";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
-import { ApiError, USE_MOCK, getIngestStatus, postIngestSimulate } from "@/lib/api";
+import { getIngestStatus } from "@/lib/api";
 import {
   advanceSimulatedIngest,
   resetIngestReplay,
@@ -28,13 +28,8 @@ import { BatchRow } from "@/components/ingest/batch-row";
 import { VelocityLegend } from "@/components/ingest/velocity-legend";
 import { StreamTicker } from "@/components/ingest/stream-ticker";
 import { DocumentDropZone } from "@/components/documents/document-drop-zone";
-
-const STATUS_POLL_MS = 20_000;
-const LIVE_FIXTURE_BY_PROFILE = {
-  clean: "good",
-  legacy: "compatible",
-  defective: "bad",
-} as const;
+import { LiveIngestionWorkspace } from "@/components/ingest/live-ingestion-workspace";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 
 const REPLAY_ACTIONS: {
   profile: ScenarioProfile;
@@ -52,8 +47,8 @@ const REPLAY_ACTIONS: {
   },
   {
     profile: "legacy",
-    label: "Legacy batch",
-    title: "Replay a legacy CSV that is normalized and passes with warnings",
+    label: "Legacy JSON",
+    title: "Replay a legacy JSON export that is normalized and passes with warnings",
     icon: UploadCloud,
     tone: "border-gold/50 bg-gold-soft text-gold-ink hover:border-gold",
   },
@@ -67,6 +62,24 @@ const REPLAY_ACTIONS: {
 ];
 
 export default function IngestPage() {
+  const { mode } = useEvidenceMode();
+
+  if (mode === "rehearsal") return <RehearsalIngestWorkspace />;
+
+  return (
+    <AppShell>
+      <PageHeader
+        kicker="Live public evidence | Ingestion and DataOps"
+        title="Bring live public evidence into one governed path"
+        lead="Continuous AWS schedules collect the verified public source registry without depending on an open browser. You can also upload one public, PII-minimized file and watch its exact hash-bound path into quality, classification, catalog, lineage, and decision support."
+        icon={<UploadCloud className="size-4" aria-hidden />}
+      />
+      <div className="mt-6"><LiveIngestionWorkspace /></div>
+    </AppShell>
+  );
+}
+
+function RehearsalIngestWorkspace() {
   const auth = useAppAuth();
   const [batches, setBatches] = useState<IngestBatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,11 +107,7 @@ export default function IngestPage() {
   }, [auth.role, auth.orgUnit, refresh]);
 
   useEffect(() => {
-    if (USE_MOCK) {
-      return subscribeIngestReplay(() => void refresh({ silent: true }));
-    }
-    const timer = setInterval(() => void refresh({ silent: true }), STATUS_POLL_MS);
-    return () => clearInterval(timer);
+    return subscribeIngestReplay(() => void refresh({ silent: true }));
   }, [refresh]);
 
   useEffect(() => {
@@ -111,32 +120,21 @@ export default function IngestPage() {
       setPendingProfile(profile);
       setActionError(null);
       try {
-        const response = USE_MOCK
-          ? simulateIngest(profile)
-          : await postIngestSimulate({ fixture: LIVE_FIXTURE_BY_PROFILE[profile] });
+        const response = simulateIngest(profile);
         setNewBatchIds((current) => [response.batch_id, ...current].slice(0, 8));
         await refresh({ silent: true });
 
-        if (USE_MOCK) {
-          const runningTimer = setTimeout(
-            () => advanceSimulatedIngest(response.batch_id, "running"),
-            650,
-          );
-          const completeTimer = setTimeout(
-            () => advanceSimulatedIngest(response.batch_id, "completed"),
-            1_850,
-          );
-          pendingTimeouts.current.push(runningTimer, completeTimer);
-        } else {
-          const liveTimer = setTimeout(() => void refresh({ silent: true }), 3_000);
-          pendingTimeouts.current.push(liveTimer);
-        }
-      } catch (error) {
-        setActionError(
-          error instanceof ApiError && error.status === 409
-            ? "That fixture is already released or no longer matches the preparation receipt. Run the bounded demo preparation before another take."
-            : "The fixture could not be released. Confirm live service health and the preparation receipt, then try again.",
+        const runningTimer = setTimeout(
+          () => advanceSimulatedIngest(response.batch_id, "running"),
+          650,
         );
+        const completeTimer = setTimeout(
+          () => advanceSimulatedIngest(response.batch_id, "completed"),
+          1_850,
+        );
+        pendingTimeouts.current.push(runningTimer, completeTimer);
+      } catch {
+        setActionError("The rehearsal fixture could not be started. Reset the isolated rehearsal state and try again.");
       } finally {
         setPendingProfile(null);
       }
@@ -157,9 +155,9 @@ export default function IngestPage() {
   return (
     <AppShell>
       <PageHeader
-        kicker="Element 3 of 7 | Ingestion, DataOps, and Streaming"
-        title="Turn a dropped document into governed intelligence"
-        lead="Drop an actual sanitized PDF, spreadsheet, or text dataset and follow its hash-bound path through event detection, extraction, schema inference, quality, classification, streaming evidence, and governed publication."
+        kicker="Explicit rehearsal | Ingestion, DataOps, and streaming"
+        title="Rehearse a dropped document workflow"
+        lead="Select a synthetic fixture or upload a rehearsal file, then follow its hash-bound local contract through event detection, extraction, schema inference, quality, classification, and publication. Every result remains labeled as rehearsal and is not presented as a live AWS run."
         icon={<UploadCloud className="size-4" aria-hidden />}
         actions={
           <button
@@ -174,102 +172,64 @@ export default function IngestPage() {
         }
       />
 
-      <DocumentDropZone />
+      <RoleGate
+        allow={["poweruser"]}
+        fallback={
+          <p className="mt-5 rounded-lg border border-border bg-surface-2 px-4 py-4 text-sm text-text-muted">
+            Rehearsal document upload requires the corporate poweruser role. This scoped session can review existing rehearsal evidence without creating a new run.
+          </p>
+        }
+      >
+        <DocumentDropZone mode="rehearsal" />
+      </RoleGate>
 
-      {USE_MOCK ? (
-        <section
-          aria-label="Deterministic replay controls"
-          className="mt-5 rounded-xl border border-gov-primary/20 bg-gov-primary-lighter/50 p-4 shadow-soft"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-gov-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white">
-                  Replay mode
-                </span>
-                <span className="text-xs font-semibold text-text-strong">Persistent synthetic scenario</span>
-              </div>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-text-muted">
-                Actions are deterministic and saved in this browser. A failed gate always curates zero rows, and a reset restores the rehearsal baseline.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleReset()}
-              disabled={pendingProfile !== null}
-              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-xs font-semibold text-text-muted transition-colors hover:border-border-strong hover:text-text-strong disabled:opacity-50"
-            >
-              <RotateCcw className="size-3.5" aria-hidden />
-              Reset replay
-            </button>
-          </div>
-
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            {REPLAY_ACTIONS.map((action) => {
-              const Icon = action.icon;
-              const pending = pendingProfile === action.profile;
-              return (
-                <button
-                  key={action.profile}
-                  type="button"
-                  title={action.title}
-                  onClick={() => void handleSimulate(action.profile)}
-                  disabled={pendingProfile !== null}
-                  className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-bold transition-all hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 ${action.tone}`}
-                >
-                  {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}
-                  {action.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ) : (
-        <RoleGate
-          allow={["poweruser"]}
-          fallback={
-            <p className="mt-5 rounded-lg border border-border bg-surface-2 px-4 py-3 text-sm text-text-muted">
-              Live fixture release is limited to the corporate poweruser. This scoped session remains read-only.
-            </p>
-          }
-        >
-          <section
-            aria-label="Live fixture release controls"
-            className="mt-5 rounded-xl border border-gov-primary/20 bg-gov-primary-lighter/50 p-4 shadow-soft"
-          >
+      <section
+        aria-label="Deterministic replay controls"
+        className="mt-5 rounded-xl border border-gov-primary/20 bg-gov-primary-lighter/50 p-4 shadow-soft"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-gov-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white">
-                Live release
+                Replay mode
               </span>
-              <span className="text-xs font-semibold text-text-strong">
-                Prepared synthetic fixtures
-              </span>
+              <span className="text-xs font-semibold text-text-strong">Persistent synthetic scenario</span>
             </div>
             <p className="mt-2 max-w-2xl text-xs leading-5 text-text-muted">
-              Release one fixed fixture at a time. The object-created event starts the workflow exactly once, and a second release is blocked until the operator performs a bounded reset.
+              Actions are deterministic and saved in this browser. A failed gate always curates zero rows, and a reset restores the rehearsal baseline.
             </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              {REPLAY_ACTIONS.map((action) => {
-                const Icon = action.icon;
-                const pending = pendingProfile === action.profile;
-                return (
-                  <button
-                    key={action.profile}
-                    type="button"
-                    title={action.title.replace("Replay", "Release")}
-                    onClick={() => void handleSimulate(action.profile)}
-                    disabled={pendingProfile !== null}
-                    className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-bold transition-all hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 ${action.tone}`}
-                  >
-                    {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}
-                    Release {action.label.toLowerCase()}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        </RoleGate>
-      )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleReset()}
+            disabled={pendingProfile !== null}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-xs font-semibold text-text-muted transition-colors hover:border-border-strong hover:text-text-strong disabled:opacity-50"
+          >
+            <RotateCcw className="size-3.5" aria-hidden />
+            Reset replay
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {REPLAY_ACTIONS.map((action) => {
+            const Icon = action.icon;
+            const pending = pendingProfile === action.profile;
+            return (
+              <button
+                key={action.profile}
+                type="button"
+                title={action.title}
+                onClick={() => void handleSimulate(action.profile)}
+                disabled={pendingProfile !== null}
+                className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-bold transition-all hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 ${action.tone}`}
+              >
+                {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}
+                {action.label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {actionError ? (
         <p
@@ -299,13 +259,9 @@ export default function IngestPage() {
 
           <section aria-label="Batch status">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-text-strong">
-                {USE_MOCK ? "Replay batch status" : "Live batch status"}
-              </h2>
+              <h2 className="text-sm font-semibold text-text-strong">Replay batch status</h2>
               {lastRefreshed ? (
-                <span className="text-xs text-text-muted">
-                  {USE_MOCK ? "Replay state synced" : `Updated ${lastRefreshed.toLocaleTimeString()}`}
-                </span>
+                <span className="text-xs text-text-muted">Replay state synced</span>
               ) : null}
             </div>
             {loading ? (

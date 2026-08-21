@@ -1,0 +1,119 @@
+// Reads the element-mapped source files from the repository and emits
+// lib/code-tour/sources.generated.ts so the app can show its own
+// implementation inline during a demonstration. Slices keep large files
+// out of the bundle. Re-run after changing the manifest or the sources:
+//   node scripts/generate-code-tour.mjs
+import { readFileSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+const MANIFEST = {
+  "element-1": [
+    { path: "src/functions/authorizer/app.py",
+      title: "Independent token verifier",
+      note: "Re-validates every JWT (signature, issuer, expiry) and derives role and org unit. Zero trust: verified twice, never assumed." },
+    { path: "template.yaml", start: 585, end: 660,
+      title: "Cognito pool, MFA, RLS personas",
+      note: "MFA and the role-to-row-scope mapping are declared configuration, not a promise." },
+  ],
+  "/licenses/": [
+    { path: "src/functions/license/app.py", start: 76, end: 210,
+      title: "License register and renewal alerts",
+      note: "Renewal urgency, seat utilization, and effective status - the prompt (e) methodology as code." },
+  ],
+  "/admin/delivery/": [
+    { path: ".github/workflows/pipeline.yml",
+      title: "Golden pipeline consumption (org standard)",
+      note: "The project consumes the organization's golden pipeline as a SHA-pinned reusable workflow - this file only routes triggers and overrides project variables." },
+    { path: ".github/workflows/devsecops.yml",
+      title: "CloudFormation policy gates",
+      note: "The gates the golden standard cannot express yet: SAM validation, policy-as-code, the STIG evidence index, and the enforcing secret scan." },
+    { path: "template.yaml", start: 1, end: 80,
+      title: "The environment as CloudFormation",
+      note: "The single template the whole 100+-resource environment is provisioned from - parameters are the operational policy knobs." },
+    { path: "infra/terraform/main.tf", start: 1, end: 70,
+      title: "The ML slice as Terraform",
+      note: "The same architecture expressed in a second IaC dialect - the anti-lock-in proof." },
+  ],
+  "/ingest/": [
+    { path: "src/functions/intake/pipeline.py", start: 1, end: 160,
+      title: "Ingestion logic (Python)",
+      note: "Open-source Python doing the work inside each state - hashing, normalization, quality." },
+  ],
+  "/catalog/": [
+    { path: "db/migrations/002_rls.sql", start: 5,
+      title: "Row-level security policy",
+      note: "FORCE ROW LEVEL SECURITY - the role-to-rows rule as source-controlled SQL." },
+  ],
+  "/admin/lineage/": [
+    { path: "src/functions/operations/app.py", start: 180, end: 280,
+      title: "Lineage readback (server-side)",
+      note: "The per-run lineage the visual trace renders - reconstructed from receipts, stage by stage." },
+  ],
+  "/catalog/lineage/": [
+    { path: "db/migrations/002_rls.sql", start: 5,
+      title: "Row-level security policy",
+      note: "FORCE ROW LEVEL SECURITY - the role-to-rows rule as source-controlled SQL." },
+  ],
+  "/admin/mlops/": [
+    { path: "src/functions/analytics/topic_model.py", start: 1, end: 120,
+      title: "Topic model (open-source Python)",
+      note: "The analytical routine Element 5 triggers - versioned, cited in every run receipt." },
+    { path: "src/functions/document_ml/engine.py", start: 380, end: 470,
+      title: "Classifier training (readable Python)",
+      note: "The document model is auditable stdlib Python - no black box." },
+    { path: "src/functions/public_intelligence/model_execution.py", start: 320, end: 470,
+      title: "SageMaker provenance gates",
+      note: "Execution refuses unless every digest matches the pinned candidate." },
+  ],
+  "/analytics/": [
+    { path: "src/functions/analytics/topic_model.py", start: 1, end: 120,
+      title: "Topic model (TF-IDF + NMF)",
+      note: "Deterministic, numpy-only topic extraction over the corpus." },
+  ],
+  "/dashboard/": [
+    { path: "src/functions/dashboard/app.py", start: 1, end: 120,
+      title: "Role-scoped dashboard projection",
+      note: "KPIs computed server-side from the same receipts, per caller scope." },
+  ],
+  "/export/": [
+    { path: "src/functions/export/app.py", start: 250, end: 430,
+      title: "Approval fingerprint + single-use consume",
+      note: "The fingerprint that binds an approval to one exact query, and the FOR UPDATE consume that makes tokens single-use." },
+    { path: "src/functions/export/app.py", start: 640, end: 790,
+      title: "HTTP 428 guard + governed release",
+      note: "The server-side row count, the 428 'approval required' answer, and the release path that writes the audit receipt." },
+  ],
+};
+
+let sha = "unknown";
+try { sha = execSync("git rev-parse --short HEAD", { cwd: ROOT }).toString().trim(); } catch {}
+
+const out = {};
+for (const [route, files] of Object.entries(MANIFEST)) {
+  out[route] = files.map((f) => {
+    const raw = readFileSync(resolve(ROOT, f.path), "utf8").split("\n");
+    const start = f.start ?? 1;
+    const end = Math.min(f.end ?? raw.length, raw.length);
+    return {
+      file: f.path, title: f.title, note: f.note,
+      startLine: start, endLine: end, totalLines: raw.length,
+      code: raw.slice(start - 1, end).join("\n"),
+    };
+  });
+}
+
+const ts = `// GENERATED by scripts/generate-code-tour.mjs - do not edit by hand.
+// Source revision: ${sha}
+export type CodeTourFile = {
+  file: string; title: string; note: string;
+  startLine: number; endLine: number; totalLines: number; code: string;
+};
+export const CODE_TOUR_REVISION = ${JSON.stringify(sha)};
+export const CODE_TOUR: Record<string, CodeTourFile[]> = ${JSON.stringify(out, null, 2)};
+`;
+writeFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../lib/code-tour/sources.generated.ts"), ts);
+console.log("generated", Object.keys(out).length, "routes @", sha);

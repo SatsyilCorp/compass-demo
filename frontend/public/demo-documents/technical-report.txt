@@ -1,0 +1,10 @@
+SYNTHETIC ONLY
+
+Technical Report TR-2026-017
+
+The test team evaluated an autonomous maritime sensing prototype in a
+controlled laboratory configuration. Test objectives covered detection range,
+message latency, power consumption, and recovery after a simulated link loss.
+Measured performance met three threshold requirements and missed the recovery
+time objective. The team recommends a firmware correction, regression test,
+and a second operational assessment before transition.

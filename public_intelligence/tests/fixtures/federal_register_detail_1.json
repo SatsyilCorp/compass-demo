@@ -1,0 +1,30 @@
+{
+  "title": "Naval Science Board Meeting",
+  "type": "Notice",
+  "abstract": "The Office of Naval Research announces a public research portfolio meeting. Email analyst@example.mil or call 202-555-0101 for details.",
+  "action": "Notice of an open meeting.",
+  "document_number": "2026-10001",
+  "citation": "91 FR 20001",
+  "html_url": "https://www.federalregister.gov/d/2026-10001",
+  "pdf_url": "https://www.govinfo.gov/content/pkg/FR-2026-05-01/pdf/2026-10001.pdf",
+  "json_url": "https://www.federalregister.gov/api/v1/documents/2026-10001",
+  "regulations_dot_gov_url": "https://www.regulations.gov/document/USN-2026-0001-0001",
+  "publication_date": "2026-05-01",
+  "comments_close_on": "2026-06-01",
+  "contact": "Public Contact, 202-555-0101",
+  "volume": 91,
+  "start_page": 20001,
+  "end_page": 20003,
+  "page_length": 3,
+  "agencies": [
+    {
+      "raw_name": "Department of the Navy",
+      "name": "Navy Department",
+      "slug": "navy-department"
+    }
+  ],
+  "docket_ids": ["Docket ID: USN-2026-HQ-0001"],
+  "regulation_id_numbers": ["0703-AA99"],
+  "cfr_references": [{"title": 32, "part": 700}],
+  "topics": ["Science and technology", "Public meetings"]
+}

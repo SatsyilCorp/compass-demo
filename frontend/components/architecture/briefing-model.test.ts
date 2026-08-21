@@ -1,0 +1,113 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { ARCHITECTURE_STATUSES, BRIEFING_VIEWS } from "./briefing-model";
+
+test("briefing exposes the six required one-look views in presenter order", () => {
+  assert.deepEqual(
+    BRIEFING_VIEWS.map((view) => view.id),
+    ["vpc", "executive", "il45", "lineage", "devsecops", "mlops"],
+  );
+});
+
+test("VPC view names the deployed subnet, egress, endpoint, and security boundaries", () => {
+  const view = BRIEFING_VIEWS.find((candidate) => candidate.id === "vpc");
+  assert.ok(view);
+  const ids = view.lanes.flatMap((lane) => lane.nodes.map((item) => item.id));
+  for (const required of ["vpc-igw", "vpc-public-subnets", "vpc-nat", "vpc-private-subnets", "vpc-lambda-sg", "vpc-db-sg", "vpc-gateway-endpoints"]) {
+    assert.ok(ids.includes(required), required);
+  }
+  assert.match(view.truth, /two public and two private subnets/i);
+  assert.match(view.truth, /one NAT gateway/i);
+});
+
+test("every directed edge names a protocol and retained receipt", () => {
+  for (const view of BRIEFING_VIEWS) {
+    assert.ok(view.truth.length > 30, view.id);
+    assert.ok(view.lanes.length > 0, view.id);
+
+    for (const lane of view.lanes) {
+      assert.equal(lane.connectors.length, lane.nodes.length - 1, lane.id);
+      for (const edge of lane.connectors) {
+        assert.ok(edge.protocol.length > 2, `${lane.id}: protocol`);
+        assert.ok(edge.receipt.length > 5, `${lane.id}: receipt`);
+      }
+      for (const item of lane.nodes) assert.ok(ARCHITECTURE_STATUSES.includes(item.status), item.id);
+    }
+  }
+});
+
+test("IL4 and IL5 view keeps the current CloudFront edge outside the protected boundary", () => {
+  const view = BRIEFING_VIEWS.find((candidate) => candidate.id === "il45");
+  assert.ok(view);
+
+  const cloudfrontLane = view.lanes.find((lane) => lane.nodes.some((item) => item.id === "cloudfront-outside"));
+  assert.equal(cloudfrontLane?.outsideProtectedBoundary, true);
+  assert.notEqual(cloudfrontLane?.tone, "protected");
+
+  const protectedNodeIds = view.lanes
+    .filter((lane) => lane.tone === "protected")
+    .flatMap((lane) => lane.nodes.map((item) => item.id));
+  assert.equal(protectedNodeIds.includes("cloudfront-outside"), false);
+  assert.match(view.truth, /not IL4\/IL5/i);
+  assert.match(view.truth, /does not have an ATO/i);
+});
+
+test("target boundary names Government dependencies without claiming deployment", () => {
+  const view = BRIEFING_VIEWS.find((candidate) => candidate.id === "il45");
+  assert.ok(view);
+
+  const nodes = view.lanes.flatMap((lane) => lane.nodes);
+  const required = ["dod-icam", "cap-bcap", "vdss", "vdms", "tccm"];
+  for (const id of required) {
+    const item = nodes.find((candidate) => candidate.id === id);
+    assert.equal(item?.status, "External dependency", id);
+  }
+});
+
+test("public-source quarantine remains distinct from accepted public evidence", () => {
+  const executive = BRIEFING_VIEWS.find((candidate) => candidate.id === "executive");
+  const lineage = BRIEFING_VIEWS.find((candidate) => candidate.id === "lineage");
+  assert.ok(executive);
+  assert.ok(lineage);
+
+  const executiveIds = executive.lanes.flatMap((lane) => lane.nodes.map((item) => item.id));
+  assert.ok(executiveIds.includes("public-quarantine"));
+  assert.ok(executiveIds.includes("public-snapshot"));
+
+  const publicLane = lineage.lanes.find((lane) => lane.id === "lineage-public");
+  assert.ok(publicLane);
+  assert.equal(publicLane.nodes.some((item) => item.id === "source-quarantine"), true);
+  assert.equal(publicLane.nodes.some((item) => item.id === "accepted-source"), true);
+});
+
+test("public acquisition is primary and rehearsal remains explicit", () => {
+  const executive = BRIEFING_VIEWS.find((candidate) => candidate.id === "executive");
+  const lineage = BRIEFING_VIEWS.find((candidate) => candidate.id === "lineage");
+  assert.ok(executive);
+  assert.ok(lineage);
+
+  assert.match(executive.truth, /public evidence as the primary product plane/i);
+  assert.match(executive.callouts.join(" "), /explicit selection/i);
+  assert.match(lineage.truth, /source's responsible cadence/i);
+
+  const rehearsalLane = lineage.lanes.find((lane) => lane.id === "lineage-continuous");
+  assert.ok(rehearsalLane);
+  assert.match(rehearsalLane.boundary, /explicit rehearsal/i);
+
+  const publicLane = lineage.lanes.find((lane) => lane.id === "lineage-public");
+  assert.ok(publicLane);
+  assert.equal(publicLane.nodes.find((node) => node.id === "scheduled-collector")?.status, "Running now");
+});
+
+test("DevSecOps view describes configured gates without inventing current execution", () => {
+  const view = BRIEFING_VIEWS.find((candidate) => candidate.id === "devsecops");
+  assert.ok(view);
+
+  const pipeline = view.lanes.find((lane) => lane.id === "devsecops-pipeline");
+  assert.ok(pipeline);
+  assert.equal(pipeline.nodes.every((item) => item.status === "Configured"), true);
+  assert.match(view.truth, /configured/i);
+  assert.match(view.truth, /exact commit-bound.*receipt/i);
+  assert.doesNotMatch(view.truth, /workflows and AWS deployment are active/i);
+});

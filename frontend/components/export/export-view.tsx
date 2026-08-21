@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useRehearsalIdentity } from "./use-rehearsal-identity";
 import clsx from "clsx";
 import {
   Check,
@@ -19,7 +20,6 @@ import {
 
 import {
   ApiError,
-  USE_MOCK,
   getApprovals,
   getDashboard,
   postApprovals,
@@ -27,6 +27,7 @@ import {
   setAuthContext,
 } from "@/lib/api";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { PageHeader } from "@/components/shell/page-header";
 import type {
   Approval,
@@ -111,7 +112,14 @@ function stepIndex(phase: Phase): number {
 }
 
 export function ExportView() {
-  const { role, orgUnit, idToken, displayName } = useAppAuth();
+  const { role: signedInRole, orgUnit: signedInOrgUnit, idToken, displayName } = useAppAuth();
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
+  // The rehearsal acting persona must never alter live-mode scoping: gate the
+  // override on the active mode (mirrors use-compass-query.ts).
+  const rehearsalIdentity = useRehearsalIdentity(signedInRole, signedInOrgUnit);
+  const role = rehearsal ? rehearsalIdentity.role : signedInRole;
+  const orgUnit = rehearsal ? rehearsalIdentity.orgUnit : signedInOrgUnit;
 
   const dashboard = useCompassQuery(getDashboard);
   const approvals = useCompassQuery(getApprovals);
@@ -126,7 +134,7 @@ export function ExportView() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const nextEventId = useRef(1);
 
-  const actor = USE_MOCK
+  const actor = rehearsal
     ? replayActor(role)
     : approvals.data?.actor ?? displayName ?? role ?? "anonymous";
 
@@ -629,6 +637,7 @@ export function ExportView() {
                 busy={busy === "export"}
                 onVerify={() => void verifySingleUse()}
                 onReset={reset}
+                rehearsal={rehearsal}
               />
             ) : null}
 
@@ -642,6 +651,7 @@ export function ExportView() {
       </div>
 
       <ApprovalInbox
+        signedInRole={signedInRole}
         data={approvals.data}
         error={approvals.error}
         loading={approvals.loading}
@@ -665,6 +675,7 @@ function ReleasedPanel({
   busy,
   onVerify,
   onReset,
+  rehearsal,
 }: {
   result: ExportResponse;
   approval: Approval | null;
@@ -673,6 +684,7 @@ function ReleasedPanel({
   busy: boolean;
   onVerify: () => void;
   onReset: () => void;
+  rehearsal: boolean;
 }) {
   const isReplayManifest = result.download_url.startsWith("data:application/json");
   const isDownloadable = /^https?:/i.test(result.download_url) || isReplayManifest;
@@ -689,6 +701,7 @@ function ReleasedPanel({
         <Field label="requested" value={requestedFormat} />
         <Field label="delivered" value={result.format} />
         <Field label="audited" value={String(result.audited)} />
+        {result.audit_id != null ? <Field label="audit_id" value={String(result.audit_id)} /> : null}
         <Field label="approval" value={approval ? "one-time capability consumed" : "not required"} />
         <Field label="control" value={approval ? "independent reviewer" : "within threshold"} />
       </dl>
@@ -740,8 +753,8 @@ function ReleasedPanel({
         </a>
       ) : (
         <p className="mt-3 rounded border border-border bg-surface px-2.5 py-2 text-[11px] leading-snug text-text-muted">
-          {USE_MOCK
-            ? "No file is materialized in mock mode. The deployed API returns a pre-signed, short-lived S3 URL scoped to the caller."
+          {rehearsal
+            ? "No cloud file is materialized in rehearsal. Live AWS releases return a pre-signed, short-lived S3 URL scoped to the caller."
             : "The API returned a non-HTTP download reference."}{" "}
           <code className="font-mono text-[10.5px]">download_url: {result.download_url || "(empty)"}</code>
         </p>

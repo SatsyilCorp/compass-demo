@@ -20,3 +20,12 @@ test("run of show remains within the fifty minute limit", () => {
   assert.equal(totalScenarioMinutes(), DEMO_LOGISTICS.scenarioMinutes);
   assert.ok(DEMO_LOGISTICS.scenarioMinutes + DEMO_LOGISTICS.promptMinutes + DEMO_LOGISTICS.closeMinutes <= DEMO_LOGISTICS.maximumMinutes);
 });
+
+test("live portability element claims the governed release without overreach", () => {
+  const portability = DEMO_ELEMENTS.find((element) => element.number === 7);
+  assert.equal(portability?.screen, "Portable preview and governed release");
+  assert.match(portability?.action ?? "", /428/);
+  assert.match(portability?.proof.join(" ") ?? "", /fingerprint-bound single-use approval/i);
+  assert.match(portability?.proof.join(" ") ?? "", /audit receipt/i);
+  assert.match(portability?.boundary ?? "", /remain configured interfaces/i);
+});

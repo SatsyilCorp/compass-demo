@@ -1,6 +1,6 @@
 /**
- * Barrel export for every lib/mock fixture module. This is the single import
- * lib/api.ts's USE_MOCK branch reaches for.
+ * Barrel export for deterministic rehearsal fixture modules. API adapters
+ * import these only after the user explicitly activates rehearsal evidence.
  */
 export { getMe } from "./me";
 export { getCatalog } from "./catalog";

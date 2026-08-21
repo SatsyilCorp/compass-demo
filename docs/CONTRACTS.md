@@ -11,7 +11,10 @@ moves from raw landing through normalization, quality control, curation,
 catalog and lineage, analytics, decision support, and governed release.
 
 All seed and replay records are synthetic. The strings `CUI-Mock` and
-`Public-Mock` are demonstration labels, not real security markings.
+`Public-Mock` are demonstration labels, not real security markings. The
+separate public-intelligence interface reads PII-minimized public records from
+a checksummed S3 evidence index. It never merges those records into the
+synthetic portfolio or accepts CUI.
 
 ## 2. Database contract
 
@@ -55,7 +58,7 @@ Core relations:
 
 ## 3. Identity and HTTP contract
 
-All 33 method-and-path operations across 31 URL paths use the Cognito JWT
+All 48 method-and-path operations across 45 URL paths use the Cognito JWT
 authorizer by default when the Scale Run feature is enabled. No application
 operation is intentionally public. The eight Scale Run operations also require
 the corporate poweruser persona.
@@ -91,6 +94,9 @@ viewer.
 | 4 | POST | `/ingest/simulate` | Poweruser trigger for a sanitized drop | 3 |
 | 5 | GET | `/ingest/status` | Batch, rule, quality, and disposition status | 3 |
 | 6 | GET | `/stream/recent` | Ordered governed activity projection with merged recent Kinesis transport receipts | 3 |
+| 6a | GET | `/demo-stream` | Current operator-controlled continuous stream session and latest receipt | 3 |
+| 6b | POST | `/demo-stream/start` | Start synthetic S3 drops every one or two seconds until Stop | 3 |
+| 6c | POST | `/demo-stream/stop` | Stop the current continuous synthetic stream | 3 |
 | 7 | POST | `/analytics/run` | Execute a governed topic-model run | 5 |
 | 8 | GET | `/analytics/{run_id}` | Topics, trends, metrics, and recommendation | 5 |
 | 9 | GET | `/dashboard` | Persona-scoped KPIs and chart series | 6 |
@@ -118,6 +124,67 @@ viewer.
 | 31 | POST | `/ml/models/{version}/deploy` | Promote an approved model version to champion | 5 |
 | 32 | POST | `/ml/drift/evaluate` | Produce label-distribution and vocabulary-drift evidence | 5 |
 | 33 | GET | `/ml/ops/evidence` | Read sanitized training, registry, deployment, and drift evidence | 5 and cross-cutting |
+| 34 | GET | `/public-intelligence/snapshot` | Read a versioned, checksummed public-evidence snapshot | 5 and cross-cutting |
+| 35 | POST | `/public-intelligence/explain` | Produce a bounded cited explanation or an explicit evidence refusal | 5 and 6 |
+| 36 | GET | `/public-intelligence/model-executions` | Read the newest durable, governed public-model execution receipts | 5 and cross-cutting |
+| 37 | POST | `/public-intelligence/model-executions` | Start one bounded public SBIR candidate Batch Transform run | 5 |
+| 38 | GET | `/public-intelligence/model-executions/{executionId}` | Reconcile one Batch Transform run to its terminal receipt | 5 and cross-cutting |
+| 39 | GET | `/public-intelligence/acquisitions` | List scheduled USAspending acquisition watermarks and change receipts | 3, 4, and cross-cutting |
+| 40 | POST | `/public-intelligence/acquisitions/run` | Start one bounded public-source micro-batch poll | 3 and cross-cutting |
+| 41 | GET | `/operations/signals` | Read safe in-app and SNS delivery evidence for operational events | Cross-cutting |
+| 42 | POST | `/operations/signals/{eventId}/acknowledge` | Record a poweruser acknowledgement without deleting the signal | Cross-cutting |
+| 43 | GET | `/operations/lineage` | List recent cross-workflow run projections | 3, 4, 5, and cross-cutting |
+| 44 | GET | `/operations/lineage/{runId}` | Read ordered stage receipts, hashes, model, and consumer for one run | 3, 4, 5, and cross-cutting |
+| 45 | GET | `/operations/summary` | Read the current operational scorecard and public-source watermark | Cross-cutting |
+
+The live operations list, lineage, and summary responses declare
+`evidence_scope=public-only`. The service excludes synthetic, mixed, and
+unclassified receipts before calculating counts. Synthetic operational
+receipts are available only through the explicitly selected rehearsal adapter.
+
+The document upload request accepts either `synthetic-demo` input or a
+PII-minimized `public` document. A public upload must explicitly declare
+`contains_cui=false` and `pii_minimized=true`; any other classification is
+rejected before a presigned upload is issued. Every request must also declare
+the browser-computed `source_sha256`; server inspection recomputes the digest
+from the retrieved object and quarantines a mismatch. This is an admission assertion,
+not automated content accreditation, so quality and sensitive-pattern checks
+still run after landing.
+
+### Public intelligence contract
+
+The public-intelligence Lambda is isolated from the synthetic portfolio
+database. It reads only `public-intelligence/*` in the configured KMS-encrypted
+data bucket. The current manifest points to an immutable index under
+`public-intelligence/snapshots/<snapshot-id>/` and carries the exact index
+SHA-256 digest. The read fails closed unless the manifest declares public
+classification, no CUI, PII minimization, a supported version, and one HTTPS
+source URL per record.
+
+`POST /public-intelligence/explain` accepts a question of at most 1,200
+characters, up to 12 explicit record identifiers, and a retrieval limit of no
+more than six. Retrieval uses only the verified local evidence index. The
+handler makes at most one Bedrock request with a fixed 500-token output cap.
+Every citation includes the record identifier, source URL, evidence class,
+snapshot, record digest, model run identifier when one exists, and reported
+uncertainty. No supporting record produces
+`INSUFFICIENT_CITABLE_EVIDENCE` without calling a model. A Bedrock outage
+returns a conservative deterministic answer with the same citations.
+
+The model-execution interface uses one exact registered public SBIR candidate
+without approving or deploying it. A corporate poweruser can submit 1 to 25
+PII-minimized, label-excluded public Navy Phase I records that occur after the
+model evaluation cutoff. Compass
+verifies the package ARN, training job, source object version, registry bundle
+digest, model-card digest, image digest, and versioned, write-once per-run model copy before starting one
+network-isolated `ml.m5.large` Batch Transform job. It caps concurrency at one,
+enforces the 1,800-second runtime limit through a per-run EventBridge Scheduler
+cleanup guard, requires finite probabilities from zero through one, binary
+labels, nonempty semantics, and a mandatory human-review flag, and deletes the
+temporary SageMaker Model after terminal reconciliation. The receipt records package,
+training, candidate-pool, input, output, object-version, and receipt digests,
+per-record probabilities, review flags, observed duration, and an estimate-only
+compute cost. No endpoint or automatic promotion is created.
 
 ### Scale Run contract
 
@@ -277,7 +344,10 @@ The static Next.js application uses these environment values:
 - `NEXT_PUBLIC_COGNITO_REDIRECT_URI`
 - `NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI`
 - `NEXT_PUBLIC_AUTH_DISABLED`
-- `NEXT_PUBLIC_USE_MOCK`
+
+Runtime evidence selection is not an environment switch. Live public evidence
+is the fail-closed default, and a user must explicitly activate the persistent
+Rehearsal mode before fixture-backed adapters can run.
 
 Primary routes are `/login/`, `/dashboard/`, `/ingest/`, `/catalog/`,
 `/catalog/lineage/?batch=<id>`, `/analytics/`, `/licenses/`, `/export/`, and

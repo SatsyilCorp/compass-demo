@@ -12,8 +12,8 @@ One function, four callers:
 * **EventBridge Scheduler** invokes it once a minute with
   ``{"action":"stream_tick"}`` to publish genuinely-recent pipeline activity
   onto the Kinesis ticker stream.
-* **API Gateway** routes three contract endpoints here:
-  ``POST /ingest/simulate``, ``GET /ingest/status``, ``GET /stream/recent``.
+* **API Gateway** routes ingest, ticker, and operator-controlled continuous
+  synthetic stream controls here.
 
 Read-path visibility
 --------------------
@@ -31,10 +31,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from compass_common import audit, config, db, disclosure, http
+from compass_common import audit, config, db, disclosure, http, operational_evidence
 
 import normalize
 import pipeline
@@ -201,6 +203,26 @@ def ingest_status(identity: Identity) -> Dict[str, Any]:
 # GET /stream/recent  (+ the scheduled Kinesis producer)
 # --------------------------------------------------------------------------- #
 _KINESIS = None
+_OPERATIONS_TABLE = None
+_STEP_FUNCTIONS = None
+
+DEMO_STREAM_PK = "DEMO_STREAM"
+DEMO_STREAM_SK = "CURRENT"
+DEMO_STREAM_DEFAULT_CADENCE_SECONDS = 2
+DEMO_STREAM_DEFAULT_TOTAL_EVENTS = 15
+DEMO_STREAM_MAX_TOTAL_EVENTS = 60
+DEMO_STREAM_DEFAULT_MODE = "continuous"
+DEMO_STREAM_EXECUTION_CHUNK_EVENTS = 250
+DEMO_STREAM_RAW_RETENTION_DAYS = 7
+DEMO_STREAM_PROGRAM_AREAS = (
+    "Autonomy",
+    "Biotech",
+    "Cyber",
+    "Ocean Engineering",
+    "Quantum",
+    "Undersea Systems",
+)
+DEMO_STREAM_ORG_UNITS = ("Code-30", "Code-31", "Code-32", "Code-34", "Code-35")
 
 
 def _kinesis():
@@ -210,6 +232,635 @@ def _kinesis():
 
         _KINESIS = boto3.client("kinesis", region_name=config.aws_region())
     return _KINESIS
+
+
+def _operations_table():
+    global _OPERATIONS_TABLE
+    if _OPERATIONS_TABLE is None:
+        import boto3
+
+        table_name = os.environ.get("OPERATIONS_TABLE", "").strip()
+        if not table_name:
+            raise RuntimeError("OPERATIONS_TABLE is required")
+        _OPERATIONS_TABLE = boto3.resource("dynamodb").Table(table_name)
+    return _OPERATIONS_TABLE
+
+
+def _step_functions():
+    global _STEP_FUNCTIONS
+    if _STEP_FUNCTIONS is None:
+        import boto3
+
+        _STEP_FUNCTIONS = boto3.client(
+            "stepfunctions", region_name=config.aws_region()
+        )
+    return _STEP_FUNCTIONS
+
+
+def _json_scalar(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    if isinstance(value, dict):
+        return {str(key): _json_scalar(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_scalar(item) for item in value]
+    return value
+
+
+def _demo_stream_item() -> Optional[Dict[str, Any]]:
+    response = _operations_table().get_item(
+        Key={"pk": DEMO_STREAM_PK, "sk": DEMO_STREAM_SK},
+        ConsistentRead=True,
+    )
+    item = response.get("Item")
+    return _json_scalar(item) if isinstance(item, dict) else None
+
+
+def _put_demo_stream_item(item: Dict[str, Any]) -> None:
+    _operations_table().put_item(Item=item)
+
+
+def _conditional_error(exc: Exception) -> bool:
+    code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+    return code == "ConditionalCheckFailedException" or "ConditionalCheckFailed" in type(exc).__name__
+
+
+def _s3_precondition_error(exc: Exception) -> bool:
+    code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+    return code in {"PreconditionFailed", "ConditionalRequestConflict", "412", "409"}
+
+
+def _create_demo_stream_item(item: Dict[str, Any]) -> bool:
+    try:
+        _operations_table().put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(pk) OR #status <> :running",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":running": "running"},
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 - botocore stays runtime-only
+        if _conditional_error(exc):
+            return False
+        raise
+
+
+def _bind_demo_stream_execution(
+    session_id: str, execution_arn: str, chunk_number: int
+) -> bool:
+    try:
+        _operations_table().update_item(
+            Key={"pk": DEMO_STREAM_PK, "sk": DEMO_STREAM_SK},
+            UpdateExpression=(
+                "SET execution_arn = :execution_arn, "
+                "execution_chunk_number = :chunk_number"
+            ),
+            ConditionExpression="session_id = :session_id AND #status = :running",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":execution_arn": execution_arn,
+                ":chunk_number": chunk_number,
+                ":session_id": session_id,
+                ":running": "running",
+            },
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 - botocore stays runtime-only
+        if _conditional_error(exc):
+            return False
+        raise
+
+
+def _advance_demo_stream_item(
+    *,
+    session_id: str,
+    sequence: int,
+    batch_id: str,
+    latest_event: Dict[str, Any],
+    occurred_at: str,
+    completed: bool,
+) -> bool:
+    values: Dict[str, Any] = {
+        ":session_id": session_id,
+        ":running": "running",
+        ":status": "completed" if completed else "running",
+        ":sequence": sequence,
+        ":batch_id": batch_id,
+        ":latest_event": latest_event,
+        ":updated_at": occurred_at,
+        ":completed_at": occurred_at if completed else None,
+    }
+    try:
+        _operations_table().update_item(
+            Key={"pk": DEMO_STREAM_PK, "sk": DEMO_STREAM_SK},
+            UpdateExpression=(
+                "SET emitted_events = :sequence, latest_batch_id = :batch_id, "
+                "latest_event = :latest_event, updated_at = :updated_at, "
+                "completed_at = :completed_at, #status = :status"
+            ),
+            ConditionExpression=(
+                "session_id = :session_id AND #status = :running AND "
+                "(attribute_not_exists(emitted_events) OR emitted_events < :sequence)"
+            ),
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues=values,
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 - botocore stays runtime-only
+        if _conditional_error(exc):
+            return False
+        raise
+
+
+def _mark_demo_stream_terminal(session_id: str, status: str, now: str) -> bool:
+    try:
+        _operations_table().update_item(
+            Key={"pk": DEMO_STREAM_PK, "sk": DEMO_STREAM_SK},
+            UpdateExpression=(
+                "SET #status = :status, updated_at = :now, completed_at = :now"
+            ),
+            ConditionExpression="session_id = :session_id AND #status = :running",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":status": status,
+                ":now": now,
+                ":session_id": session_id,
+                ":running": "running",
+            },
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 - botocore stays runtime-only
+        if _conditional_error(exc):
+            return False
+        raise
+
+
+def _public_demo_stream(item: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not item:
+        session = {
+            "session_id": None,
+            "status": "idle",
+            "stream_mode": DEMO_STREAM_DEFAULT_MODE,
+            "cadence_seconds": DEMO_STREAM_DEFAULT_CADENCE_SECONDS,
+            "total_events": None,
+            "emitted_events": 0,
+            "started_at": None,
+            "updated_at": None,
+            "completed_at": None,
+            "execution_chunk_number": 0,
+        }
+        latest_event = None
+    else:
+        stream_mode = str(item.get("stream_mode") or "").strip().lower()
+        if stream_mode not in {"continuous", "bounded"}:
+            stream_mode = "bounded" if item.get("total_events") is not None else "continuous"
+        session = {
+            key: item.get(key)
+            for key in (
+                "session_id",
+                "status",
+                "cadence_seconds",
+                "total_events",
+                "emitted_events",
+                "started_at",
+                "updated_at",
+                "completed_at",
+                "execution_chunk_number",
+            )
+        }
+        session["stream_mode"] = stream_mode
+        if stream_mode == "continuous":
+            session["total_events"] = None
+        latest_event = item.get("latest_event")
+    cadence = int(session.get("cadence_seconds") or DEMO_STREAM_DEFAULT_CADENCE_SECONDS)
+    return {
+        "contract": "compass.demo-stream.v1",
+        "mode": "live",
+        "generated_at": normalize.utc_now_iso(),
+        "stream_kind": "continuous-synthetic",
+        "session": session,
+        "latest_event": latest_event,
+        "safeguards": {
+            "operator_stop_required": True,
+            "workflow_chunk_events": DEMO_STREAM_EXECUTION_CHUNK_EVENTS,
+            "raw_retention_days": DEMO_STREAM_RAW_RETENTION_DAYS,
+            "estimated_events_per_hour": 3600 // cadence,
+        },
+        "disclosure": (
+            "This operator-controlled synthetic stream remains active until Stop. "
+            "Each pulse uses the deployed ingestion path. Official USAspending "
+            "acquisition keeps its independent source cadence."
+        ),
+    }
+
+
+def demo_stream_status() -> Dict[str, Any]:
+    return _public_demo_stream(_demo_stream_item())
+
+
+def _valid_demo_stream_settings(
+    body: Dict[str, Any],
+) -> tuple[int, str, Optional[int]]:
+    try:
+        cadence = int(body.get("cadence_seconds", DEMO_STREAM_DEFAULT_CADENCE_SECONDS))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("cadence_seconds must be an integer") from exc
+    if cadence not in {1, 2}:
+        raise ValueError("cadence_seconds must be 1 or 2")
+
+    raw_mode = str(body.get("stream_mode") or "").strip().lower()
+    if not raw_mode:
+        raw_mode = "bounded" if body.get("total_events") is not None else DEMO_STREAM_DEFAULT_MODE
+    if raw_mode not in {"continuous", "bounded"}:
+        raise ValueError("stream_mode must be continuous or bounded")
+    if raw_mode == "continuous":
+        return cadence, raw_mode, None
+
+    try:
+        total = int(body.get("total_events", DEMO_STREAM_DEFAULT_TOTAL_EVENTS))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("total_events must be an integer") from exc
+    if total < 1 or total > DEMO_STREAM_MAX_TOTAL_EVENTS:
+        raise ValueError(
+            f"total_events must be between 1 and {DEMO_STREAM_MAX_TOTAL_EVENTS}"
+        )
+    return cadence, raw_mode, total
+
+
+def _execution_arn_for_name(state_machine_arn: str, execution_name: str) -> str:
+    prefix, state_machine_name = state_machine_arn.rsplit(":stateMachine:", 1)
+    return f"{prefix}:execution:{state_machine_name}:{execution_name}"
+
+
+def _demo_stream_workflow_arn() -> str:
+    workflow_arn = os.environ.get("DEMO_STREAM_STATE_MACHINE_ARN", "").strip()
+    if not workflow_arn:
+        raise RuntimeError("DEMO_STREAM_STATE_MACHINE_ARN is required")
+    return workflow_arn
+
+
+def _demo_stream_execution_name(session_id: str, chunk_number: int) -> str:
+    return f"{session_id}-{chunk_number:06d}"
+
+
+def _start_demo_stream_execution(
+    *,
+    session_id: str,
+    cadence: int,
+    stream_mode: str,
+    total_events: Optional[int],
+    sequence: int,
+    chunk_number: int,
+) -> str:
+    workflow_arn = _demo_stream_workflow_arn()
+    execution_name = _demo_stream_execution_name(session_id, chunk_number)
+    try:
+        response = _step_functions().start_execution(
+            stateMachineArn=workflow_arn,
+            name=execution_name,
+            input=json.dumps(
+                {
+                    "action": "demo_stream_tick",
+                    "session_id": session_id,
+                    "stream_mode": stream_mode,
+                    "cadence_seconds": cadence,
+                    "total_events": total_events,
+                    "sequence": sequence,
+                    "chunk_number": chunk_number,
+                    "chunk_emitted": 0,
+                }
+            ),
+        )
+        execution_arn = str(response.get("executionArn") or "")
+        if not execution_arn:
+            raise RuntimeError("Step Functions returned no demo stream execution ARN")
+        return execution_arn
+    except Exception as exc:  # noqa: BLE001 - botocore stays runtime-only
+        code = str(getattr(exc, "response", {}).get("Error", {}).get("Code", ""))
+        if code == "ExecutionAlreadyExists":
+            return _execution_arn_for_name(workflow_arn, execution_name)
+        raise
+
+
+def start_demo_stream(identity: Identity, body: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    cadence, stream_mode, total = _valid_demo_stream_settings(body)
+    current = _demo_stream_item()
+    if current and current.get("status") == "running":
+        return 200, _public_demo_stream(current)
+
+    now = normalize.utc_now_iso()
+    session_id = f"pulse-{uuid.uuid4().hex[:12]}"
+    item = {
+        "pk": DEMO_STREAM_PK,
+        "sk": DEMO_STREAM_SK,
+        "record_type": "control",
+        "session_id": session_id,
+        "status": "running",
+        "stream_mode": stream_mode,
+        "cadence_seconds": cadence,
+        "total_events": total,
+        "emitted_events": 0,
+        "execution_chunk_number": 1,
+        "started_at": now,
+        "updated_at": now,
+        "completed_at": None,
+        "started_by": identity.actor[:160],
+    }
+    if not _create_demo_stream_item(item):
+        return 200, demo_stream_status()
+    try:
+        execution_arn = _start_demo_stream_execution(
+            session_id=session_id,
+            cadence=cadence,
+            stream_mode=stream_mode,
+            total_events=total,
+            sequence=1,
+            chunk_number=1,
+        )
+    except Exception:
+        _mark_demo_stream_terminal(session_id, "failed", normalize.utc_now_iso())
+        raise
+    if execution_arn:
+        _bind_demo_stream_execution(session_id, execution_arn, 1)
+    operational_evidence.record_signal(
+        category="demo-stream",
+        severity="info",
+        title="Continuous synthetic ingestion started",
+        message=(
+            f"The operator started a synthetic ingestion pulse every {cadence} seconds. "
+            "The session remains active until an operator stops it."
+        ),
+        run_id=session_id,
+        evidence_uri=f"operations://demo-stream/{session_id}",
+        event_id=f"sig-demo-stream-started-{session_id}",
+        publish=False,
+    )
+    return 202, demo_stream_status()
+
+
+def stop_demo_stream(session_id: str) -> Dict[str, Any]:
+    current = _demo_stream_item()
+    if not current or current.get("session_id") != session_id:
+        raise LookupError("demo stream session not found")
+    if current.get("status") != "running":
+        return _public_demo_stream(current)
+    now = normalize.utc_now_iso()
+    if not _mark_demo_stream_terminal(session_id, "stopped", now):
+        return demo_stream_status()
+    execution_arn = str(current.get("execution_arn") or "")
+    if execution_arn:
+        try:
+            _step_functions().stop_execution(
+                executionArn=execution_arn,
+                cause="Stopped from the Compass demo stream control",
+            )
+        except Exception as exc:  # noqa: BLE001 - stopped state remains authoritative
+            print(
+                json.dumps(
+                    {
+                        "event_type": "demo_stream_stop_execution_deferred",
+                        "session_id": session_id,
+                        "error_type": type(exc).__name__,
+                    }
+                )
+            )
+    operational_evidence.record_signal(
+        category="demo-stream",
+        severity="info",
+        title="Continuous synthetic ingestion stopped",
+        message=(
+            f"The operator stopped the continuous session after "
+            f"{int(current.get('emitted_events') or 0)} accepted pulses."
+        ),
+        run_id=session_id,
+        evidence_uri=f"operations://demo-stream/{session_id}",
+        event_id=f"sig-demo-stream-stopped-{session_id}",
+        publish=False,
+    )
+    return demo_stream_status()
+
+
+def _demo_stream_record(session_id: str, sequence: int, occurred_at: str) -> Dict[str, Any]:
+    suffix = session_id.removeprefix("pulse-")[:8].upper()
+    area = DEMO_STREAM_PROGRAM_AREAS[(sequence - 1) % len(DEMO_STREAM_PROGRAM_AREAS)]
+    org_unit = DEMO_STREAM_ORG_UNITS[(sequence - 1) % len(DEMO_STREAM_ORG_UNITS)]
+    return {
+        "grant_no": f"ONR-LIVE-{suffix}-{sequence:08d}",
+        "title": f"Live {area} evidence update {sequence}",
+        "abstract": (
+            f"Synthetic continuous demonstration record {sequence} for {area}. "
+            "It exercises the same governed ingestion, quality, lineage, and decision path."
+        ),
+        "program_area": area,
+        "fiscal_year": 2026,
+        "amount_usd": 250000 + ((((sequence - 1) % 20) + 1) * 37500),
+        "awardee": f"Synthetic Mission Partner {((sequence - 1) % 7) + 1}",
+        "org_unit": org_unit,
+        "classification_band": "Public-Mock",
+        "created_at": occurred_at,
+    }
+
+
+def demo_stream_tick(event: Dict[str, Any]) -> Dict[str, Any]:
+    session_id = str(event.get("session_id") or "")
+    sequence = max(1, int(event.get("sequence") or 1))
+    cadence = int(event.get("cadence_seconds") or DEMO_STREAM_DEFAULT_CADENCE_SECONDS)
+    chunk_number = max(1, int(event.get("chunk_number") or 1))
+    chunk_emitted = max(0, int(event.get("chunk_emitted") or 0))
+    current = _demo_stream_item()
+    current_mode = str((current or {}).get("stream_mode") or "").strip().lower()
+    if current_mode not in {"continuous", "bounded"}:
+        current_mode = "bounded" if (current or {}).get("total_events") is not None else "continuous"
+    total_value = (current or {}).get("total_events")
+    total = int(total_value) if current_mode == "bounded" and total_value is not None else None
+    if (
+        not current
+        or current.get("session_id") != session_id
+        or current.get("status") != "running"
+        or int(current.get("execution_chunk_number") or 1) > chunk_number
+    ):
+        return {
+            "session_id": session_id,
+            "cadence_seconds": cadence,
+            "total_events": total,
+            "sequence": sequence,
+            "continue": False,
+            "status": (current or {}).get("status", "stopped"),
+        }
+
+    emitted_events = int(current.get("emitted_events") or 0)
+    if emitted_events >= sequence:
+        is_final_retry = current_mode == "bounded" and total is not None and emitted_events >= total
+        return {
+            "action": "demo_stream_tick",
+            "session_id": session_id,
+            "stream_mode": current_mode,
+            "cadence_seconds": cadence,
+            "total_events": total,
+            "sequence": emitted_events + 1,
+            "chunk_number": chunk_number,
+            "chunk_emitted": chunk_emitted + 1,
+            "emitted_events": emitted_events,
+            "continue": not is_final_retry,
+            "status": "completed" if is_final_retry else "running",
+            "latest_event": current.get("latest_event"),
+        }
+
+    occurred_at = normalize.utc_now_iso()
+    batch_id = f"live-{session_id.removeprefix('pulse-')}-{sequence:08d}"
+    run_id = pipeline.run_id_for(batch_id)
+    key = f"drops/live-stream/{session_id}/{sequence:08d}.json"
+    record = _demo_stream_record(session_id, sequence, occurred_at)
+    envelope = {
+        "source_file": f"landing://drops/live-stream/{sequence:08d}.json",
+        "batch_id": batch_id,
+        "schema_variant": "canonical",
+        "synthetic_only": True,
+        "demo_stream_session": session_id,
+        "dropped_at": occurred_at,
+        "record_count": 1,
+        "records": [record],
+    }
+    payload = json.dumps(envelope, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    bucket = os.environ.get("RAW_BUCKET", "").strip()
+    if not bucket:
+        raise RuntimeError("RAW_BUCKET is required")
+    object_created = True
+    try:
+        pipeline._s3().put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=payload,
+            ContentType="application/json",
+            Metadata={
+                "synthetic-only": "true",
+                "demo-stream-session": session_id,
+                "source-sha256": hashlib.sha256(payload).hexdigest(),
+            },
+            IfNoneMatch="*",
+        )
+    except Exception as exc:  # noqa: BLE001 - botocore stays runtime-only
+        if not _s3_precondition_error(exc):
+            raise
+        object_created = False
+
+    message = f"Synthetic live pulse {sequence} landed for {record['program_area']}"
+    stream_name = os.environ.get("STREAM_NAME", "").strip()
+    if stream_name and object_created:
+        _kinesis().put_record(
+            StreamName=stream_name,
+            PartitionKey=str(record["org_unit"]),
+            Data=json.dumps(
+                {
+                    "id": f"demo-stream:{session_id}:{sequence:08d}",
+                    "at": occurred_at,
+                    "kind": "ingest",
+                    "message": message,
+                    "grant_no": record["grant_no"],
+                    "org_unit": record["org_unit"],
+                }
+            ).encode("utf-8"),
+        )
+
+    latest_event = {
+        "sequence": sequence,
+        "run_id": run_id,
+        "event_id": f"demo-stream:{session_id}:{sequence:08d}",
+        "occurred_at": occurred_at,
+        "message": message,
+    }
+    is_final = current_mode == "bounded" and total is not None and sequence >= total
+    next_chunk_emitted = chunk_emitted + 1
+    should_rotate = (
+        current_mode == "continuous"
+        and next_chunk_emitted >= DEMO_STREAM_EXECUTION_CHUNK_EVENTS
+    )
+    advanced = _advance_demo_stream_item(
+        session_id=session_id,
+        sequence=sequence,
+        batch_id=batch_id,
+        latest_event=latest_event,
+        occurred_at=occurred_at,
+        completed=is_final,
+    )
+
+    rotated = False
+    if advanced and should_rotate:
+        next_chunk = chunk_number + 1
+        workflow_arn = _demo_stream_workflow_arn()
+        expected_execution_arn = _execution_arn_for_name(
+            workflow_arn,
+            _demo_stream_execution_name(session_id, next_chunk),
+        )
+        if _bind_demo_stream_execution(
+            session_id, expected_execution_arn, next_chunk
+        ):
+            execution_arn = _start_demo_stream_execution(
+                session_id=session_id,
+                cadence=cadence,
+                stream_mode=current_mode,
+                total_events=None,
+                sequence=sequence + 1,
+                chunk_number=next_chunk,
+            )
+            if execution_arn == expected_execution_arn:
+                rotated = True
+            else:
+                rotated = _bind_demo_stream_execution(
+                    session_id, execution_arn, next_chunk
+                )
+
+    print(
+        json.dumps(
+            {
+                "event_type": "demo_stream_tick_complete",
+                "session_id": session_id,
+                "sequence": sequence,
+                "total_events": total,
+                "stream_mode": current_mode,
+                "execution_chunk_number": chunk_number,
+                "rotated": rotated,
+                "object_created": object_created,
+                "batch_id": batch_id,
+            }
+        )
+    )
+    return {
+        "action": "demo_stream_tick",
+        "session_id": session_id,
+        "stream_mode": current_mode,
+        "cadence_seconds": cadence,
+        "total_events": total,
+        "sequence": sequence + 1,
+        "chunk_number": chunk_number,
+        "chunk_emitted": next_chunk_emitted,
+        "emitted_events": sequence,
+        "continue": advanced and not is_final and not should_rotate,
+        "status": "completed" if is_final else "running",
+        "rotated": rotated,
+        "latest_event": latest_event,
+    }
+
+
+def fail_demo_stream(event: Dict[str, Any]) -> Dict[str, Any]:
+    session_id = str(event.get("session_id") or "")
+    current = _demo_stream_item()
+    if current and current.get("session_id") == session_id:
+        _mark_demo_stream_terminal(session_id, "failed", normalize.utc_now_iso())
+        operational_evidence.record_signal(
+            category="demo-stream",
+            severity="high",
+            title="Continuous synthetic stream failed",
+            message="The continuous synthetic stream stopped after an AWS workflow failure.",
+            run_id=session_id,
+            evidence_uri=f"operations://demo-stream/{session_id}",
+            event_id=f"sig-demo-stream-failed-{session_id}",
+        )
+    return {
+        "session_id": session_id,
+        "status": "failed",
+        "continue": False,
+    }
 
 
 def _visible_to(identity: Identity, org_unit: Optional[str]) -> bool:
@@ -352,12 +1003,37 @@ def _activity_from_kinesis(identity: Identity, limit: int) -> List[Dict[str, Any
                         item = json.loads(rec["Data"].decode("utf-8"))
                     except (ValueError, UnicodeDecodeError):
                         continue
+                    if not isinstance(item, dict):
+                        continue
+                    kind = str(item.get("kind") or "")
+                    if kind not in {
+                        "ingest",
+                        "quality",
+                        "anomaly",
+                        "export",
+                        "approval",
+                        "analytics",
+                        "public-feed",
+                    }:
+                        continue
+                    item_id = str(item.get("id") or "")[:240]
+                    message = " ".join(str(item.get("message") or "").split())[:500]
+                    event_at = str(item.get("at") or "")[:40]
+                    if not item_id or not message or not event_at:
+                        continue
+                    item = {
+                        "id": item_id,
+                        "at": event_at,
+                        "kind": kind,
+                        "message": message,
+                        "grant_no": str(item.get("grant_no") or "")[:160] or None,
+                        "org_unit": str(item.get("org_unit") or "")[:80] or None,
+                    }
                     # Kinesis has no row-level security. A missing scope is
                     # corporate-only, never a wildcard for a unit viewer.
                     if not _visible_to(identity, item.get("org_unit")):
                         continue
-                    if item.get("id"):
-                        seen[item["id"]] = item
+                    seen[item["id"]] = item
                 it = resp.get("NextShardIterator")
                 if not resp.get("Records"):
                     break
@@ -828,6 +1504,34 @@ def _handle_api(event: Dict[str, Any]) -> Dict[str, Any]:
             limit = 25
         return http.ok(stream_recent(identity, limit))
 
+    if method == "GET" and route.endswith("/demo-stream"):
+        return http.ok(demo_stream_status())
+
+    if method == "POST" and route.endswith("/demo-stream/start"):
+        if identity.role != "poweruser" or not identity.is_corporate:
+            return http.forbidden("demo stream control requires the corporate poweruser role")
+        try:
+            body = http.parse_body(event)
+            status_code, response = start_demo_stream(identity, body)
+        except ValueError as exc:
+            return http.bad_request(str(exc))
+        return http.json_response(status_code, response)
+
+    if method == "POST" and route.endswith("/demo-stream/stop"):
+        if identity.role != "poweruser" or not identity.is_corporate:
+            return http.forbidden("demo stream control requires the corporate poweruser role")
+        try:
+            body = http.parse_body(event)
+        except ValueError as exc:
+            return http.bad_request(str(exc))
+        session_id = str(body.get("session_id") or "")
+        if not session_id:
+            return http.bad_request("session_id is required")
+        try:
+            return http.ok(stop_demo_stream(session_id))
+        except LookupError:
+            return http.not_found("demo stream session not found")
+
     if method == "POST" and route.endswith("/ingest/simulate"):
         if identity.role != "poweruser":
             return http.forbidden("simulating an ingest requires the poweruser role")
@@ -851,6 +1555,10 @@ def handler(event, context=None):
         return pipeline.persist_stage(event)
     if action == "stream_tick":
         return stream_tick()
+    if action == "demo_stream_tick":
+        return demo_stream_tick(event)
+    if action == "demo_stream_fail":
+        return fail_demo_stream(event)
 
     if (event.get("requestContext") or {}).get("http"):
         return _handle_api(event)
@@ -860,6 +1568,6 @@ def handler(event, context=None):
         return pipeline.fetch_stage(detail)
 
     raise ValueError(
-        "unrecognized intake event; expected {'action': 'fetch'|'persist'|'stream_tick'}, "
+        "unrecognized intake event; expected a supported action, "
         "an S3 Object Created event, or an HTTP API request"
     )

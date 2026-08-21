@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/shell/app-shell";
 import { PageHeader } from "@/components/shell/page-header";
+import { LivePublicAnalytics } from "@/components/public-intelligence/live-public-analytics";
 import { TopicList } from "@/components/analytics/topic-list";
 import { TopicTrendChart } from "@/components/analytics/topic-trend-chart";
 import { AnomalyFlags } from "@/components/analytics/anomaly-flags";
 import { RecommendationPanel } from "@/components/analytics/recommendation-panel";
 import {
   ApiError,
-  USE_MOCK,
   getAnalyticsRun,
   getAnomalies,
   postAnalyticsRun,
@@ -28,12 +28,118 @@ import {
 } from "@/lib/mock/analytics";
 import { subscribeScenario, type ScenarioAnalysisRun } from "@/lib/mock/scenario-store";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import type { AnalyticsRunDetail, Anomaly } from "@/lib/types";
 
 type RunStatus = "idle" | "running" | "completed" | "error";
 
 export default function AnalyticsPage() {
+  const { mode } = useEvidenceMode();
+
+  if (mode === "rehearsal") return <RehearsalAnalyticsWorkspace />;
+
+  return (
+    <AppShell requireRole={["poweruser"]}>
+      <PageHeader
+        kicker="Live public evidence | Analytics and model signals"
+        icon={<Network className="size-[18px]" aria-hidden />}
+        title="Analyze source changes, model routes, and review flags"
+        lead="Every chart and queue on this screen is calculated from the latest accepted public-source receipts and their real classifier results. No synthetic portfolio is silently substituted."
+      />
+      <div className="mt-6"><LiveAnalyticsRun /></div>
+      <div className="mt-6"><LivePublicAnalytics /></div>
+    </AppShell>
+  );
+}
+
+/**
+ * Element 5's "trigger and execute" on the live plane: POST /analytics/run
+ * against the protected API and render the returned run detail. A failed or
+ * unavailable service reports itself - no synthetic result is substituted.
+ */
+function LiveAnalyticsRun() {
+  const [status, setStatus] = useState<RunStatus>("idle");
+  const [detail, setDetail] = useState<AnalyticsRunDetail | null>(null);
+  const [anomalies, setAnomalies] = useState<Anomaly[] | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  async function handleRun() {
+    setStatus("running");
+    setErrorMessage(null);
+    try {
+      const { run_id } = await postAnalyticsRun();
+      const [runDetail, anomaliesResponse] = await Promise.all([
+        getAnalyticsRun(run_id),
+        getAnomalies(),
+      ]);
+      setDetail(runDetail);
+      setAnomalies(anomaliesResponse.anomalies);
+      setStatus("completed");
+    } catch (error: unknown) {
+      setErrorMessage(
+        error instanceof ApiError
+          ? `The protected analytics service answered ${error.status}. No synthetic result was substituted.`
+          : error instanceof Error
+            ? error.message
+            : "Analysis run failed",
+      );
+      setStatus("error");
+    }
+  }
+
+  return (
+    <section aria-label="Run a live analysis" className="rounded-xl border border-gov-primary/20 bg-surface p-4 shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wide text-gold-ink">Trigger and execute</p>
+          <h2 className="mt-1 text-base font-bold text-text-strong">Run the topic analysis on the latest accepted records</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-text-muted">
+            Executes the analytical routine server-side against curated evidence and returns a versioned run with its receipt. Results carry the run id every downstream citation uses.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleRun()}
+          disabled={status === "running"}
+          className="inline-flex min-h-11 items-center gap-2 rounded-md bg-gov-primary px-4 text-xs font-bold text-white hover:bg-gov-primary-dark disabled:opacity-50"
+        >
+          {status === "running" ? (
+            <><RefreshCw className="size-4 animate-spin" aria-hidden /> Running…</>
+          ) : status === "completed" ? (
+            <><RefreshCw className="size-4" aria-hidden /> Run again</>
+          ) : (
+            <><Play className="size-4" aria-hidden /> Run analysis</>
+          )}
+        </button>
+      </div>
+      {errorMessage ? (
+        <p className="mt-3 flex items-start gap-2 rounded-lg border border-warn/35 bg-warn-soft p-3 text-xs leading-5 text-warn">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> {errorMessage}
+        </p>
+      ) : null}
+      {status === "completed" && detail ? (
+        <div className="mt-4 space-y-4">
+          <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-text-subtle">
+            <Clock3 className="size-3.5" aria-hidden /> Run <span className="font-mono normal-case">{detail.run_id}</span> completed
+          </p>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <TopicList topics={detail.topics} />
+            <TopicTrendChart topics={detail.topics} />
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {anomalies ? <AnomalyFlags anomalies={anomalies} /> : null}
+            <RecommendationPanel detail={detail} />
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function RehearsalAnalyticsWorkspace() {
   const auth = useAppAuth();
+  const { mode } = useEvidenceMode();
+  const rehearsal = mode === "rehearsal";
   const [status, setStatus] = useState<RunStatus>("idle");
   const [detail, setDetail] = useState<AnalyticsRunDetail | null>(null);
   const [anomalies, setAnomalies] = useState<Anomaly[] | null>(null);
@@ -64,13 +170,13 @@ export default function AnalyticsPage() {
   }, []);
 
   useEffect(() => {
-    if (!USE_MOCK) return;
+    if (!rehearsal) return;
     const syncHistory = () => setHistory(getAnalyticsHistory());
     syncHistory();
     const latest = getAnalyticsHistory()[0];
     if (latest) void loadRun(latest.run_id);
     return subscribeScenario(syncHistory);
-  }, [loadRun]);
+  }, [loadRun, rehearsal]);
 
   useEffect(() => {
     if (detail) void loadRun(detail.run_id);
@@ -82,7 +188,7 @@ export default function AnalyticsPage() {
     try {
       const { run_id } = await postAnalyticsRun();
       await loadRun(run_id);
-      if (USE_MOCK) setHistory(getAnalyticsHistory());
+      if (rehearsal) setHistory(getAnalyticsHistory());
     } catch (error: unknown) {
       setErrorMessage(
         error instanceof ApiError
@@ -109,10 +215,10 @@ export default function AnalyticsPage() {
   return (
     <AppShell requireRole={["poweruser"]}>
       <PageHeader
-        kicker="Element 5 supporting view | Decision Analytics"
+        kicker="Explicit rehearsal | Decision analytics"
         icon={<Network className="size-[18px]" aria-hidden />}
-        title="Turn the curated portfolio into a decision brief"
-        lead="Run the governed corporate model, compare investment concentration, surface emerging topics and anomalies, and turn the evidence into a recommended next action."
+        title="Rehearse the analytics and review workflow"
+        lead="Run the deterministic rehearsal analysis, compare synthetic investment concentration, surface fixture topics and anomalies, and practice routing a recommended next action without claiming a live model execution."
         actions={
           <button
             type="button"
@@ -140,7 +246,7 @@ export default function AnalyticsPage() {
         }
       />
 
-      {USE_MOCK ? (
+      {rehearsal ? (
         <section
           aria-label="Replay analysis history"
           className="mt-5 rounded-xl border border-gov-primary/20 bg-gov-primary-lighter/50 p-4 shadow-soft"

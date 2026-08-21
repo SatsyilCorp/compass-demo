@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 API_TITLE = "Compass | S&T Portfolio Intelligence API"
-API_VERSION = "1.4.0"
+API_VERSION = "1.7.0"
 
 # Strings reused across operations.
 _ERR = {"$ref": "#/components/responses/Error"}
@@ -332,6 +332,78 @@ def _schemas() -> dict[str, Any]:
             "required": ["records"],
             "properties": {"records": {"type": "array", "items": _ref("StreamRecord")}},
         },
+        "DemoStreamStartRequest": {
+            "type": "object",
+            "required": ["cadence_seconds", "stream_mode"],
+            "properties": {
+                "cadence_seconds": {"type": "integer", "enum": [1, 2]},
+                "stream_mode": {"type": "string", "enum": ["continuous", "bounded"]},
+                "total_events": {"type": "integer", "minimum": 1, "maximum": 60},
+            },
+        },
+        "DemoStreamStopRequest": {
+            "type": "object",
+            "required": ["session_id"],
+            "properties": {"session_id": {"type": "string"}},
+        },
+        "DemoStreamEvent": {
+            "type": ["object", "null"],
+            "properties": {
+                "sequence": {"type": "integer"},
+                "run_id": {"type": "string"},
+                "event_id": {"type": "string"},
+                "occurred_at": {"type": "string", "format": "date-time"},
+                "message": {"type": "string"},
+            },
+        },
+        "DemoStreamSession": {
+            "type": "object",
+            "required": ["status", "stream_mode", "cadence_seconds", "total_events", "emitted_events"],
+            "properties": {
+                "session_id": {"type": ["string", "null"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["idle", "running", "completed", "stopped", "failed"],
+                },
+                "stream_mode": {"type": "string", "enum": ["continuous", "bounded"]},
+                "cadence_seconds": {"type": "integer", "enum": [1, 2]},
+                "total_events": {"type": ["integer", "null"], "minimum": 0, "maximum": 60},
+                "emitted_events": {"type": "integer", "minimum": 0},
+                "started_at": {"type": ["string", "null"], "format": "date-time"},
+                "updated_at": {"type": ["string", "null"], "format": "date-time"},
+                "completed_at": {"type": ["string", "null"], "format": "date-time"},
+                "execution_chunk_number": {"type": "integer", "minimum": 0},
+            },
+        },
+        "DemoStreamSafeguards": {
+            "type": "object",
+            "required": [
+                "operator_stop_required",
+                "workflow_chunk_events",
+                "raw_retention_days",
+                "estimated_events_per_hour",
+            ],
+            "properties": {
+                "operator_stop_required": {"type": "boolean"},
+                "workflow_chunk_events": {"type": "integer", "minimum": 1},
+                "raw_retention_days": {"type": "integer", "minimum": 1},
+                "estimated_events_per_hour": {"type": "integer", "minimum": 0},
+            },
+        },
+        "DemoStreamResponse": {
+            "type": "object",
+            "required": ["contract", "mode", "generated_at", "stream_kind", "session", "disclosure"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.demo-stream.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "stream_kind": {"type": "string", "const": "continuous-synthetic"},
+                "session": _ref("DemoStreamSession"),
+                "latest_event": _ref("DemoStreamEvent"),
+                "safeguards": _ref("DemoStreamSafeguards"),
+                "disclosure": {"type": "string"},
+            },
+        },
         "AnalyticsRunRequest": {
             "type": "object",
             "properties": {
@@ -514,6 +586,718 @@ def _schemas() -> dict[str, Any]:
                     "description": "Bedrock model id, in-boundary only (amazon.nova-lite-v1:0)",
                 },
             },
+        },
+        "PublicEvidenceRecord": {
+            "type": "object",
+            "required": [
+                "record_id",
+                "source_id",
+                "title",
+                "summary",
+                "source_url",
+                "evidence_class",
+                "model_run_id",
+                "uncertainty",
+                "snapshot_id",
+                "record_sha256",
+            ],
+            "properties": {
+                "record_id": {"type": "string"},
+                "source_id": {"type": "string"},
+                "title": {"type": "string"},
+                "summary": {"type": "string"},
+                "source_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": [
+                        "observed",
+                        "derived",
+                        "predicted",
+                        "public_observed",
+                        "public_derived",
+                        "public_predicted",
+                    ],
+                },
+                "model_run_id": {"type": ["string", "null"]},
+                "uncertainty": {
+                    "type": ["object", "array", "string", "number", "null"],
+                },
+                "snapshot_id": {"type": "string"},
+                "record_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "PublicIntelligenceSnapshot": {
+            "type": "object",
+            "required": [
+                "contract",
+                "snapshot_id",
+                "snapshot_version",
+                "generated_at",
+                "as_of_at",
+                "evidence_class",
+                "provenance",
+                "identity_scope",
+                "snapshot",
+                "sources",
+                "models",
+                "record_count",
+                "records",
+                "disclosure",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.snapshot-response.v1",
+                },
+                "snapshot_id": {"type": "string"},
+                "snapshot_version": {"type": "integer", "const": 1},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "as_of_at": {"type": "string", "format": "date-time"},
+                "evidence_class": {"type": "string"},
+                "provenance": {
+                    "type": "object",
+                    "required": [
+                        "manifest_sha256",
+                        "index_sha256",
+                        "manifest_object_version",
+                        "index_object_version",
+                    ],
+                    "properties": {
+                        "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "index_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "manifest_object_version": {"type": ["string", "null"]},
+                        "index_object_version": {"type": ["string", "null"]},
+                    },
+                    "additionalProperties": False,
+                },
+                "identity_scope": {"type": "object", "additionalProperties": {"type": "string"}},
+                "snapshot": {"type": "object", "additionalProperties": True},
+                "sources": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "models": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "record_count": {"type": "integer", "minimum": 0, "maximum": 5000},
+                "records": {"type": "array", "items": _ref("PublicEvidenceRecord")},
+                "disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "PublicExplainRequest": {
+            "type": "object",
+            "required": ["question"],
+            "properties": {
+                "question": {"type": "string", "minLength": 1, "maxLength": 1200},
+                "record_ids": {
+                    "type": "array",
+                    "maxItems": 12,
+                    "items": {"type": "string", "minLength": 1, "maxLength": 240},
+                },
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 6, "default": 5},
+            },
+            "additionalProperties": False,
+        },
+        "PublicEvidenceCitation": {
+            "type": "object",
+            "required": [
+                "record_id",
+                "source_id",
+                "title",
+                "source_url",
+                "evidence_class",
+                "model_run_id",
+                "uncertainty",
+                "snapshot_id",
+                "record_sha256",
+                "citation_token",
+            ],
+            "properties": {
+                "record_id": {"type": "string"},
+                "source_id": {"type": "string"},
+                "title": {"type": "string"},
+                "source_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+                "evidence_class": {"type": "string"},
+                "model_run_id": {"type": ["string", "null"]},
+                "uncertainty": {
+                    "type": ["object", "array", "string", "number", "null"],
+                },
+                "snapshot_id": {"type": "string"},
+                "record_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$",
+                },
+                "citation_token": {"type": "string", "pattern": "^\\[SRC:"},
+            },
+            "additionalProperties": False,
+        },
+        "PublicExplanation": {
+            "type": "object",
+            "required": [
+                "contract",
+                "answer",
+                "grounded",
+                "refused",
+                "refusal_code",
+                "citations",
+                "evidence_class",
+                "model_run_id",
+                "model_run_ids",
+                "explanation_run_id",
+                "uncertainty",
+                "generation",
+                "snapshot_id",
+                "identity_scope",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.explanation.v1",
+                },
+                "answer": {"type": "string"},
+                "grounded": {"type": "boolean"},
+                "refused": {"type": "boolean"},
+                "refusal_code": {
+                    "type": ["string", "null"],
+                    "enum": ["INSUFFICIENT_CITABLE_EVIDENCE", None],
+                },
+                "citations": {"type": "array", "items": _ref("PublicEvidenceCitation")},
+                "evidence_class": {"type": "string"},
+                "model_run_id": {"type": ["string", "null"]},
+                "model_run_ids": {"type": "array", "items": {"type": "string"}},
+                "explanation_run_id": {"type": "string"},
+                "uncertainty": {"type": "object", "additionalProperties": True},
+                "generation": {
+                    "type": "object",
+                    "required": ["provider", "model_id", "usage"],
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "enum": ["amazon-bedrock", "deterministic", "none"],
+                        },
+                        "model_id": {"type": ["string", "null"]},
+                        "usage": {"type": ["object", "null"], "additionalProperties": True},
+                    },
+                    "additionalProperties": False,
+                },
+                "snapshot_id": {"type": "string"},
+                "identity_scope": {"type": "object", "additionalProperties": {"type": "string"}},
+            },
+            "additionalProperties": False,
+        },
+        "PublicModelExecutionRequest": {
+            "type": "object",
+            "properties": {
+                "sampleSize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 25,
+                    "default": 8,
+                }
+            },
+            "additionalProperties": False,
+        },
+        "PublicModelExecutionPrediction": {
+            "type": "object",
+            "required": [
+                "recordId",
+                "observedPublicTransitionProbability",
+                "candidateLabel",
+                "semantics",
+                "humanReviewRequired",
+            ],
+            "properties": {
+                "recordId": {"type": "string"},
+                "observedPublicTransitionProbability": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                },
+                "candidateLabel": {"type": "integer", "enum": [0, 1]},
+                "semantics": {"type": "string"},
+                "humanReviewRequired": {"type": "boolean", "const": True},
+            },
+            "additionalProperties": False,
+        },
+        "PublicModelExecutionReceipt": {
+            "type": "object",
+            "required": [
+                "contract",
+                "version",
+                "executionId",
+                "status",
+                "createdAt",
+                "updatedAt",
+                "completedAt",
+                "purpose",
+                "executionMode",
+                "model",
+                "input",
+                "execution",
+                "output",
+                "cost",
+                "provenance",
+                "humanReviewRequired",
+                "disclosure",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.model-execution.v1",
+                },
+                "version": {"type": "integer", "const": 1},
+                "executionId": {
+                    "type": "string",
+                    "pattern": "^sbir-batch-[0-9]{8}T[0-9]{6}-[a-f0-9]{8}$",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["SUBMITTED", "IN_PROGRESS", "COMPLETED", "FAILED", "STOPPED"],
+                },
+                "createdAt": {"type": "string", "format": "date-time"},
+                "updatedAt": {"type": "string", "format": "date-time"},
+                "completedAt": {"type": ["string", "null"], "format": "date-time"},
+                "purpose": {
+                    "type": "string",
+                    "enum": [
+                        "current_public_cohort_scoring",
+                        "training_cohort_smoke_scoring",
+                        "bounded_public_validation",
+                    ],
+                    "description": (
+                        "Current public post-cutoff cohort scoring. Earlier values are retained "
+                        "only for compatibility with prior hash-bound execution receipts."
+                    ),
+                },
+                "executionMode": {"type": "string", "const": "sagemaker_batch_transform"},
+                "model": {
+                    "type": "object",
+                    "required": [
+                        "name",
+                        "packageArn",
+                        "packageVersion",
+                        "approvalStatus",
+                        "candidateOnly",
+                        "trainingJobArn",
+                        "modelArtifactSha256",
+                        "modelCardSha256",
+                        "imageDigest",
+                    ],
+                    "properties": {
+                        "name": {"type": "string"},
+                        "packageArn": {"type": "string"},
+                        "packageVersion": {"type": "integer", "minimum": 1},
+                        "approvalStatus": {"type": "string", "const": "PendingManualApproval"},
+                        "candidateOnly": {"type": "boolean", "const": True},
+                        "trainingJobArn": {"type": "string"},
+                        "modelArtifactSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "modelBundleSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "modelArtifactSourceVersionId": {"type": "string"},
+                        "modelCardSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "imageDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+                    },
+                    "additionalProperties": False,
+                },
+                "input": {
+                    "type": "object",
+                    "required": ["recordCount", "sha256", "records"],
+                    "properties": {
+                        "recordCount": {"type": "integer", "minimum": 1, "maximum": 25},
+                        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "records": {
+                            "type": "array",
+                            "maxItems": 25,
+                            "items": {
+                                "type": "object",
+                                "required": ["recordId", "eventTime", "sourceRecordIds"],
+                                "properties": {
+                                    "recordId": {"type": "string"},
+                                    "eventTime": {"type": "string", "format": "date-time"},
+                                    "sourceRecordIds": {
+                                        "type": "array",
+                                        "maxItems": 10,
+                                        "items": {"type": "string"},
+                                    },
+                                },
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                "execution": {
+                    "type": "object",
+                    "required": [
+                        "transformJobArn",
+                        "transformJobName",
+                        "instanceType",
+                        "instanceCount",
+                        "networkIsolation",
+                        "maxRuntimeSeconds",
+                        "temporaryModelName",
+                        "temporaryModelCleanupStatus",
+                    ],
+                    "properties": {
+                        "transformJobArn": {"type": ["string", "null"]},
+                        "transformJobName": {"type": "string"},
+                        "instanceType": {"type": "string", "const": "ml.m5.large"},
+                        "instanceCount": {"type": "integer", "const": 1},
+                        "networkIsolation": {"type": "boolean", "const": True},
+                        "maxRuntimeSeconds": {"type": "integer", "maximum": 1800},
+                        "temporaryModelName": {"type": "string"},
+                        "temporaryModelCleanupStatus": {
+                            "type": "string",
+                            "enum": ["PENDING", "DELETED", "DELETE_PENDING", "REFUSED_INVALID_NAME"],
+                        },
+                        "reconciliationSchedule": {"type": ["string", "null"]},
+                        "stopRequestedAt": {"type": "string", "format": "date-time"},
+                        "stopReason": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+                "output": {
+                    "oneOf": [
+                        {"type": "null"},
+                        {
+                            "type": "object",
+                            "required": ["predictionCount", "sha256", "predictions"],
+                            "properties": {
+                                "predictionCount": {"type": "integer", "minimum": 1, "maximum": 25},
+                                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                                "predictions": {
+                                    "type": "array",
+                                    "maxItems": 25,
+                                    "items": _ref("PublicModelExecutionPrediction"),
+                                },
+                            },
+                            "additionalProperties": False,
+                        },
+                    ]
+                },
+                "cost": {
+                    "oneOf": [
+                        {"type": "null"},
+                        {
+                            "type": "object",
+                            "required": [
+                                "observedDurationSeconds",
+                                "estimatedComputeUsd",
+                                "estimateOnly",
+                                "basis",
+                            ],
+                            "properties": {
+                                "observedDurationSeconds": {"type": ["integer", "null"], "minimum": 0},
+                                "estimatedComputeUsd": {"type": ["number", "null"], "minimum": 0},
+                                "estimateOnly": {"type": "boolean", "const": True},
+                                "basis": {"type": "string"},
+                            },
+                            "additionalProperties": False,
+                        },
+                    ]
+                },
+                "provenance": {
+                    "type": "object",
+                    "required": [
+                        "requestId",
+                        "actorRole",
+                        "candidatePoolSha256",
+                        "candidatePoolVersionId",
+                        "sourceDataset",
+                        "inputVersionId",
+                        "outputVersionId",
+                        "receiptSha256",
+                        "receiptVersionId",
+                    ],
+                    "properties": {
+                        "requestId": {"type": "string"},
+                        "actorRole": {"type": "string", "const": "poweruser"},
+                        "candidatePoolSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "candidatePoolVersionId": {"type": ["string", "null"]},
+                        "sourceDataset": {"type": "object", "additionalProperties": True},
+                        "inputVersionId": {"type": ["string", "null"]},
+                        "executionModelVersionId": {"type": ["string", "null"]},
+                        "outputVersionId": {"type": ["string", "null"]},
+                        "receiptSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "receiptVersionId": {"type": ["string", "null"]},
+                    },
+                    "additionalProperties": False,
+                },
+                "failure": {
+                    "type": "object",
+                    "required": ["code", "message"],
+                    "properties": {
+                        "code": {"type": "string"},
+                        "message": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+                "humanReviewRequired": {"type": "boolean", "const": True},
+                "disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "PublicModelExecutionList": {
+            "type": "object",
+            "required": ["contract", "executions"],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-intelligence.model-execution-list.v1",
+                },
+                "executions": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": _ref("PublicModelExecutionReceipt"),
+                },
+            },
+            "additionalProperties": False,
+        },
+        "PublicAcquisition": {
+            "type": "object",
+            "required": ["contract", "evidence_class", "run_id", "source_id", "status", "stage", "started_at", "updated_at"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.public-acquisition.v1"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": ["public-observed", "public-operational"],
+                },
+                "run_id": {"type": "string"},
+                "source_id": {
+                    "type": "string",
+                    "enum": [
+                        "usaspending-onr-grants",
+                        "grants-gov-onr",
+                        "federal-register-onr",
+                        "crossref-onr",
+                    ],
+                },
+                "source_label": {"type": "string"},
+                "source": {"type": "string"},
+                "status": {"type": "string", "enum": ["completed", "failed", "running"]},
+                "stage": {"type": "string"},
+                "started_at": {"type": "string", "format": "date-time"},
+                "updated_at": {"type": "string", "format": "date-time"},
+                "watermark": {"type": ["string", "null"]},
+                "snapshot_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "source_response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "canonical_object_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "record_count": {"type": "integer", "minimum": 0},
+                "total_available": {"type": "integer", "minimum": 0},
+                "profile": {"type": "string", "enum": ["quick", "standard", "deep"]},
+                "requested_records": {"type": "integer", "minimum": 0},
+                "pages_fetched": {"type": "integer", "minimum": 0},
+                "source_response_bytes": {"type": "integer", "minimum": 0},
+                "duration_ms": {"type": "integer", "minimum": 0},
+                "added_records": {"type": "integer", "minimum": 0},
+                "changed_records": {"type": "integer", "minimum": 0},
+                "unchanged_records": {"type": "integer", "minimum": 0},
+                "not_observed_records": {"type": "integer", "minimum": 0},
+                "has_more_source_pages": {"type": "boolean"},
+                "review_flag_count": {"type": "integer", "minimum": 0},
+                "review_flags": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {"type": "object", "additionalProperties": True},
+                },
+                "record_preview": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {"type": "object", "additionalProperties": True},
+                },
+                "identity_summary": {"type": "object", "additionalProperties": True},
+                "classification_status": {
+                    "type": "string",
+                    "enum": ["completed", "degraded", "not-configured"],
+                },
+                "classification_summary": {
+                    "oneOf": [
+                        {"type": "object", "additionalProperties": True},
+                        {"type": "null"},
+                    ]
+                },
+                "poll_mode": {"type": "string", "const": "scheduled-micro-batch"},
+                "scope_disclosure": {"type": "string"},
+                "failure_code": {"type": "string"},
+            },
+            "additionalProperties": True,
+        },
+        "PublicAcquisitionContinuousControl": {
+            "type": "object",
+            "required": [
+                "contract",
+                "mode",
+                "evidence_class",
+                "status",
+                "enabled",
+                "defaulted",
+                "manual_runs_available",
+                "control_scope",
+            ],
+            "properties": {
+                "contract": {
+                    "type": "string",
+                    "const": "compass.public-acquisition-continuous-control.v1",
+                },
+                "mode": {"type": "string", "const": "live"},
+                "evidence_class": {"type": "string", "const": "public-operational"},
+                "status": {"type": "string", "enum": ["running", "stopped"]},
+                "enabled": {"type": "boolean"},
+                "defaulted": {"type": "boolean"},
+                "updated_at": {"type": ["string", "null"], "format": "date-time"},
+                "updated_by": {"type": ["string", "null"]},
+                "manual_runs_available": {"type": "boolean", "const": True},
+                "control_scope": {
+                    "type": "string",
+                    "const": "scheduled public-source acquisitions",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "PublicSourceHealth": {
+            "type": "object",
+            "required": [
+                "source_id",
+                "label",
+                "authority",
+                "endpoint",
+                "cadence_seconds",
+                "status",
+            ],
+            "properties": {
+                "source_id": {"type": "string"},
+                "label": {"type": "string"},
+                "authority": {"type": "string"},
+                "endpoint": {"type": "string", "format": "uri"},
+                "cadence_seconds": {"type": "integer", "minimum": 1},
+                "data_kind": {"type": "string"},
+                "model_use": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["healthy", "stale", "failed", "awaiting-first-run"],
+                },
+                "last_attempt_at": {"type": ["string", "null"], "format": "date-time"},
+                "last_accepted_at": {"type": ["string", "null"], "format": "date-time"},
+                "age_seconds": {"type": ["integer", "null"], "minimum": 0},
+                "success_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+                "average_duration_ms": {"type": ["integer", "null"], "minimum": 0},
+                "latest_run_id": {"type": ["string", "null"]},
+                "latest_record_count": {"type": ["integer", "null"], "minimum": 0},
+                "latest_added_records": {"type": ["integer", "null"], "minimum": 0},
+                "latest_changed_records": {"type": ["integer", "null"], "minimum": 0},
+                "latest_review_flag_count": {"type": ["integer", "null"], "minimum": 0},
+                "classification_status": {"type": ["string", "null"]},
+                "model_version": {"type": ["string", "null"]},
+                "has_more_source_pages": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+        "PublicAcquisitionList": {
+            "type": "object",
+            "required": ["contract", "mode", "evidence_class", "generated_at", "schedule", "source_transport", "acquisitions"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.public-acquisition-list.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "evidence_class": {"type": "string", "const": "public-operational"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "schedule": {"type": "string"},
+                "source_transport": {"type": "string"},
+                "display_refresh": {"type": "string"},
+                "source_health": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": _ref("PublicSourceHealth"),
+                },
+                "evidence_threads": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {"type": "object", "additionalProperties": True},
+                },
+                "acquisitions": {"type": "array", "maxItems": 100, "items": _ref("PublicAcquisition")},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalSignal": {
+            "type": "object",
+            "required": ["contract", "event_id", "category", "severity", "title", "message", "status", "evidence_class"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-signal.v1"},
+                "event_id": {"type": "string"},
+                "category": {"type": "string"},
+                "severity": {"type": "string", "enum": ["info", "low", "medium", "high", "critical"]},
+                "title": {"type": "string"},
+                "message": {"type": "string"},
+                "status": {"type": "string", "enum": ["open", "acknowledged"]},
+                "evidence_class": {"type": "string"},
+                "run_id": {"type": ["string", "null"]},
+                "evidence_uri": {"type": ["string", "null"]},
+                "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "delivery": {"type": "object", "additionalProperties": True},
+            },
+            "additionalProperties": True,
+        },
+        "OperationalSignals": {
+            "type": "object",
+            "required": ["contract", "mode", "evidence_scope", "generated_at", "signals", "unacknowledged"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-signals.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "signals": {"type": "array", "maxItems": 100, "items": _ref("OperationalSignal")},
+                "unacknowledged": {"type": "integer", "minimum": 0},
+                "delivery_disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalLineage": {
+            "type": "object",
+            "required": ["contract", "mode", "evidence_scope", "run_id", "run_kind", "status", "evidence_class", "stages", "edges", "generated_at"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-lineage.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
+                "run_id": {"type": "string"},
+                "run_kind": {"type": "string"},
+                "status": {"type": "string"},
+                "evidence_class": {"type": "string"},
+                "source": {"type": ["string", "null"]},
+                "source_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+                "model": {"type": ["string", "null"]},
+                "consumer": {"type": ["string", "null"]},
+                "stages": {"type": "array", "maxItems": 100, "items": {"type": "object", "additionalProperties": True}},
+                "edges": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "generated_at": {"type": "string", "format": "date-time"},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalLineageList": {
+            "type": "object",
+            "required": ["contract", "mode", "evidence_scope", "generated_at", "runs"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-lineage-list.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "runs": {"type": "array", "maxItems": 100, "items": {"type": "object", "additionalProperties": True}},
+            },
+            "additionalProperties": False,
+        },
+        "OperationalSummary": {
+            "type": "object",
+            "required": ["contract", "mode", "evidence_scope", "generated_at", "counts", "runs", "proof", "disclosure"],
+            "properties": {
+                "contract": {"type": "string", "const": "compass.operational-summary.v1"},
+                "mode": {"type": "string", "const": "live"},
+                "evidence_scope": {"type": "string", "const": "public-only"},
+                "generated_at": {"type": "string", "format": "date-time"},
+                "counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+                "runs": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "latest_public_acquisition": {"oneOf": [_ref("PublicAcquisition"), {"type": "null"}]},
+                "latest_public_acquisition_attempt": {"oneOf": [_ref("PublicAcquisition"), {"type": "null"}]},
+                "proof": {"type": "object", "additionalProperties": {"type": "string"}},
+                "disclosure": {"type": "string"},
+            },
+            "additionalProperties": False,
         },
         "Anomaly": {
             "type": "object",
@@ -1286,7 +2070,16 @@ def _schemas() -> dict[str, Any]:
         },
         "DocumentUploadRequest": {
             "type": "object",
-            "required": ["filename", "content_type", "size_bytes"],
+            "required": [
+                "filename",
+                "content_type",
+                "size_bytes",
+                "source_sha256",
+                "synthetic_only",
+                "data_classification",
+                "contains_cui",
+                "pii_minimized",
+            ],
             "properties": {
                 "filename": {"type": "string", "minLength": 1, "maxLength": 120},
                 "content_type": {"type": "string"},
@@ -1295,25 +2088,45 @@ def _schemas() -> dict[str, Any]:
                     "minimum": 1,
                     "maximum": 15728640,
                 },
+                "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "synthetic_only": {"type": "boolean", "default": True},
+                "data_classification": {
+                    "type": "string",
+                    "enum": ["synthetic-demo", "public"],
+                },
+                "contains_cui": {"type": "boolean", "const": False},
+                "pii_minimized": {"type": "boolean"},
             },
             "additionalProperties": False,
         },
         "DocumentUploadResponse": {
             "type": "object",
             "required": [
+                "contract",
+                "evidence_class",
                 "run_id",
+                "document_id",
                 "status",
                 "stage",
                 "filename",
                 "content_type",
                 "expected_bytes",
                 "source",
+                "source_sha256",
+                "synthetic_only",
+                "data_boundary",
+                "created_at",
+                "updated_at",
                 "upload",
             ],
             "properties": {
-                "run_id": {"type": "string"},
-                "document_id": {"type": "string"},
+                "contract": {"type": "string", "const": "compass.document-upload-plan.v1"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": ["public-operational", "synthetic-rehearsal"],
+                },
+                "run_id": {"type": "string", "pattern": "^doc-[a-f0-9]{32}$"},
+                "document_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
                 "status": {"type": "string", "const": "awaiting-upload"},
                 "stage": {"type": "string", "const": "browser-upload"},
                 "filename": {"type": "string"},
@@ -1324,20 +2137,34 @@ def _schemas() -> dict[str, Any]:
                 "created_at": {"type": "string", "format": "date-time"},
                 "updated_at": {"type": "string", "format": "date-time"},
                 "source": {"type": "string", "pattern": "^document-lake://"},
+                "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "synthetic_only": {"type": "boolean"},
+                "data_boundary": {
+                    "type": "object",
+                    "required": ["classification", "contains_cui", "pii_minimized"],
+                    "properties": {
+                        "classification": {
+                            "type": "string",
+                            "enum": ["synthetic-demo", "public"],
+                        },
+                        "contains_cui": {"type": "boolean", "const": False},
+                        "pii_minimized": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
                 "upload": {
                     "type": "object",
                     "required": [
                         "method",
                         "url",
-                        "headers",
+                        "fields",
                         "expires_in_seconds",
                         "maximum_bytes",
                     ],
                     "properties": {
-                        "method": {"type": "string", "const": "PUT"},
+                        "method": {"type": "string", "const": "POST"},
                         "url": {"type": "string", "format": "uri"},
-                        "headers": {
+                        "fields": {
                             "type": "object",
                             "additionalProperties": {"type": "string"},
                         },
@@ -1352,17 +2179,63 @@ def _schemas() -> dict[str, Any]:
         },
         "DocumentRun": {
             "type": "object",
-            "required": ["run_id", "status", "stage"],
+            "required": [
+                "contract",
+                "evidence_class",
+                "run_id",
+                "document_id",
+                "status",
+                "stage",
+                "filename",
+                "content_type",
+                "expected_bytes",
+                "source",
+                "source_sha256",
+                "synthetic_only",
+                "data_boundary",
+                "created_at",
+                "updated_at",
+            ],
             "properties": {
-                "run_id": {"type": "string"},
-                "document_id": {"type": "string"},
+                "contract": {"type": "string", "const": "compass.document-intake-run.v1"},
+                "evidence_class": {
+                    "type": "string",
+                    "enum": ["public-operational", "synthetic-rehearsal"],
+                },
+                "run_id": {"type": "string", "pattern": "^doc-[a-f0-9]{32}$"},
+                "document_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
                 "status": {
                     "type": "string",
-                    "enum": ["awaiting-upload", "running", "completed", "quarantined"],
+                    "enum": ["awaiting-upload", "running", "completed", "quarantined", "failed"],
                 },
-                "stage": {"type": "string"},
+                "stage": {
+                    "type": "string",
+                    "enum": [
+                        "browser-upload",
+                        "bronze-inspected",
+                        "quality-gate",
+                        "gold-published",
+                        "inspect",
+                        "quarantine",
+                        "workflow-failed",
+                    ],
+                },
                 "filename": {"type": "string"},
                 "content_type": {"type": "string"},
+                "expected_bytes": {"type": "integer", "minimum": 1, "maximum": 15728640},
+                "source": {"type": "string", "pattern": "^document-lake://"},
+                "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "synthetic_only": {"type": "boolean"},
+                "data_boundary": {
+                    "type": "object",
+                    "required": ["classification", "contains_cui", "pii_minimized"],
+                    "properties": {
+                        "classification": {"type": "string", "enum": ["synthetic-demo", "public"]},
+                        "contains_cui": {"type": "boolean", "const": False},
+                        "pii_minimized": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
                 "bytes": {"type": "integer"},
                 "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "document_class": _ref("DocumentTaxonomy"),
@@ -1471,40 +2344,74 @@ def _schemas() -> dict[str, Any]:
         },
         "DocumentDriftRequest": {
             "type": "object",
+            "required": ["documents"],
             "properties": {
                 "documents": {
                     "type": "array",
-                    "minItems": 1,
+                    "minItems": 5,
                     "maxItems": 200,
                     "items": {"type": "string", "minLength": 20},
                 },
-                "threshold": {"type": "number", "minimum": 0, "maximum": 1},
+                "threshold": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
             },
             "additionalProperties": False,
         },
         "DocumentDriftReceipt": {
             "type": "object",
             "required": [
+                "contract",
+                "evidence_class",
                 "drift_id",
                 "model_version",
+                "documents_observed",
+                "tokens_observed",
+                "reference_label_distribution",
+                "observed_label_distribution",
+                "population_stability_index",
+                "out_of_vocabulary_rate",
                 "drift_detected",
                 "drift_score",
+                "threshold",
+                "recommended_action",
+                "evaluation_window_sha256",
+                "baseline_sha256",
                 "receipt_uri",
+                "evaluated_by",
+                "created_at",
+                "updated_at",
             ],
             "properties": {
-                "drift_id": {"type": "string"},
+                "contract": {"type": "string", "const": "compass.model-drift-receipt.v1"},
+                "evidence_class": {"type": "string", "const": "public-operational"},
+                "drift_id": {"type": "string", "pattern": "^drift-[a-f0-9]{12}$"},
                 "model_version": {"type": "string"},
-                "threshold": {"type": "number"},
-                "population_stability_index": {"type": "number"},
-                "out_of_vocabulary_rate": {"type": "number"},
-                "drift_score": {"type": "number"},
+                "documents_observed": {"type": "integer", "minimum": 5, "maximum": 200},
+                "tokens_observed": {"type": "integer", "minimum": 0},
+                "reference_label_distribution": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "observed_label_distribution": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "threshold": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                "population_stability_index": {"type": "number", "minimum": 0},
+                "out_of_vocabulary_rate": {"type": "number", "minimum": 0, "maximum": 1},
+                "drift_score": {"type": "number", "minimum": 0, "maximum": 1},
                 "drift_detected": {"type": "boolean"},
-                "recommended_action": {"type": "string"},
+                "recommended_action": {
+                    "type": "string",
+                    "enum": ["continue-monitoring", "retrain-and-review"],
+                },
+                "evaluation_window_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "baseline_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "receipt_uri": {"type": "string", "pattern": "^document-lake://"},
+                "evaluated_by": {"type": "string"},
                 "created_at": {"type": "string", "format": "date-time"},
                 "updated_at": {"type": "string", "format": "date-time"},
             },
-            "additionalProperties": True,
+            "additionalProperties": False,
         },
         "DocumentMlOpsEvidence": {
             "type": "object",
@@ -1702,6 +2609,45 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("StreamRecentResponse"),
             )
         },
+        "/demo-stream": {
+            "get": _op(
+                "getDemoStream",
+                "Read the operator-controlled continuous stream session",
+                "3 · ingest",
+                _ref("DemoStreamResponse"),
+                description=(
+                    "Reads the current synthetic demo-stream receipt. The stream is "
+                    "separate from official public-source acquisition cadence."
+                ),
+            )
+        },
+        "/demo-stream/start": {
+            "post": _op(
+                "startDemoStream",
+                "Start an operator-controlled continuous synthetic stream",
+                "3 · ingest",
+                _ref("DemoStreamResponse"),
+                request_schema=_ref("DemoStreamStartRequest"),
+                success_status="202",
+                success_description="Accepted",
+                description=(
+                    "Starts synthetic S3 drops at a one-second or two-second cadence and "
+                    "continues until an operator calls Stop. Every drop follows the deployed "
+                    "EventBridge and Step Functions intake path. Bounded mode remains available "
+                    "for automated smoke tests."
+                ),
+            )
+        },
+        "/demo-stream/stop": {
+            "post": _op(
+                "stopDemoStream",
+                "Stop the current continuous synthetic stream",
+                "3 · ingest",
+                _ref("DemoStreamResponse"),
+                request_schema=_ref("DemoStreamStopRequest"),
+                extra_responses={"404": _ERR},
+            )
+        },
         "/analytics/run": {
             "post": _op(
                 "runAnalytics",
@@ -1719,7 +2665,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("AnalyticsRunDetail"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -1765,6 +2711,267 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 description="Retrieval runs against pgvector embeddings of curated "
                 "abstracts under the caller's RLS context; generation uses "
                 "Bedrock in-boundary (amazon.nova-lite-v1:0).",
+            )
+        },
+        "/public-intelligence/snapshot": {
+            "get": _op(
+                "getPublicIntelligenceSnapshot",
+                "Verified public ONR-related evidence snapshot",
+                "9 · public intelligence",
+                _ref("PublicIntelligenceSnapshot"),
+                description=(
+                    "Reads a PII-minimized public-evidence index only after its versioned "
+                    "S3 manifest, boundary declaration, source URLs, and SHA-256 digest "
+                    "validate. It is isolated from the synthetic portfolio database."
+                ),
+                extra_responses={"503": _ERR},
+            )
+        },
+        "/public-intelligence/explain": {
+            "post": _op(
+                "explainPublicIntelligence",
+                "Cited explanation from verified public evidence",
+                "9 · public intelligence",
+                _ref("PublicExplanation"),
+                request_schema=_ref("PublicExplainRequest"),
+                description=(
+                    "Runs bounded retrieval over the verified public index and makes at "
+                    "most one 500-token Bedrock call. Every returned citation contains "
+                    "a record identifier and HTTPS source URL. No supporting record "
+                    "produces an explicit refusal without a model call."
+                ),
+                extra_responses={"400": _ERR, "503": _ERR},
+            )
+        },
+        "/public-intelligence/model-executions": {
+            "get": _op(
+                "listPublicModelExecutions",
+                "List recent durable public-model execution receipts",
+                "9 · public intelligence",
+                _ref("PublicModelExecutionList"),
+                description=(
+                    "Returns at most ten newest KMS-encrypted execution receipts. "
+                    "The route can resume polling after a browser refresh without "
+                    "starting compute."
+                ),
+                extra_responses={"503": _ERR},
+            ),
+            "post": _op(
+                "startPublicModelExecution",
+                "Start one bounded SageMaker public-model smoke run",
+                "9 · public intelligence",
+                _ref("PublicModelExecutionReceipt"),
+                request_schema=_ref("PublicModelExecutionRequest"),
+                success_status="202",
+                success_description="Submitted",
+                description=(
+                    "Power-user-only submission of one ephemeral Batch Transform job "
+                    "for 1 to 25 PII-minimized public Navy SBIR records. The model stays "
+                    "PendingManualApproval, no endpoint is created, and receipts are "
+                    "digest-bound."
+                ),
+                extra_responses={"400": _ERR, "409": _ERR, "503": _ERR},
+            ),
+        },
+        "/public-intelligence/model-executions/{executionId}": {
+            "get": _op(
+                "getPublicModelExecution",
+                "Read and reconcile one public-model execution receipt",
+                "9 · public intelligence",
+                _ref("PublicModelExecutionReceipt"),
+                parameters=[
+                    {
+                        "name": "executionId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^sbir-batch-[0-9]{8}T[0-9]{6}-[a-f0-9]{8}$",
+                        },
+                    }
+                ],
+                description=(
+                    "Reads the durable receipt and reconciles it against the bounded "
+                    "SageMaker Batch Transform job. Terminal reconciliation records "
+                    "output digest, prediction count, observed duration, estimated cost, "
+                    "and temporary-model cleanup."
+                ),
+                extra_responses={"404": _ERR, "503": _ERR},
+            )
+        },
+        "/public-intelligence/acquisitions": {
+            "get": _op(
+                "listPublicAcquisitions",
+                "List multi-source acquisition health and change receipts",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionList"),
+                description=(
+                    "Returns source-specific health, bounded public-source micro-batch "
+                    "receipts, immutable snapshot digests, model evidence, exact identity "
+                    "keys, and hash-derived changes."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/continuous": {
+            "get": _op(
+                "getContinuousPublicAcquisition",
+                "Read the continuous public-source acquisition control",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionContinuousControl"),
+                description=(
+                    "Authenticated mission-user view of the durable controller that gates all "
+                    "scheduled public-source polls. An absent control defaults to running. "
+                    "Manual bounded runs remain available in either state."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/continuous/start": {
+            "post": _op(
+                "startContinuousPublicAcquisition",
+                "Start scheduled public-source acquisition",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionContinuousControl"),
+                success_description="Running control",
+                description=(
+                    "Corporate poweruser control that durably enables subsequent scheduled "
+                    "USAspending and named public-source polls."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/continuous/stop": {
+            "post": _op(
+                "stopContinuousPublicAcquisition",
+                "Stop scheduled public-source acquisition",
+                "9 · public intelligence",
+                _ref("PublicAcquisitionContinuousControl"),
+                success_description="Stopped control",
+                description=(
+                    "Corporate poweruser control that durably suppresses subsequent scheduled "
+                    "polls without disabling manual bounded runs or deleting accepted evidence."
+                ),
+            )
+        },
+        "/public-intelligence/acquisitions/run": {
+            "post": _op(
+                "runPublicAcquisition",
+                "Run one bounded USAspending public-source poll",
+                "9 · public intelligence",
+                _ref("PublicAcquisition"),
+                request_schema={
+                    "type": "object",
+                    "properties": {
+                        "profile": {"type": "string", "enum": ["quick", "standard", "deep"]}
+                    },
+                    "additionalProperties": False,
+                },
+                success_status="201",
+                success_description="Accepted snapshot",
+                description=(
+                    "Corporate poweruser control for the same bounded acquisition used "
+                    "by the five-minute schedule. A failure leaves the prior accepted "
+                    "snapshot active."
+                ),
+                extra_responses={"502": _ERR},
+            )
+        },
+        "/public-intelligence/sources/{source_id}/run": {
+            "post": _op(
+                "runNamedPublicSource",
+                "Run one bounded named public-source poll",
+                "9 · public intelligence",
+                _ref("PublicAcquisition"),
+                request_schema={
+                    "type": "object",
+                    "properties": {
+                        "profile": {"type": "string", "enum": ["quick", "standard", "deep"]}
+                    },
+                    "additionalProperties": False,
+                },
+                parameters=[
+                    {
+                        "name": "source_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {
+                            "type": "string",
+                            "enum": ["grants-gov-onr", "federal-register-onr", "crossref-onr"],
+                        },
+                    }
+                ],
+                success_status="201",
+                success_description="Accepted snapshot",
+                description=(
+                    "Corporate poweruser control for an official public connector. The "
+                    "accepted receipt retains source hashes, model version, identity keys, "
+                    "review flags, and lineage. A failed poll preserves the prior snapshot."
+                ),
+                extra_responses={"400": _ERR, "502": _ERR},
+            )
+        },
+        "/operations/signals": {
+            "get": _op(
+                "listOperationalSignals",
+                "Read safe operational signals and delivery evidence",
+                "10 · operations evidence",
+                _ref("OperationalSignals"),
+                description="Corporate poweruser-only in-app and encrypted SNS signal projection.",
+            )
+        },
+        "/operations/signals/{eventId}/acknowledge": {
+            "post": _op(
+                "acknowledgeOperationalSignal",
+                "Acknowledge one retained operational signal",
+                "10 · operations evidence",
+                _ref("OperationalSignal"),
+                request_schema={"type": "object", "maxProperties": 0},
+                parameters=[
+                    {
+                        "name": "eventId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string", "pattern": "^sig-[A-Za-z0-9._:-]+$"},
+                    }
+                ],
+                description="Records actor and acknowledgement time without deleting the signal.",
+                extra_responses={"404": _ERR},
+            )
+        },
+        "/operations/lineage": {
+            "get": _op(
+                "listOperationalLineage",
+                "List recent cross-workflow run projections",
+                "10 · operations evidence",
+                _ref("OperationalLineageList"),
+            )
+        },
+        "/operations/lineage/{runId}": {
+            "get": _op(
+                "getOperationalLineage",
+                "Read ordered stage receipts for one run",
+                "10 · operations evidence",
+                _ref("OperationalLineage"),
+                parameters=[
+                    {
+                        "name": "runId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string", "maxLength": 180},
+                    }
+                ],
+                description=(
+                    "Returns logical locators, counts, hashes, model version, consumer, "
+                    "actor, and receipt timestamps. Raw records and physical cloud "
+                    "identifiers are excluded."
+                ),
+                extra_responses={"404": _ERR},
+            )
+        },
+        "/operations/summary": {
+            "get": _op(
+                "getOperationalSummary",
+                "Read the current cross-workflow operational scorecard",
+                "10 · operations evidence",
+                _ref("OperationalSummary"),
             )
         },
         "/anomalies": {
@@ -1894,7 +3101,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("DocumentRun"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2048,7 +3255,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("ScaleRun"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2071,7 +3278,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 request_schema=_ref("ScaleCancelRequest"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2097,7 +3304,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 success_description="Export job accepted",
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2120,7 +3327,7 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
                 _ref("ScaleExportReceipt"),
                 parameters=[
                     {
-                        "name": "run_id",
+                        "name": "runId",
                         "in": "path",
                         "required": True,
                         "schema": {"type": "string"},
@@ -2173,13 +3380,15 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
         "info": {
             "title": API_TITLE,
             "version": API_VERSION,
-            "summary": "Portfolio intelligence over a synthetic ONR S&T grants portfolio.",
+            "summary": "Governed portfolio intelligence over synthetic and public evidence planes.",
             "description": (
                 "Every route is behind a Cognito JWT authorizer (deny-by-default). "
                 "Data access is governed in PostgreSQL, not in application code: "
                 "row-level security keys on `compass.org_unit`, set per transaction from "
                 "the caller's claim, and column-level security revokes `amount_usd` from "
-                "the runtime role. All data is synthetic. No real CUI or PII is used."
+                "the runtime role. The core portfolio uses synthetic data. Separate public "
+                "intelligence routes serve checksummed, PII-minimized public evidence only. "
+                "No CUI is accepted by either plane."
             ),
             "contact": {"name": "Compass demo"},
             "license": {
@@ -2213,6 +3422,10 @@ def build_openapi(server_url: str = "") -> dict[str, Any]:
             {
                 "name": "8 · scale lab",
                 "description": "Cost-gated synthetic workload rehearsal and evidence",
+            },
+            {
+                "name": "9 · public intelligence",
+                "description": "Verified public evidence and cited explanations",
             },
             {
                 "name": "system evidence",

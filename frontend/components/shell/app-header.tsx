@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import { Menu, Presentation } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useAppAuth } from "@/lib/auth/use-app-auth";
 import { navItemForPath } from "@/lib/nav/sidebar-config";
+import { NotificationCenter } from "@/components/notifications/notification-center";
+import { evidenceModeHome } from "@/lib/evidence-mode";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 import { CompassWordmark } from "./brand";
 import { UserMenu } from "./user-menu";
 
@@ -21,6 +25,7 @@ export function AppHeader({
 }) {
   const pathname = usePathname() ?? "";
   const { role } = useAppAuth();
+  const { mode } = useEvidenceMode();
   const currentItem = navItemForPath(pathname, role);
 
   return (
@@ -38,7 +43,7 @@ export function AppHeader({
         </button>
 
         <Link
-          href="/dashboard/"
+          href={evidenceModeHome(mode)}
           aria-label="Compass dashboard"
           className="shrink-0 rounded-md focus-visible:outline-offset-4 lg:hidden"
         >
@@ -55,7 +60,8 @@ export function AppHeader({
         </div>
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
-          <button
+          {role === "poweruser" ? <NotificationCenter /> : null}
+          {SINGLE_LIVE_MODE ? null : <button
             type="button"
             onClick={onPresenterToggle}
             aria-pressed={presenterOpen}
@@ -68,7 +74,7 @@ export function AppHeader({
           >
             <Presentation className="size-4" aria-hidden />
             <span className="hidden xl:inline">{presenterOpen ? "Guide active" : "Presenter guide"}</span>
-          </button>
+          </button>}
           <UserMenu />
         </div>
       </div>

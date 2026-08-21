@@ -39,9 +39,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from compass_common import audit, config, db
+from compass_common import audit, config, db, operational_evidence
 
 import rules
 
@@ -268,7 +269,33 @@ def validate_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
         "source_file": payload.get("source_file"),
         "gate": result.gate,
         **result.summary(),
+        "source_sha256": payload.get("source_sha256"),
+        "source_object_version": payload.get("source_object_version"),
     }
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="structured-intake",
+        sequence=3,
+        stage_id="quality-gate",
+        label="Blocking data-quality rules evaluated",
+        status="completed" if result.gate == "pass" else "quarantined",
+        source="database://grants_raw",
+        destination=(
+            "workflow://persist" if result.gate == "pass" else "workflow://quarantine"
+        ),
+        source_sha256=str(payload.get("source_sha256") or "") or None,
+        output_sha256=operational_evidence.canonical_digest(result.summary()),
+        actor=PIPELINE_ACTOR,
+        detail={
+            "accepted_records": result.rows_passed,
+            "failed_records": result.rows_failed,
+            "quality_score": result.overall_score,
+            "record_count": result.rows_checked,
+            "rejected_records": result.rows_failed,
+            "rules": [rule.rule for rule in result.rules],
+            "threshold": result.threshold,
+        },
+    )
     print(json.dumps({"event_type": "quality_gate_complete", **out}, default=str))
     return out
 
@@ -340,9 +367,77 @@ def quarantine_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
         "overall_score": score,
         "threshold": threshold,
         "reason": reason,
+        "source_sha256": payload.get("source_sha256"),
+        "source_object_version": payload.get("source_object_version"),
     }
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="structured-intake",
+        sequence=4,
+        stage_id="quarantine",
+        label="Rejected batch retained for review",
+        status="quarantined",
+        source="database://grants_raw",
+        destination="quarantine://structured-intake",
+        source_sha256=str(payload.get("source_sha256") or "") or None,
+        actor=PIPELINE_ACTOR,
+        detail={
+            "quality_score": score,
+            "record_count": rows_checked,
+            "rejected_records": held,
+            "threshold": threshold,
+            "consumer": "Human data-quality review",
+        },
+    )
+    operational_evidence.record_signal(
+        category="structured-quality",
+        severity="high",
+        title="Structured intake quarantined",
+        message="The batch failed its blocking quality gate and no records were published.",
+        run_id=run_id,
+        evidence_uri="quarantine://structured-intake",
+        detail={
+            "quality_score": score,
+            "record_count": rows_checked,
+            "rejected_records": held,
+            "threshold": threshold,
+        },
+    )
     print(json.dumps({"event_type": "quarantine_complete", **out}, default=str))
     return out
+
+
+def workflow_failure_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
+    failure = payload.get("failure") if isinstance(payload.get("failure"), dict) else {}
+    execution_id = re.sub(
+        r"[^A-Za-z0-9._:-]+", "-", str(payload.get("execution_id") or "unknown")
+    )[:120]
+    run_id = str(failure.get("run_id") or f"intake-failure-{execution_id}")
+    source_file = str(failure.get("source_file") or "landing://drops/unknown")
+    error = failure.get("error") if isinstance(failure.get("error"), dict) else {}
+    failure_code = str(error.get("Error") or "WorkflowStageFailed")[:120]
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="structured-intake",
+        sequence=99,
+        stage_id="workflow-failed",
+        label="Structured intake failed after bounded retries",
+        status="failed",
+        source=source_file,
+        source_sha256=str(failure.get("source_sha256") or "") or None,
+        actor=PIPELINE_ACTOR,
+        detail={"failed_records": failure.get("rows_checked"), "failure_code": failure_code},
+    )
+    operational_evidence.record_signal(
+        category="structured-intake",
+        severity="critical",
+        title="Structured intake workflow failed",
+        message="A processing stage exhausted its bounded retries. No unverified output was published.",
+        run_id=run_id,
+        evidence_uri=source_file,
+        detail={"failed_records": failure.get("rows_checked"), "failure_code": failure_code},
+    )
+    return {"run_id": run_id, "status": "failed", "failure_code": failure_code}
 
 
 def handler(event, context=None):
@@ -352,6 +447,8 @@ def handler(event, context=None):
         return validate_stage(event)
     if action == "quarantine":
         return quarantine_stage(event)
+    if action == "workflow_failure":
+        return workflow_failure_stage(event)
     raise ValueError(
         f"unrecognized quality_gate action {action!r}; expected 'validate' or 'quarantine'"
     )

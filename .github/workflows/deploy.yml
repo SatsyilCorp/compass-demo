@@ -28,6 +28,10 @@ jobs:
       STACK_NAME: ${{ vars.STACK_NAME }}
       EXPORT_MAX_ROWS: ${{ vars.EXPORT_MAX_ROWS }}
       DATABASE_RESILIENCE_MODE: ${{ vars.DATABASE_RESILIENCE_MODE }}
+      PUBLIC_SBIR_EXECUTION_ENABLED: ${{ vars.PUBLIC_SBIR_EXECUTION_ENABLED || 'false' }}
+      PUBLIC_ACQUISITION_STATE: ${{ vars.PUBLIC_ACQUISITION_STATE || 'ENABLED' }}
+      PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD: ${{ vars.PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD || '10' }}
+      NOTIFICATION_EMAIL: ${{ vars.NOTIFICATION_EMAIL || '' }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -36,10 +40,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          runs=$(gh run list --workflow quality.yml --commit "$GITHUB_SHA" --limit 20 --json databaseId,headSha,status,conclusion)
+          runs=$(gh run list --workflow quality.yml --commit "$GITHUB_SHA" --limit 20 --json databaseId,headSha,status,conclusion,url)
           python - "$runs" <<'PY'
           import json
           import os
+          import re
           import sys
 
           expected = os.environ["GITHUB_SHA"]
@@ -51,11 +56,19 @@ jobs:
               and run.get("conclusion") == "success"
           ]
           assert matches, "no successful quality.yml run exists for this exact commit"
+          quality_url = matches[0].get("url", "")
+          assert re.fullmatch(
+              r"https://github\.com/SatsyilCorp/compass-demo/actions/runs/\d+",
+              quality_url,
+          ), "quality run URL is not an exact Compass Actions receipt"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write("QUALITY_STATUS=success\n")
+              handle.write(f"QUALITY_RUN_URL={quality_url}\n")
           print(f"verified quality run {matches[0]['databaseId']} for {expected[:12]}")
           PY
 
-      - name: Configure short revision
-        run: echo "DEPLOY_REVISION=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+      - name: Configure exact revision
+        run: echo "DEPLOY_REVISION=${GITHUB_SHA}" >> "$GITHUB_ENV"
 
       - name: Validate protected deployment inputs
         run: |
@@ -69,6 +82,19 @@ jobs:
             demo|ha) ;;
             *) echo "DATABASE_RESILIENCE_MODE must be demo or ha" >&2; exit 1 ;;
           esac
+          case "$PUBLIC_SBIR_EXECUTION_ENABLED" in
+            true|false) ;;
+            *) echo "PUBLIC_SBIR_EXECUTION_ENABLED must be true or false" >&2; exit 1 ;;
+          esac
+          case "$PUBLIC_ACQUISITION_STATE" in
+            ENABLED|DISABLED) ;;
+            *) echo "PUBLIC_ACQUISITION_STATE must be ENABLED or DISABLED" >&2; exit 1 ;;
+          esac
+          case "$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" in
+            ''|*[!0-9]*) echo "PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD must be an integer" >&2; exit 1 ;;
+          esac
+          test "$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" -ge 1
+          test "$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" -le 100
 
       - name: Configure AWS credentials through OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -126,6 +152,10 @@ jobs:
 
       - name: Deploy reviewed infrastructure change set
         run: |
+          notification_parameters=()
+          if [ -n "$NOTIFICATION_EMAIL" ]; then
+            notification_parameters+=("NotificationEmail=$NOTIFICATION_EMAIL")
+          fi
           if [ "$STACK_EXISTS" = "true" ]; then
             callback_url="$WEB_CALLBACK_URL"
             logout_url="$WEB_LOGOUT_URL"
@@ -139,13 +169,17 @@ jobs:
             --stack-name "$STACK_NAME" \
             --region "$AWS_REGION" \
             --resolve-s3 \
-            --capabilities CAPABILITY_IAM \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               DeployRevision="$DEPLOY_REVISION" \
               ExportMaxRows="$EXPORT_MAX_ROWS" \
               DatabaseResilienceMode="$DATABASE_RESILIENCE_MODE" \
+              PublicSbirExecutionEnabled="$PUBLIC_SBIR_EXECUTION_ENABLED" \
+              PublicAcquisitionState="$PUBLIC_ACQUISITION_STATE" \
+              PublicAcquisitionChangeAlertThreshold="$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" \
+              "${notification_parameters[@]}" \
               WebCallbackUrl="$callback_url" \
               WebLogoutUrl="$logout_url" \
               WebOrigin="$web_origin"
@@ -153,6 +187,10 @@ jobs:
       - name: Complete fresh deployment web identity binding
         if: env.STACK_EXISTS == 'false'
         run: |
+          notification_parameters=()
+          if [ -n "$NOTIFICATION_EMAIL" ]; then
+            notification_parameters+=("NotificationEmail=$NOTIFICATION_EMAIL")
+          fi
           domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue' --output text)
           python - "$domain" "$GITHUB_ENV" <<'PY'
           import re
@@ -171,13 +209,17 @@ jobs:
             --stack-name "$STACK_NAME" \
             --region "$AWS_REGION" \
             --resolve-s3 \
-            --capabilities CAPABILITY_IAM \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               DeployRevision="$DEPLOY_REVISION" \
               ExportMaxRows="$EXPORT_MAX_ROWS" \
               DatabaseResilienceMode="$DATABASE_RESILIENCE_MODE" \
+              PublicSbirExecutionEnabled="$PUBLIC_SBIR_EXECUTION_ENABLED" \
+              PublicAcquisitionState="$PUBLIC_ACQUISITION_STATE" \
+              PublicAcquisitionChangeAlertThreshold="$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" \
+              "${notification_parameters[@]}" \
               WebCallbackUrl="${web_origin}/login/" \
               WebLogoutUrl="${web_origin}/login/" \
               WebOrigin="$web_origin"
@@ -275,20 +317,28 @@ jobs:
         env:
           NEXT_PUBLIC_USE_MOCK: "false"
           NEXT_PUBLIC_AUTH_DISABLED: "false"
+          NEXT_PUBLIC_SINGLE_MODE: "true"
           NEXT_PUBLIC_API_BASE_URL: ${{ env.API_BASE_URL }}
           NEXT_PUBLIC_COGNITO_AUTHORITY: https://cognito-idp.${{ env.AWS_REGION }}.amazonaws.com/${{ env.USER_POOL_ID }}
           NEXT_PUBLIC_COGNITO_DOMAIN: https://${{ env.COGNITO_DOMAIN }}
           NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ env.WEB_CLIENT_ID }}
           NEXT_PUBLIC_COGNITO_REDIRECT_URI: ${{ env.WEB_CALLBACK_URL }}
           NEXT_PUBLIC_COGNITO_POST_LOGOUT_REDIRECT_URI: ${{ env.WEB_LOGOUT_URL }}
+          NEXT_PUBLIC_SOURCE_REVISION: ${{ env.DEPLOY_REVISION }}
+          NEXT_PUBLIC_QUALITY_STATUS: ${{ env.QUALITY_STATUS }}
+          NEXT_PUBLIC_QUALITY_RUN_URL: ${{ env.QUALITY_RUN_URL }}
         run: |
           pnpm install --frozen-lockfile
           pnpm typecheck
           pnpm build
+          echo "Assert single-mode flag embedded in the shipped bundle"
+          grep -rq "Opening the live workspace" out/rehearsal/ || { echo "single-mode redirect missing from out/rehearsal"; exit 1; }
 
       - name: Publish immutable frontend build
         run: |
-          aws s3 sync frontend/out "s3://${WEB_BUCKET}" --delete --only-show-errors
+          aws s3 sync frontend/out "s3://${WEB_BUCKET}" --delete --only-show-errors \
+            --exclude ".DS_Store" \
+            --exclude "*/.DS_Store"
           aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' >/dev/null
 
       - name: Verify public and protected boundaries

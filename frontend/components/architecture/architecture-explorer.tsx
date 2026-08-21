@@ -49,6 +49,8 @@ import {
   type ArchitectureView,
   type ScaleProfile,
 } from "./model";
+import { ArchitectureBriefing } from "./architecture-briefing";
+import { OverallArchitectureMap } from "./overall-architecture-map";
 
 type DiagramNodeData = {
   component: ArchitectureComponent;
@@ -82,9 +84,9 @@ const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
 const DEPLOYMENT_META: Record<ArchitectureComponent["deployment"], { label: string; className: string }> = {
-  core: { label: "Deployed core", className: "border-success/30 bg-success-soft text-success" },
-  scale: { label: "Deployed scale", className: "border-gov-primary/25 bg-gov-primary-lighter text-gov-primary" },
-  conditional: { label: "Conditional service", className: "border-gold/40 bg-gold-soft text-gold-ink" },
+  core: { label: "IaC-declared core", className: "border-success/30 bg-success-soft text-success" },
+  scale: { label: "IaC-declared scale", className: "border-gov-primary/25 bg-gov-primary-lighter text-gov-primary" },
+  conditional: { label: "Conditional integration", className: "border-gold/40 bg-gold-soft text-gold-ink" },
   logical: { label: "Logical boundary", className: "border-border bg-surface-2 text-text-subtle" },
 };
 
@@ -227,19 +229,33 @@ export function ArchitectureExplorer() {
 
   return (
     <div className="mt-6 space-y-6">
+      <OverallArchitectureMap />
+      <ArchitectureBriefing />
+
+      <details className="group overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+        <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 bg-white px-5 py-4 marker:hidden hover:bg-surface-2">
+          <span>
+            <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-gold-ink">Detailed component explorer</span>
+            <span className="mt-1 block text-sm font-bold text-text-strong">Open the source-controlled topology, scale playback, and component inventory</span>
+          </span>
+          <span className="rounded-full border border-border bg-surface-2 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-gov-primary group-open:bg-gov-primary group-open:text-white">
+            Inspect all boxes
+          </span>
+        </summary>
+        <div className="space-y-6 border-t border-border bg-bg p-4 sm:p-5">
       <section className="overflow-hidden rounded-xl border border-gov-primary/20 bg-gov-primary text-white shadow-card" aria-label="Architecture scope statement">
         <div className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] lg:px-6">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold-light">Architecture truth</p>
-            <h2 className="mt-2 text-xl font-bold">Deployed AWS-native proving prototype</h2>
+            <h2 className="mt-2 text-xl font-bold">Compass proving prototype deployment model</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-white/72">
-              The core mission path and bounded scale path are deployed in Satsyil AWS. Conditional security services and logical boundaries are labeled separately so the diagram does not imply deployment where none is proven.
+              The source-controlled primary path declares bounded public acquisition through AWS backend schedules, exact source and model receipts, and accepted projections across Compass. Synthetic data exists only in an explicitly selected rehearsal workspace. Runtime screens and retained receipts prove what executed. Conditional services and logical boundaries remain separate so the diagram does not imply deployment where none is proven.
             </p>
           </div>
           <div className="rounded-lg border border-white/15 bg-white/[0.07] p-4">
             <p className="text-xs font-bold text-gold-light">Production boundary</p>
             <p className="mt-1 text-[11px] leading-5 text-white/70">
-              This is not a FedRAMP High, IL5, ATO, or Government production authorization. Scale evidence is synthetic and bounded from 1K through 1M records.
+              This is not a FedRAMP High, IL5, ATO, or Government production authorization. Public API coverage is bounded at responsible source cadences. Scale Lab evidence is synthetic and bounded from 1K through 1M records.
             </p>
           </div>
         </div>
@@ -250,23 +266,23 @@ export function ArchitectureExplorer() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Deployed architecture facts">
-        <Fact icon={Activity} value="33" label="protected operations" detail="31 URL paths" />
-        <Fact icon={Boxes} value="18" label="Lambda functions" detail="mission, document, and scale" />
-        <Fact icon={Network} value="3" label="durable workflows" detail="intake, document ML, and scale" />
-        <Fact icon={Database} value="6" label="lake datasets" detail="JSON Lines and Parquet" />
-        <Fact icon={ShieldCheck} value="13" label="health alarms" detail="all critical seams" />
-        <Fact icon={Layers3} value="2 AZ" label="HA database" detail="private writer and reader" />
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="IaC-defined architecture facts">
+        <Fact icon={Activity} value="48" label="declared operations" detail="45 protected URL paths" />
+        <Fact icon={Boxes} value="21" label="declared functions" detail="plus one CloudFront edge rewrite" />
+        <Fact icon={Network} value="4" label="declared workflows" detail="intake, document ML, continuous stream, and scale" />
+        <Fact icon={Database} value="6" label="declared lake datasets" detail="JSON Lines and Parquet" />
+        <Fact icon={ShieldCheck} value="18" label="defined health alarms" detail="verify state from CloudWatch" />
+        <Fact icon={Layers3} value="2 AZ" label="HA database design" detail="private writer and reader" />
       </section>
 
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
         <div className="border-b border-border bg-white px-4 py-4 sm:px-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gold-ink">Interactive deployed topology</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gold-ink">Interactive source-controlled topology</p>
               <h2 className="mt-1 text-lg font-bold text-text-strong">Select a view, follow a flow, then inspect any box</h2>
               <p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted">
-                Every box is labeled as deployed core, deployed scale, conditional service, or logical boundary. Select one to see its interface, scaling, recovery, security, and retained evidence contract.
+                Every box is classified as IaC-declared core, IaC-declared scale, conditional integration, or logical boundary. Select one to inspect its interface, scaling, recovery, security, and retained evidence contract. Runtime proof comes from stack outputs and operational receipts.
               </p>
             </div>
             <label className="relative block w-full max-w-sm">
@@ -400,6 +416,8 @@ export function ArchitectureExplorer() {
           })}
         </div>
       </section>
+        </div>
+      </details>
     </div>
   );
 }
@@ -496,6 +514,9 @@ function ComponentDetail({ component, connections, onSelect }: { component: Arch
   const related = connections.filter((connection) => connection.source === component.id || connection.target === component.id);
   return (
     <aside className="min-w-0 bg-white p-5" aria-live="polite">
+      <div className="mb-4 rounded-lg border border-border bg-surface-2 p-3 text-[9.5px] leading-4 text-text-muted">
+        Source-controlled service contract. Confirm current deployment and execution through stack outputs and retained runtime receipts.
+      </div>
       <div className="flex items-start gap-3">
         <span className="grid size-12 shrink-0 place-items-center rounded-lg border border-border" style={{ background: plane.tint }}>
           {component.icon ? <img src={component.icon} alt="" className="size-9 object-contain" /> : <UsersRound className="size-7 text-gov-primary" aria-hidden />}

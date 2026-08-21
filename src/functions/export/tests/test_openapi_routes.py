@@ -38,7 +38,7 @@ def openapi_routes() -> set[tuple[str, str]]:
 def test_openapi_matches_every_deployed_application_route():
     deployed = template_routes()
     served = openapi_routes()
-    assert len(deployed) == 33
+    assert len(deployed) == 52
     assert served == deployed
 
 
@@ -141,6 +141,86 @@ def test_document_ml_operations_publish_success_and_request_schemas():
             assert request_schema == {"$ref": f"#/components/schemas/{request_name}"}
 
     assert "202" in document["paths"]["/ml/train"]["post"]["responses"]
+
+
+def test_public_intelligence_operations_publish_bounded_grounded_contracts():
+    document = build_openapi()
+    snapshot = document["paths"]["/public-intelligence/snapshot"]["get"]
+    explain = document["paths"]["/public-intelligence/explain"]["post"]
+
+    assert snapshot["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PublicIntelligenceSnapshot"
+    }
+    assert explain["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PublicExplainRequest"
+    }
+    assert explain["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PublicExplanation"
+    }
+    request = document["components"]["schemas"]["PublicExplainRequest"]
+    assert request["properties"]["question"]["maxLength"] == 1200
+    assert request["properties"]["record_ids"]["maxItems"] == 12
+    assert request["properties"]["top_k"]["maximum"] == 6
+    citation = document["components"]["schemas"]["PublicEvidenceCitation"]
+    assert "source_url" in citation["required"]
+    assert "model_run_id" in citation["required"]
+    assert "uncertainty" in citation["required"]
+
+
+def test_continuous_public_acquisition_controller_contract():
+    document = build_openapi()
+    paths = document["paths"]
+    response_ref = {
+        "$ref": "#/components/schemas/PublicAcquisitionContinuousControl"
+    }
+    for method, path in (
+        ("get", "/public-intelligence/acquisitions/continuous"),
+        ("post", "/public-intelligence/acquisitions/continuous/start"),
+        ("post", "/public-intelligence/acquisitions/continuous/stop"),
+    ):
+        operation = paths[path][method]
+        assert operation["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ] == response_ref
+        assert operation["security"] == [{"cognitoJwt": []}]
+
+    schema = document["components"]["schemas"][
+        "PublicAcquisitionContinuousControl"
+    ]
+    assert schema["properties"]["status"]["enum"] == ["running", "stopped"]
+    assert schema["properties"]["manual_runs_available"]["const"] is True
+    assert schema["additionalProperties"] is False
+
+
+def test_public_model_execution_operations_publish_bounded_receipt_contracts():
+    document = build_openapi()
+    paths = document["paths"]
+    collection = paths["/public-intelligence/model-executions"]
+    item = paths["/public-intelligence/model-executions/{executionId}"]["get"]
+
+    assert collection["post"]["responses"]["202"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PublicModelExecutionReceipt"}
+    assert collection["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PublicModelExecutionRequest"}
+    assert collection["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/PublicModelExecutionList"}
+    assert item["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PublicModelExecutionReceipt"
+    }
+    schemas = document["components"]["schemas"]
+    assert schemas["PublicModelExecutionRequest"]["properties"]["sampleSize"][
+        "maximum"
+    ] == 25
+    receipt = schemas["PublicModelExecutionReceipt"]
+    assert receipt["properties"]["model"]["properties"]["approvalStatus"][
+        "const"
+    ] == "PendingManualApproval"
+    assert receipt["properties"]["execution"]["properties"]["instanceCount"][
+        "const"
+    ] == 1
 
 
 def test_scale_lab_component_shapes_match_the_frontend_contract():

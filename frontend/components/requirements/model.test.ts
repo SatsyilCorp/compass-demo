@@ -1,43 +1,238 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { REQUIREMENTS, REQUIREMENT_SECTIONS, countByStatus } from "./model";
+import {
+  PRESENTER_SEQUENCE,
+  REQUIREMENTS,
+  STATUS_META,
+  TRACE_STATUSES,
+  countByStatus,
+  resolveOperationalRequirementStates,
+} from "./model";
+import type { OperationsRunSummary, OperationsSummaryResponse } from "../../lib/types";
 
-test("requirements trace has unique, complete, presenter-ready entries", () => {
+const EXACT_DEMO_ASKS = [
+  "Governed intake and quality",
+  "Catalog and metadata",
+  "Lineage",
+  "Decision analytics",
+  "Real model lifecycle",
+  "Drift and monitoring",
+  "Alerts and notifications",
+  "Continuous multi-source public acquisition",
+  "DevSecOps and IaC",
+  "Identity and access",
+  "Controlled release and API",
+  "IL4/IL5 target",
+];
+
+test("requirements proof contains exactly the meeting demo asks", () => {
+  assert.deepEqual(REQUIREMENTS.map((item) => item.title), EXACT_DEMO_ASKS);
   assert.equal(new Set(REQUIREMENTS.map((item) => item.id)).size, REQUIREMENTS.length);
-  assert.ok(REQUIREMENTS.length >= 20);
+});
 
+test("every ask contains action, live evidence, implementation locators, differentiator, and caveat", () => {
   for (const item of REQUIREMENTS) {
-    assert.ok(item.title.length > 3, item.id);
-    assert.ok(item.requirement.length > 20, item.id);
-    assert.ok(item.capability.length > 20, item.id);
-    assert.match(item.demoPath, /^\/.+\/$/, item.id);
-    assert.ok(item.workflow.length >= 2, item.id);
-    assert.ok(item.proof.length >= 2, item.id);
-    assert.ok(item.evidence.length >= 1, item.id);
-    assert.ok(item.gap.length > 20, item.id);
+    assert.ok(item.intent.length > 30, item.id);
+    assert.ok(item.userAction.length > 30, item.id);
+    assert.ok(item.liveEvidence.length > 0, item.id);
+    assert.ok(item.liveEvidence.some((target) => target.kind === "screen" || target.kind === "api"), item.id);
+    assert.ok(item.locators.source.length > 0, `${item.id}: source`);
+    assert.ok(item.locators.tests.length > 0, `${item.id}: tests`);
+    assert.ok(item.locators.iac.length > 0, `${item.id}: iac`);
+    assert.ok(item.differentiator.length > 30, item.id);
+    assert.ok(item.caveat.length > 30, item.id);
   }
 });
 
-test("requirements trace covers every selected PWS section and delivery state", () => {
-  const sections = new Set(REQUIREMENTS.map((item) => item.section));
-  for (const section of REQUIREMENT_SECTIONS) assert.ok(sections.has(section), section);
-
-  const counts = countByStatus();
-  assert.ok(counts.demonstrated > 0);
-  assert.ok(counts.partial > 0);
-  assert.ok(counts.roadmap > 0);
-  assert.equal(counts.demonstrated + counts.partial + counts.roadmap, REQUIREMENTS.length);
+test("all five evidence states remain explicit even when no requirement needs every state", () => {
+  const totals = countByStatus();
+  for (const status of TRACE_STATUSES) {
+    assert.ok(STATUS_META[status].label.length > 0, status);
+    assert.ok(totals[status] >= 0, status);
+  }
+  assert.equal(Object.values(totals).reduce((sum, value) => sum + value, 0), REQUIREMENTS.length);
 });
 
-test("production authorization and full MLOps remain honest roadmap items", () => {
-  const accreditation = REQUIREMENTS.find((item) => item.id === "fedramp-il5-ato");
-  const mlops = REQUIREMENTS.find((item) => item.id === "mlops");
-  const compliance = REQUIREMENTS.find((item) => item.id === "compliance-stig-vulnerability");
-
-  assert.equal(accreditation?.status, "roadmap");
-  assert.equal(mlops?.status, "roadmap");
-  assert.equal(compliance?.status, "roadmap");
-  assert.match(accreditation?.gap ?? "", /not FedRAMP High authorized/i);
-  assert.match(mlops?.gap ?? "", /not demonstrated/i);
+test("presenter sequence covers each demo ask exactly once", () => {
+  const sequenced = PRESENTER_SEQUENCE.flatMap((step) => step.requirementIds);
+  assert.deepEqual([...sequenced].sort(), REQUIREMENTS.map((item) => item.id).sort());
+  assert.equal(new Set(sequenced).size, REQUIREMENTS.length);
+  assert.deepEqual(PRESENTER_SEQUENCE.map((step) => step.order), [1, 2, 3, 4, 5]);
+  for (const step of PRESENTER_SEQUENCE) {
+    assert.match(step.href, /^\/.+\/$/);
+    assert.ok(step.instruction.length > 30);
+  }
 });
+
+test("continuous acquisition starts configured and upgrades only from live proof", () => {
+  const acquisition = REQUIREMENTS.find((item) => item.id === "continuous-public-acquisition");
+  const ilTarget = REQUIREMENTS.find((item) => item.id === "il4-il5-target");
+
+  assert.equal(acquisition?.status, "configured");
+  assert.match(acquisition?.caveat ?? "", /responsible cadence/i);
+  assert.equal(ilTarget?.status, "target-architecture");
+  assert.match(ilTarget?.caveat ?? "", /not IL4 or IL5 authorized/i);
+});
+
+test("operational requirements fail closed when evidence is missing or invalid", () => {
+  const operationalIds = [
+    "governed-intake-quality",
+    "catalog-metadata",
+    "lineage",
+    "decision-analytics",
+    "real-model-lifecycle",
+    "drift-monitoring",
+    "continuous-public-acquisition",
+    "controlled-release-api",
+  ];
+  const withoutEvidence = resolveOperationalRequirementStates(REQUIREMENTS, null);
+  for (const id of operationalIds) {
+    assert.equal(withoutEvidence.find((item) => item.id === id)?.status, "configured", id);
+  }
+
+  const replay = liveOperationsSummary();
+  replay.mode = "replay";
+  const fromReplay = resolveOperationalRequirementStates(REQUIREMENTS, replay);
+  assert.equal(fromReplay.find((item) => item.id === "continuous-public-acquisition")?.status, "configured");
+
+  const invalid = liveOperationsSummary();
+  invalid.generated_at = "not-a-timestamp";
+  const fromInvalid = resolveOperationalRequirementStates(REQUIREMENTS, invalid);
+  assert.equal(fromInvalid.find((item) => item.id === "governed-intake-quality")?.status, "configured");
+});
+
+test("only a completed public receipt with matching accepted watermark promotes acquisition proof", () => {
+  const operations = liveOperationsSummary();
+  let resolved = resolveOperationalRequirementStates(REQUIREMENTS, operations);
+  for (const id of ["governed-intake-quality", "lineage", "continuous-public-acquisition"]) {
+    assert.equal(resolved.find((item) => item.id === id)?.status, "verified-live", id);
+  }
+  assert.equal(resolved.find((item) => item.id === "catalog-metadata")?.status, "configured");
+  assert.equal(resolved.find((item) => item.id === "decision-analytics")?.status, "configured");
+  assert.equal(resolved.find((item) => item.id === "controlled-release-api")?.status, "configured");
+
+  operations.runs[0] = { ...operations.runs[0], evidence_class: "synthetic-demo" };
+  resolved = resolveOperationalRequirementStates(REQUIREMENTS, operations);
+  assert.equal(resolved.find((item) => item.id === "continuous-public-acquisition")?.status, "configured");
+
+  operations.runs[0] = { ...publicRun(), completed_stages: 3, stage_count: 4 };
+  resolved = resolveOperationalRequirementStates(REQUIREMENTS, operations);
+  assert.equal(resolved.find((item) => item.id === "lineage")?.status, "configured");
+});
+
+test("public inference evidence does not verify the full model lifecycle", () => {
+  const operations = liveOperationsSummary();
+  operations.runs.push(
+    publicRun({
+      run_id: "model-inference-observed",
+      run_kind: "sagemaker-batch-inference",
+      model: {
+        id: "public-sbir-transition",
+        label: "Public Navy SBIR transition candidate",
+        kind: "sagemaker-model-package",
+        version: "2",
+        sha256: "b".repeat(64),
+      },
+    }),
+    publicRun({ run_id: "drift-verified", run_kind: "model-drift" }),
+  );
+  const resolved = resolveOperationalRequirementStates(REQUIREMENTS, operations);
+  const lifecycle = resolved.find((item) => item.id === "real-model-lifecycle");
+  assert.equal(lifecycle?.status, "configured");
+  assert.match(lifecycle?.caveat ?? "", /observed public inference/i);
+  assert.match(lifecycle?.caveat ?? "", /does not verify training, evaluation, registration, approval, or deployment/i);
+  assert.equal(resolved.find((item) => item.id === "drift-monitoring")?.status, "verified-live");
+});
+
+test("full model lifecycle promotes only from explicit coherent lifecycle receipts", () => {
+  const operations = liveOperationsSummary();
+  const model = {
+    id: "public-sbir-transition",
+    label: "Public Navy SBIR transition candidate",
+    kind: "sagemaker-model-package",
+    version: "2",
+    sha256: "b".repeat(64),
+  };
+  for (const runKind of [
+    "model-training",
+    "model-evaluation",
+    "model-registration",
+    "model-approval",
+    "model-deployment",
+    "sagemaker-batch-inference",
+  ]) {
+    operations.runs.push(publicRun({
+      run_id: `lifecycle-${runKind}`,
+      run_kind: runKind,
+      model,
+    }));
+  }
+
+  const lifecycle = resolveOperationalRequirementStates(REQUIREMENTS, operations)
+    .find((item) => item.id === "real-model-lifecycle");
+  assert.equal(lifecycle?.status, "verified-live");
+  assert.match(lifecycle?.caveat ?? "", /full model lifecycle/i);
+  assert.match(lifecycle?.caveat ?? "", /public-sbir-transition version 2/i);
+});
+
+test("live public evidence is primary and rehearsal is explicit", () => {
+  const intake = REQUIREMENTS.find((item) => item.id === "governed-intake-quality");
+  const decision = REQUIREMENTS.find((item) => item.id === "decision-analytics");
+  const firstStop = PRESENTER_SEQUENCE[0];
+
+  assert.equal(firstStop.href, "/admin/acquisition/");
+  assert.match(firstStop.instruction, /accepted public run/i);
+  assert.match(intake?.caveat ?? "", /separate rehearsal workspace/i);
+  assert.match(decision?.caveat ?? "", /explicit selection/i);
+});
+
+function publicRun(overrides: Partial<OperationsRunSummary> = {}): OperationsRunSummary {
+  return {
+    run_id: "acq-usaspending-verified",
+    run_kind: "public-acquisition",
+    label: "Public acquisition",
+    evidence_class: "public-observed",
+    status: "completed",
+    current_stage: "accepted",
+    started_at: "2026-08-13T12:00:00.000Z",
+    updated_at: "2026-08-13T12:01:00.000Z",
+    completed_at: "2026-08-13T12:01:00.000Z",
+    completed_stages: 4,
+    stage_count: 4,
+    source: {
+      id: "https://api.usaspending.gov",
+      label: "USAspending API",
+      kind: "public_authority",
+      sha256: "a".repeat(64),
+    },
+    model: null,
+    consumer: null,
+    counts: { input_records: 10, output_records: 10, quarantined_records: 0, artifacts: 2 },
+    ...overrides,
+  };
+}
+
+function liveOperationsSummary(): OperationsSummaryResponse {
+  return {
+    contract: "compass.operations.summary.v1",
+    mode: "live",
+    generated_at: "2026-08-13T12:02:00.000Z",
+    counts: { runs_total: 1, runs_active: 0, runs_attention: 0, signals_unread: 0 },
+    runs: [publicRun()],
+    source_watermarks: [{
+      source_id: "usaspending",
+      label: "USAspending API",
+      status: "current",
+      last_attempt_at: "2026-08-13T12:00:00.000Z",
+      last_accepted_at: "2026-08-13T12:01:00.000Z",
+      watermark: "2026-08-13T12:00:00.000Z",
+      added_records: 10,
+      changed_records: 0,
+      unchanged_records: 0,
+      not_observed_records: 0,
+      run_id: "acq-usaspending-verified",
+    }],
+    disclosure: "Protected live operational evidence.",
+  };
+}

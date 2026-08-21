@@ -32,15 +32,43 @@ SCALE_DATA_RETENTION_DAYS="${SCALE_DATA_RETENTION_DAYS:-7}"
 SCALE_EVIDENCE_RETENTION_DAYS="${SCALE_EVIDENCE_RETENTION_DAYS:-30}"
 SCALE_ATHENA_SCAN_CUTOFF_BYTES="${SCALE_ATHENA_SCAN_CUTOFF_BYTES:-10737418240}"
 COGNITO_DOMAIN_PREFIX="${COGNITO_DOMAIN_PREFIX:-satsyil-compass-demo}"
-DEPLOY_REVISION="${DEPLOY_REVISION:-local-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+PUBLIC_SBIR_EXECUTION_ENABLED="${PUBLIC_SBIR_EXECUTION_ENABLED:-false}"
+PUBLIC_ACQUISITION_STATE="${PUBLIC_ACQUISITION_STATE:-ENABLED}"
+PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD="${PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD:-10}"
+NOTIFICATION_EMAIL="${NOTIFICATION_EMAIL:-}"
 WEB_CUSTOM_DOMAIN_NAME="${WEB_CUSTOM_DOMAIN_NAME:-}"
 WEB_CERTIFICATE_ARN="${WEB_CERTIFICATE_ARN:-}"
 WEB_HOSTED_ZONE_ID="${WEB_HOSTED_ZONE_ID:-}"
+EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN="${EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN:-}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 config="$repo/samconfig-satsyil.toml"
+build_config="$repo/infra/sam-build-serial.toml"
 cd "$repo"
+
+require_clean_source_tree() {
+  local dirty_paths
+  dirty_paths="$(git status --porcelain=v1 --untracked-files=all)"
+  if [ -n "$dirty_paths" ]; then
+    echo "ERROR: deployment requires a clean Git source tree; commit or remove every listed change" >&2
+    printf '%s\n' "$dirty_paths" >&2
+    exit 1
+  fi
+}
+
+source_revision="$(git rev-parse --verify HEAD)"
+if ! [[ "$source_revision" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: unable to resolve the exact 40-character Git commit SHA" >&2
+  exit 1
+fi
+if [ -n "${DEPLOY_REVISION:-}" ] && [ "$DEPLOY_REVISION" != "$source_revision" ]; then
+  echo "ERROR: DEPLOY_REVISION must exactly equal the full Git commit SHA at HEAD" >&2
+  exit 1
+fi
+DEPLOY_REVISION="$source_revision"
+unset source_revision
+require_clean_source_tree
 
 if ! [[ "$SATSYIL_EXPECTED_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
   echo "ERROR: SATSYIL_EXPECTED_ACCOUNT_ID must be supplied as a 12-digit protected environment value" >&2
@@ -52,6 +80,26 @@ if [ "$AWS_REGION" != "us-east-1" ]; then
 fi
 if [ "$DATABASE_MODE" != "demo" ] && [ "$DATABASE_MODE" != "ha" ]; then
   echo "ERROR: DATABASE_MODE must be demo or ha" >&2
+  exit 1
+fi
+if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" != "true" ] \
+    && [ "$PUBLIC_SBIR_EXECUTION_ENABLED" != "false" ]; then
+  echo "ERROR: PUBLIC_SBIR_EXECUTION_ENABLED must be true or false" >&2
+  exit 1
+fi
+case "$PUBLIC_ACQUISITION_STATE" in
+  ENABLED|DISABLED) ;;
+  *) echo "ERROR: PUBLIC_ACQUISITION_STATE must be ENABLED or DISABLED" >&2; exit 1 ;;
+esac
+if ! [[ "$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" =~ ^[0-9]+$ ]] \
+    || [ "$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" -lt 1 ] \
+    || [ "$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" -gt 100 ]; then
+  echo "ERROR: PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD must be between 1 and 100" >&2
+  exit 1
+fi
+if [ -n "$NOTIFICATION_EMAIL" ] \
+    && ! [[ "$NOTIFICATION_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
+  echo "ERROR: NOTIFICATION_EMAIL must be empty or a valid email address" >&2
   exit 1
 fi
 if ! [[ "$COGNITO_DOMAIN_PREFIX" =~ ^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$ ]]; then
@@ -87,6 +135,7 @@ if [ "$caller_account" != "$SATSYIL_EXPECTED_ACCOUNT_ID" ]; then
   echo "ERROR: the satsyil profile resolved to an unexpected AWS account; refusing deployment" >&2
   exit 1
 fi
+SATSYIL_ACCOUNT_ID="$caller_account"
 unset caller_account SATSYIL_EXPECTED_ACCOUNT_ID
 
 stack_exists=false
@@ -115,6 +164,83 @@ else
   exit 1
 fi
 unset stack_probe
+
+if [ "$stack_exists" = true ] \
+    && [ -z "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+  existing_public_group_parameter="$(aws_satsyil cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query 'Stacks[0].Parameters[?ParameterKey==`ExistingPublicFundingModelPackageGroupArn`].ParameterValue | [0]' \
+    --output text)"
+  if [ "$existing_public_group_parameter" != "None" ]; then
+    EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN="$existing_public_group_parameter"
+  fi
+  unset existing_public_group_parameter
+fi
+
+if [ -n "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+  expected_public_group_prefix="arn:aws:sagemaker:$AWS_REGION:$SATSYIL_ACCOUNT_ID:model-package-group/"
+  case "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" in
+    "$expected_public_group_prefix"*)
+      ;;
+    *)
+      echo "ERROR: external public-funding Model Package Group must be in the target Satsyil account and region" >&2
+      exit 1
+      ;;
+  esac
+  public_group_name="${EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN##*/}"
+  resolved_public_group_arn="$(aws_satsyil sagemaker describe-model-package-group \
+    --model-package-group-name "$public_group_name" \
+    --query ModelPackageGroupArn \
+    --output text)"
+  if [ "$resolved_public_group_arn" != "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+    echo "ERROR: external public-funding Model Package Group ARN did not resolve exactly" >&2
+    exit 1
+  fi
+  unset expected_public_group_prefix public_group_name resolved_public_group_arn
+fi
+if [ "$PUBLIC_SBIR_EXECUTION_ENABLED" = "true" ]; then
+  if [ "$stack_exists" != "true" ]; then
+    echo "ERROR: public SBIR execution can be enabled only after its pinned evidence is provisioned" >&2
+    exit 1
+  fi
+  public_sbir_bucket="$(aws_satsyil cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query 'Stacks[0].Outputs[?OutputKey==`RawBucketName`].OutputValue | [0]' \
+    --output text)"
+  public_sbir_package_arn="arn:aws:sagemaker:$AWS_REGION:$SATSYIL_ACCOUNT_ID:model-package/${STACK_NAME}-public-sbir-transition/2"
+  public_sbir_package="$(aws_satsyil sagemaker describe-model-package \
+    --model-package-name "$public_sbir_package_arn" \
+    --query '[ModelPackageStatus,ModelApprovalStatus] | join(`:`, @)' \
+    --output text)"
+  if [ "$public_sbir_package" != "Completed:PendingManualApproval" ]; then
+    echo "ERROR: pinned public SBIR Model Registry package is not ready" >&2
+    exit 1
+  fi
+  public_sbir_training="$(aws_satsyil sagemaker describe-training-job \
+    --training-job-name compass-doc-sbir-transition-20260812-0134 \
+    --query TrainingJobStatus \
+    --output text)"
+  if [ "$public_sbir_training" != "Completed" ]; then
+    echo "ERROR: pinned public SBIR training job is not complete" >&2
+    exit 1
+  fi
+  public_sbir_version="$(aws_satsyil s3api head-object \
+    --bucket "$public_sbir_bucket" \
+    --key mlops/public-sbir-transition/registry/sbir_transition-0dda670313a1e9d3/model-v2.tar.gz \
+    --version-id 6ki61OUXqpqujj5uHes3k0Sz2AoryxlB \
+    --query VersionId \
+    --output text)"
+  if [ "$public_sbir_version" != "6ki61OUXqpqujj5uHes3k0Sz2AoryxlB" ]; then
+    echo "ERROR: pinned public SBIR model object version did not resolve exactly" >&2
+    exit 1
+  fi
+  aws_satsyil s3api head-object \
+    --bucket "$public_sbir_bucket" \
+    --key mlops/public-sbir-transition/validation/current-public-phase-i-20260812.json \
+    >/dev/null
+  unset public_sbir_bucket public_sbir_package_arn public_sbir_package public_sbir_training public_sbir_version
+fi
+unset SATSYIL_ACCOUNT_ID
 
 if [ "$stack_exists" = false ]; then
   vpc_count="$(aws_satsyil ec2 describe-vpcs --query 'length(Vpcs)' --output text)"
@@ -148,6 +274,9 @@ echo "==> Staging database migrations"
 echo "==> Staging the current SAM template into the RMF artifact package"
 "$repo/src/functions/rmf_artifact/prepare_template.sh"
 
+echo "==> Confirming staged deployment artifacts match the committed source"
+require_clean_source_tree
+
 echo "==> Validating the SAM template"
 sam validate \
   --lint \
@@ -159,10 +288,11 @@ sam validate \
 echo "==> Building Linux ARM Lambda packages"
 sam build \
   --use-container \
+  --no-cached \
   --region "$AWS_REGION" \
   --profile "$REQUIRED_AWS_PROFILE" \
-  --config-file "$config" \
-  --config-env satsyil
+  --config-file "$build_config" \
+  --config-env serial
 
 deploy_pass() {
   local identity_domain="${1:-}"
@@ -171,12 +301,20 @@ deploy_pass() {
   local web_parameters=(
     "DeployRevision=$DEPLOY_REVISION"
   )
+  if [ -n "$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN" ]; then
+    web_parameters+=(
+      "ExistingPublicFundingModelPackageGroupArn=$EXISTING_PUBLIC_FUNDING_MODEL_PACKAGE_GROUP_ARN"
+    )
+  fi
   if [ -n "$WEB_CUSTOM_DOMAIN_NAME" ]; then
     web_parameters+=(
       "WebCustomDomainName=$WEB_CUSTOM_DOMAIN_NAME"
       "WebCertificateArn=$WEB_CERTIFICATE_ARN"
       "WebHostedZoneId=$WEB_HOSTED_ZONE_ID"
     )
+  fi
+  if [ -n "$NOTIFICATION_EMAIL" ]; then
+    web_parameters+=("NotificationEmail=$NOTIFICATION_EMAIL")
   fi
   if [ -n "$identity_domain" ]; then
     web_parameters+=(
@@ -199,7 +337,7 @@ deploy_pass() {
     --no-fail-on-empty-changeset \
     --parameter-overrides \
       "DatabaseResilienceMode=$database_mode" \
-      "ExportMaxRows=5000" \
+      "ExportMaxRows=250" \
       "WafRateLimit=2000" \
       "StreamTickerState=ENABLED" \
       "DeploySecurityBaseline=false" \
@@ -211,6 +349,9 @@ deploy_pass() {
       "ScaleDataRetentionDays=$SCALE_DATA_RETENTION_DAYS" \
       "ScaleEvidenceRetentionDays=$SCALE_EVIDENCE_RETENTION_DAYS" \
       "ScaleAthenaBytesScannedCutoff=$SCALE_ATHENA_SCAN_CUTOFF_BYTES" \
+      "PublicSbirExecutionEnabled=$PUBLIC_SBIR_EXECUTION_ENABLED" \
+      "PublicAcquisitionState=$PUBLIC_ACQUISITION_STATE" \
+      "PublicAcquisitionChangeAlertThreshold=$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" \
       "CognitoDomainPrefix=$COGNITO_DOMAIN_PREFIX" \
       "${web_parameters[@]}"
 }

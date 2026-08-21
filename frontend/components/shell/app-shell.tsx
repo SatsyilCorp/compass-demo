@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SINGLE_LIVE_MODE } from "@/lib/evidence-mode";
 import { AuthGuard } from "@/components/shell/auth-guard";
 import { SkipNav } from "@/components/shell/skip-nav";
 import { GovBanner } from "@/components/shell/gov-banner";
@@ -9,7 +10,9 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { AppFooter } from "@/components/shell/app-footer";
 import type { AppRole } from "@/lib/auth/use-app-auth";
 import { PresenterGuide } from "@/components/presenter/presenter-guide";
-import { EvidenceSetBar } from "@/components/shell/evidence-set-bar";
+import { ScreenContextBar } from "@/components/shell/screen-context-bar";
+import { EvidenceModeBar } from "@/components/shell/evidence-mode-bar";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 
 export function AppShell({
   children,
@@ -20,6 +23,7 @@ export function AppShell({
 }) {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [presenterOpen, setPresenterOpen] = useState(false);
+  const { hydrated } = useEvidenceMode();
   const closeMobileNavigation = useCallback(() => setMobileNavigationOpen(false), []);
 
   useEffect(() => {
@@ -37,6 +41,17 @@ export function AppShell({
     });
   }, []);
 
+  if (!hydrated) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-bg" role="status" aria-label="Loading evidence mode">
+        <div className="w-full max-w-sm px-6">
+          <div className="h-2 w-full animate-pulse rounded-full bg-gov-primary-lighter" />
+          <p className="mt-3 text-center text-xs font-semibold text-text-muted">Establishing the evidence boundary</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <AuthGuard expected="signed-in" requireRole={requireRole}>
       <SkipNav />
@@ -50,7 +65,8 @@ export function AppShell({
             presenterOpen={presenterOpen}
             onPresenterToggle={togglePresenter}
           />
-          <EvidenceSetBar />
+          <EvidenceModeBar />
+          <ScreenContextBar />
           <main
             id="main-content"
             tabIndex={-1}
@@ -61,7 +77,7 @@ export function AppShell({
           <AppFooter />
         </div>
       </div>
-      <PresenterGuide open={presenterOpen} onClose={togglePresenter} />
+      {SINGLE_LIVE_MODE ? null : <PresenterGuide open={presenterOpen} onClose={togglePresenter} />}
     </AuthGuard>
   );
 }

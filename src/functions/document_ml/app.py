@@ -17,7 +17,7 @@ from pathlib import PurePosixPath
 from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import unquote_plus
 
-from compass_common import http
+from compass_common import http, operational_evidence
 
 import engine
 import repository
@@ -29,11 +29,13 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 UPLOAD_PREFIX = "documents/incoming/"
 MAX_UPLOAD_BYTES = engine.MAX_DOCUMENT_BYTES
 MLOPS_MODE = os.environ.get("MLOPS_MODE", "demo").strip().lower()
+MIN_DRIFT_DOCUMENTS = 5
 ALLOWED_CONTENT_TYPES = {
     "application/json",
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/x-ndjson",
     "application/xml",
     "text/csv",
     "text/markdown",
@@ -41,7 +43,37 @@ ALLOWED_CONTENT_TYPES = {
     "text/xml",
 }
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+DOCUMENT_EVIDENCE_CLASSES = {"public-operational", "synthetic-rehearsal"}
 _REPOSITORY = None
+
+
+def _stage(
+    run_id: str,
+    sequence: int,
+    stage_id: str,
+    label: str,
+    status: str,
+    **kwargs: Any,
+) -> None:
+    run_kind = (
+        "model-training"
+        if run_id.startswith("train-")
+        else "model-deployment"
+        if run_id.startswith("deploy-")
+        else "model-monitoring"
+        if run_id.startswith("drift-")
+        else "document-intake"
+    )
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind=run_kind,
+        sequence=sequence,
+        stage_id=stage_id,
+        label=label,
+        status=status,
+        **kwargs,
+    )
 
 
 def _repo():
@@ -57,6 +89,29 @@ def _poweruser(claims: http.Claims) -> bool:
 
 def _actor(claims: http.Claims) -> str:
     return claims.username or claims.email or claims.sub or "unknown"
+
+
+def _document_evidence_class(record: Mapping[str, Any]) -> str:
+    boundary = record.get("data_boundary")
+    if isinstance(boundary, Mapping):
+        classification = str(boundary.get("classification") or "").strip().lower()
+        if classification == "public":
+            return "public-operational"
+        if classification == "synthetic-demo":
+            return "synthetic-rehearsal"
+    declared = str(record.get("evidence_class") or "").strip().lower()
+    if declared in DOCUMENT_EVIDENCE_CLASSES:
+        return declared
+    return "synthetic-rehearsal"
+
+
+def _document_run_evidence_class(
+    run_id: str, stage_input: Mapping[str, Any]
+) -> str:
+    durable_run = _repo().get_record("run", run_id)
+    if durable_run:
+        return _document_evidence_class(durable_run)
+    return _document_evidence_class(stage_input)
 
 
 def _safe_filename(filename: str) -> str:
@@ -90,11 +145,38 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
     if not 0 < size_bytes <= MAX_UPLOAD_BYTES:
         raise ValueError(f"size_bytes must be between 1 and {MAX_UPLOAD_BYTES}")
 
+    synthetic_only = bool(body.get("synthetic_only", True))
+    data_classification = str(
+        body.get("data_classification")
+        or ("synthetic-demo" if synthetic_only else "public")
+    ).strip().lower()
+    if data_classification not in {"synthetic-demo", "public"}:
+        raise ValueError("data_classification must be synthetic-demo or public")
+    if data_classification == "public":
+        if body.get("contains_cui") is not False:
+            raise ValueError("public uploads must explicitly declare contains_cui=false")
+        if body.get("pii_minimized") is not True:
+            raise ValueError("public uploads must explicitly declare pii_minimized=true")
+        synthetic_only = False
+    elif not synthetic_only:
+        raise ValueError("synthetic-demo uploads must declare synthetic_only=true")
+
+    source_sha256 = str(body.get("source_sha256") or "").strip().lower()
+    if not SHA256_RE.fullmatch(source_sha256):
+        raise ValueError("source_sha256 must be the browser-computed SHA-256 digest")
+
     upload_id = uuid.uuid4().hex
     run_id = f"doc-{upload_id}"
     key = f"{UPLOAD_PREFIX}{run_id}/{filename}"
     now = engine.utc_now()
+    evidence_class = (
+        "public-operational"
+        if data_classification == "public"
+        else "synthetic-rehearsal"
+    )
     record = {
+        "contract": "compass.document-intake-run.v1",
+        "evidence_class": evidence_class,
         "run_id": run_id,
         "document_id": upload_id,
         "status": "awaiting-upload",
@@ -107,20 +189,48 @@ def request_upload(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
         "created_at": now,
         "updated_at": now,
         "source": _logical_uri(key),
-        "synthetic_only": bool(body.get("synthetic_only", True)),
+        "source_sha256": source_sha256,
+        "synthetic_only": synthetic_only,
+        "data_boundary": {
+            "classification": data_classification,
+            "contains_cui": False,
+            "pii_minimized": data_classification == "public",
+        },
     }
     _repo().put_record("run", run_id, record)
-    upload_url = _repo().presign_upload(key, content_type, expires_in=900)
+    _stage(
+        run_id,
+        1,
+        "upload-authorized",
+        "Upload authorized and source hash declared",
+        "completed",
+        source=_logical_uri(key),
+        source_sha256=source_sha256,
+        actor=_actor(claims),
+        evidence_class=evidence_class,
+        detail={
+            "evidence_class": evidence_class,
+            "record_count": 1,
+            "schema": PurePosixPath(filename).suffix.lower(),
+        },
+    )
+    upload_plan = _repo().presign_upload(
+        key,
+        content_type,
+        maximum_bytes=MAX_UPLOAD_BYTES,
+        expires_in=900,
+    )
     return {
         **record,
+        "contract": "compass.document-upload-plan.v1",
         "upload": {
-            "method": "PUT",
-            "url": upload_url,
-            "headers": {"Content-Type": content_type},
+            "method": "POST",
+            "url": upload_plan["url"],
+            "fields": upload_plan["fields"],
             "expires_in_seconds": 900,
             "maximum_bytes": MAX_UPLOAD_BYTES,
         },
-        "next": "PUT the file bytes to upload.url; S3 starts the pipeline automatically.",
+        "next": "POST the signed form fields and file to upload.url; S3 starts the pipeline automatically.",
     }
 
 
@@ -156,12 +266,48 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = _run_id_from_key(key)
     filename = PurePosixPath(key).name
     now = engine.utc_now()
+    current_before = _repo().get_record("run", run_id) or {}
+    evidence_class = _document_evidence_class(current_before)
+    _stage(
+        run_id,
+        2,
+        "object-event",
+        "Object-created event correlated",
+        "completed",
+        source=_logical_uri(key),
+        source_sha256=str(current_before.get("source_sha256") or "") or None,
+        evidence_class=evidence_class,
+        detail={"record_count": 1},
+    )
     try:
-        payload, response = _repo().get_bytes(bucket, key)
+        if event_size is not None and event_size > MAX_UPLOAD_BYTES:
+            raise ValueError("uploaded object exceeds the enforced size limit")
+        payload, response = _repo().get_bytes(
+            bucket, key, maximum_bytes=MAX_UPLOAD_BYTES
+        )
         content_type = str(response.get("ContentType") or "application/octet-stream")
         if event_size is not None and event_size != len(payload):
             raise ValueError("event size does not match the retrieved object")
+        expected_bytes = current_before.get("expected_bytes")
+        if expected_bytes is not None and int(expected_bytes) != len(payload):
+            raise ValueError("declared upload size does not match the retrieved object")
         extracted = engine.extract_document(filename, content_type, payload)
+        declared_sha256 = str(current_before.get("source_sha256") or "")
+        if declared_sha256 and extracted["sha256"] != declared_sha256:
+            raise ValueError("browser and server source SHA-256 digests do not match")
+        boundary = current_before.get("data_boundary")
+        classification = (
+            str(boundary.get("classification") or "")
+            if isinstance(boundary, Mapping)
+            else ""
+        )
+        sensitive_counts = extracted.get("sensitive_pattern_counts") or {}
+        if classification == "public" and any(
+            int(count or 0) > 0 for count in sensitive_counts.values()
+        ):
+            raise ValueError(
+                "public upload contains sensitive patterns and must be quarantined"
+            )
     except (UnicodeDecodeError, ValueError, KeyError, zipfile.BadZipFile) as exc:
         failure = {
             "run_id": run_id,
@@ -170,9 +316,31 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
             "gate": "quarantine",
             "reason": str(exc),
             "source": _logical_uri(key),
+            "evidence_class": evidence_class,
             "updated_at": now,
         }
         _repo().merge_record("run", run_id, failure)
+        _stage(
+            run_id,
+            3,
+            "source-verification",
+            "Source verification failed",
+            "quarantined",
+            source=_logical_uri(key),
+            source_sha256=str(current_before.get("source_sha256") or "") or None,
+            evidence_class=evidence_class,
+            detail={"rejected_records": 1},
+        )
+        operational_evidence.record_signal(
+            category="document-intake",
+            severity="high",
+            title="Document source quarantined",
+            message="The uploaded source failed inspection or digest verification and was not published.",
+            run_id=run_id,
+            evidence_uri=_logical_uri(key),
+            evidence_class=evidence_class,
+            detail={"rejected_records": 1},
+        )
         return {**failure, "source_bucket": bucket, "source_key": key}
 
     bronze_key = f"documents/bronze/{run_id}/document.json"
@@ -202,9 +370,43 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "bronze_uri": _logical_uri(bronze_key),
         "bronze_key": bronze_key,
         "source": _logical_uri(key),
+        "source_object_version": str(response.get("VersionId") or "") or None,
+        "evidence_class": evidence_class,
         "updated_at": now,
     }
     current = _repo().merge_record("run", run_id, update)
+    _stage(
+        run_id,
+        3,
+        "source-verified",
+        "Source bytes verified",
+        "completed",
+        source=_logical_uri(key),
+        destination=_logical_uri(bronze_key),
+        source_sha256=extracted["sha256"],
+        output_sha256=operational_evidence.canonical_digest(bronze),
+        evidence_class=evidence_class,
+        detail={
+            "record_count": int((extracted.get("schema") or {}).get("record_count") or 1),
+            "schema": str((extracted.get("schema") or {}).get("shape") or "document"),
+        },
+    )
+    _stage(
+        run_id,
+        4,
+        "bronze-extracted",
+        "Bronze retained and schema inferred",
+        "completed",
+        source=_logical_uri(key),
+        destination=_logical_uri(bronze_key),
+        source_sha256=extracted["sha256"],
+        output_sha256=operational_evidence.canonical_digest(bronze),
+        evidence_class=evidence_class,
+        detail={
+            "accepted_records": int((extracted.get("schema") or {}).get("record_count") or 1),
+            "schema": str((extracted.get("schema") or {}).get("shape") or "document"),
+        },
+    )
     return {
         "run_id": run_id,
         "status": "ok",
@@ -213,11 +415,13 @@ def inspect_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "source_key": key,
         "bronze_key": bronze_key,
         "org_unit": current.get("org_unit", "ONR-Corporate"),
+        "evidence_class": evidence_class,
     }
 
 
 def quality_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
+    evidence_class = _document_run_evidence_class(run_id, event)
     bronze_key = str(event["bronze_key"])
     extracted = _repo().get_json(bronze_key)
     receipt = engine.quality_receipt(extracted)
@@ -231,9 +435,28 @@ def quality_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "stage": "quality-gate",
         "quality": receipt,
         "quality_receipt_uri": _logical_uri(receipt_key),
+        "evidence_class": evidence_class,
         "updated_at": engine.utc_now(),
     }
     _repo().merge_record("run", run_id, update)
+    _stage(
+        run_id,
+        5,
+        "quality-gate",
+        "Blocking and advisory quality rules evaluated",
+        "completed" if receipt["gate"] == "pass" else "quarantined",
+        source=_logical_uri(bronze_key),
+        destination=_logical_uri(receipt_key),
+        input_sha256=str(extracted.get("sha256") or "") or None,
+        output_sha256=operational_evidence.canonical_digest(receipt),
+        evidence_class=evidence_class,
+        detail={
+            "quality_score": receipt["score"],
+            "failed_records": len(receipt["blocking_failures"]),
+            "accepted_records": 1 if receipt["gate"] == "pass" else 0,
+            "rejected_records": 0 if receipt["gate"] == "pass" else 1,
+        },
+    )
     reason = (
         "blocking quality rules failed: " + ", ".join(receipt["blocking_failures"])
         if receipt["blocking_failures"]
@@ -268,8 +491,202 @@ def _champion_or_baseline() -> tuple[Dict[str, Any], Dict[str, Any]]:
     }
 
 
+def classify_public_records(event: Mapping[str, Any]) -> Dict[str, Any]:
+    """Classify public source narratives with the same governed champion model.
+
+    USAspending returns structured award records with a public description. The
+    description is a narrative field, not a standalone source document. This
+    adapter preserves that distinction while producing model and lineage
+    evidence through the same governed registry used by browser uploads.
+    """
+    acquisition_run_id = str(event.get("acquisition_run_id") or "").strip()
+    source_kind = str(event.get("source_kind") or "public-source-narratives").strip()
+    canonical_uri = str(event.get("canonical_uri") or "").strip()
+    canonical_sha256 = str(event.get("canonical_sha256") or "").strip().lower()
+    raw_records = event.get("records")
+    if not acquisition_run_id or not canonical_uri:
+        raise ValueError("acquisition_run_id and canonical_uri are required")
+    if not SHA256_RE.fullmatch(canonical_sha256):
+        raise ValueError("canonical_sha256 must be a lowercase SHA-256 digest")
+    if not isinstance(raw_records, list) or not raw_records:
+        raise ValueError("records must be a non-empty list")
+    if len(raw_records) > 500:
+        raise ValueError("a public source classification run is limited to 500 records")
+
+    records = [item for item in raw_records if isinstance(item, Mapping)]
+    if not records:
+        raise ValueError("records did not contain any valid public source objects")
+    model, model_state = _champion_or_baseline()
+    model_version = str(model["model_version"])
+    run_id = f"public-ml-{acquisition_run_id.removeprefix('acq-')}"
+    now = engine.utc_now()
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="public-narrative-classification",
+        sequence=1,
+        stage_id="public-narratives-accepted",
+        label="Public source narratives accepted",
+        status="completed",
+        source=canonical_uri,
+        source_sha256=canonical_sha256,
+        actor="compass-public-acquisition",
+        detail={"record_count": len(records), "source_run_id": acquisition_run_id},
+    )
+
+    predictions: List[Dict[str, Any]] = []
+    class_counts: Dict[str, int] = {}
+    confidence_total = 0.0
+    review_required = 0
+    for record in records:
+        narrative = " ".join(
+            str(record.get(field) or "")
+            for field in (
+                "description",
+                "title",
+                "record_type",
+                "award_type",
+                "recipient_name",
+                "awarding_agency",
+                "awarding_subagency",
+                "funding_agency",
+                "funding_subagency",
+                "organizations",
+                "topics",
+            )
+        ).strip()
+        prediction = engine.predict(model, narrative)
+        label = str(prediction["label"])
+        confidence = float(prediction["confidence"])
+        needs_review = bool(prediction["review_required"])
+        class_counts[label] = class_counts.get(label, 0) + 1
+        confidence_total += confidence
+        review_required += int(needs_review)
+        predictions.append(
+            {
+                "source_record_id": str(record.get("source_record_id") or ""),
+                "recipient_name": record.get("recipient_name"),
+                "award_amount_usd": record.get("award_amount_usd"),
+                "source_url": record.get("source_url"),
+                "document_class": label,
+                "confidence": confidence,
+                "review_required": needs_review,
+                "class_probabilities": prediction["probabilities"],
+            }
+        )
+
+    artifact_key = (
+        f"documents/gold/public-acquisitions/{acquisition_run_id}/"
+        "public-record-classifications.json"
+    )
+    artifact = {
+        "contract": "compass.public-record-classifications.v1",
+        "run_id": run_id,
+        "acquisition_run_id": acquisition_run_id,
+        "source_uri": canonical_uri,
+        "source_sha256": canonical_sha256,
+        "model_version": model_version,
+        "model_state": model_state,
+        "record_count": len(predictions),
+        "class_counts": class_counts,
+        "review_required_count": review_required,
+        "mean_confidence": round(confidence_total / len(predictions), 6),
+        "predictions": predictions,
+        "generated_at": now,
+        "disclosure": (
+            "The model classified public source narrative fields. A structured source "
+            "record is not represented as a standalone source document."
+        ),
+    }
+    artifact_uri = _repo().put_json(
+        artifact_key,
+        artifact,
+        metadata={
+            "run-id": run_id,
+            "stage": "gold",
+            "model-version": model_version,
+            "source-sha256": canonical_sha256,
+        },
+    )
+    artifact_sha256 = operational_evidence.canonical_digest(artifact)
+    operational_evidence.record_stage(
+        run_id=run_id,
+        run_kind="public-narrative-classification",
+        sequence=2,
+        stage_id="champion-inference",
+        label="Champion classifier scored public source narratives",
+        status="completed",
+        source=canonical_uri,
+        destination=artifact_uri,
+        source_sha256=canonical_sha256,
+        output_sha256=artifact_sha256,
+        actor="compass-public-acquisition",
+        detail={
+            "record_count": len(predictions),
+            "model_version": model_version,
+            "review_required": review_required,
+        },
+    )
+    record = {
+        "run_id": run_id,
+        "status": "completed",
+        "stage": "gold-published",
+        "source_kind": source_kind,
+        "source_run_id": acquisition_run_id,
+        "source_uri": canonical_uri,
+        "source_sha256": canonical_sha256,
+        "model_version": model_version,
+        "model_state": model_state,
+        "record_count": len(predictions),
+        "class_counts": class_counts,
+        "review_required_count": review_required,
+        "mean_confidence": artifact["mean_confidence"],
+        "artifact_uri": artifact_uri,
+        "artifact_sha256": artifact_sha256,
+        "updated_at": now,
+        "completed_at": now,
+    }
+    _repo().put_record("run", run_id, record)
+    operational_evidence.record_signal(
+        category="public-narrative-classification",
+        severity="medium" if review_required else "info",
+        title="Public source narrative classification completed",
+        message=(
+            f"The governed champion model classified {len(predictions)} public source "
+            f"narratives and routed {review_required} for analyst review."
+        ),
+        run_id=run_id,
+        evidence_uri=artifact_uri,
+        detail={
+            "model_version": model_version,
+            "record_count": len(predictions),
+            "review_required": review_required,
+        },
+    )
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "model_version": model_version,
+        "model_registered": bool(model_state.get("registered")),
+        "record_count": len(predictions),
+        "class_counts": class_counts,
+        "review_required_count": review_required,
+        "mean_confidence": artifact["mean_confidence"],
+        "artifact_uri": artifact_uri,
+        "artifact_sha256": artifact_sha256,
+        "preview": sorted(
+            predictions,
+            key=lambda item: (
+                not bool(item["review_required"]),
+                -float(item.get("award_amount_usd") or 0),
+            ),
+        )[:16],
+        "disclosure": artifact["disclosure"],
+    }
+
+
 def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
+    evidence_class = _document_run_evidence_class(run_id, event)
     bronze = _repo().get_json(str(event["bronze_key"]))
     model, model_state = _champion_or_baseline()
     prediction = engine.predict(model, str(bronze.get("extracted_text") or ""))
@@ -302,6 +719,37 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     }
     _repo().put_json(silver_key, silver, metadata={"run-id": run_id, "stage": "silver"})
     _repo().put_json(gold_key, gold, metadata={"run-id": run_id, "stage": "gold"})
+    _stage(
+        run_id,
+        6,
+        "model-inference",
+        "Champion classifier scored the document",
+        "completed",
+        source=_logical_uri(str(event["bronze_key"])),
+        destination=_logical_uri(gold_key),
+        source_sha256=str(bronze.get("sha256") or "") or None,
+        input_sha256=operational_evidence.canonical_digest(silver),
+        output_sha256=operational_evidence.canonical_digest(prediction),
+        evidence_class=evidence_class,
+        detail={
+            "model_version": model["model_version"],
+            "confidence": prediction["confidence"],
+            "consumer": "Document review queue",
+        },
+    )
+    _stage(
+        run_id,
+        7,
+        "silver-published",
+        "Normalized Silver document published",
+        "completed",
+        source=_logical_uri(str(event["bronze_key"])),
+        destination=_logical_uri(silver_key),
+        source_sha256=str(bronze.get("sha256") or "") or None,
+        output_sha256=operational_evidence.canonical_digest(silver),
+        evidence_class=evidence_class,
+        detail={"accepted_records": 1, "schema": str(bronze.get("schema", {}).get("shape") or "document")},
+    )
     complete = {
         "run_id": run_id,
         "status": "completed",
@@ -309,12 +757,14 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "document_class": prediction["label"],
         "confidence": prediction["confidence"],
         "review_required": prediction["review_required"],
+        "class_probabilities": prediction["probabilities"],
         "model_version": model["model_version"],
         "model_state": model_state,
         "silver_uri": _logical_uri(silver_key),
         "silver_key": silver_key,
         "gold_uri": _logical_uri(gold_key),
         "gold_key": gold_key,
+        "evidence_class": evidence_class,
         "lineage": [
             _logical_uri(str(event["source_key"])),
             _logical_uri(str(event["bronze_key"])),
@@ -325,12 +775,50 @@ def curate_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "completed_at": now,
         "updated_at": now,
     }
+    complete["lineage_receipt_sha256"] = operational_evidence.canonical_digest(complete)
     _repo().merge_record("run", run_id, complete)
+    _stage(
+        run_id,
+        8,
+        "gold-published",
+        "Governed Gold decision record published",
+        "completed",
+        source=_logical_uri(silver_key),
+        destination=_logical_uri(gold_key),
+        source_sha256=str(bronze.get("sha256") or "") or None,
+        input_sha256=operational_evidence.canonical_digest(silver),
+        output_sha256=operational_evidence.canonical_digest(gold),
+        evidence_class=evidence_class,
+        detail={
+            "accepted_records": 1,
+            "model_version": model["model_version"],
+            "confidence": prediction["confidence"],
+            "consumer": "Governed catalog and decision workspace",
+        },
+    )
+    operational_evidence.record_signal(
+        category="document-intake",
+        severity="info" if not prediction["review_required"] else "medium",
+        title="Document pipeline completed",
+        message=(
+            f"The source passed quality and was classified as {prediction['label']} "
+            f"with {prediction['confidence']:.0%} confidence."
+        ),
+        run_id=run_id,
+        evidence_uri=_logical_uri(gold_key),
+        evidence_class=evidence_class,
+        detail={
+            "accepted_records": 1,
+            "model_version": model["model_version"],
+            "confidence": prediction["confidence"],
+        },
+    )
     return complete
 
 
 def quarantine_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
     run_id = str(event["run_id"])
+    evidence_class = _document_run_evidence_class(run_id, event)
     source_bucket = str(event["source_bucket"])
     source_key = str(event["source_key"])
     quarantine_key = f"documents/quarantine/{run_id}/{PurePosixPath(source_key).name}"
@@ -340,12 +828,91 @@ def quarantine_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
         "status": "quarantined",
         "stage": "quarantine",
         "quarantine_uri": uri,
+        "evidence_class": evidence_class,
         "reason": event.get("reason")
         or "document failed one or more blocking quality rules",
         "updated_at": engine.utc_now(),
     }
     _repo().merge_record("run", run_id, update)
+    _stage(
+        run_id,
+        8,
+        "quarantine",
+        "Source retained in quarantine",
+        "quarantined",
+        source=_logical_uri(source_key),
+        destination=uri,
+        evidence_class=evidence_class,
+        detail={"rejected_records": 1, "consumer": "Human quality review"},
+    )
+    operational_evidence.record_signal(
+        category="document-quality",
+        severity="high",
+        title="Document quality gate quarantined source",
+        message="Blocking validation or quality rules prevented Silver and Gold publication.",
+        run_id=run_id,
+        evidence_uri=uri,
+        evidence_class=evidence_class,
+        detail={"rejected_records": 1},
+    )
     return update
+
+
+def workflow_failure_stage(event: Mapping[str, Any]) -> Dict[str, Any]:
+    failure = event.get("failure") if isinstance(event.get("failure"), Mapping) else {}
+    run_id = str(failure.get("run_id") or "")
+    source_key = str(failure.get("source_key") or "")
+    if not run_id and source_key:
+        run_id = _run_id_from_key(source_key)
+    if not run_id:
+        execution_id = SAFE_NAME_RE.sub(
+            "-", str(event.get("execution_id") or uuid.uuid4().hex[:16])
+        )[:100]
+        run_id = f"doc-failure-{execution_id}"
+    error = failure.get("error") if isinstance(failure.get("error"), Mapping) else {}
+    failure_code = str(error.get("Error") or "WorkflowStageFailed")[:120]
+    source = _logical_uri(source_key) if source_key else "document-lake://unknown"
+    now = engine.utc_now()
+    evidence_class = _document_run_evidence_class(run_id, failure)
+    if _repo().get_record("run", run_id):
+        _repo().merge_record(
+            "run",
+            run_id,
+            {
+                "status": "failed",
+                "stage": "workflow-failed",
+                "failure_code": failure_code,
+                "evidence_class": evidence_class,
+                "updated_at": now,
+            },
+        )
+    _stage(
+        run_id,
+        99,
+        "workflow-failed",
+        "Document pipeline failed after bounded retries",
+        "failed",
+        source=source,
+        actor="compass-document-workflow",
+        evidence_class=evidence_class,
+        detail={"failed_records": 1, "failure_code": failure_code},
+    )
+    operational_evidence.record_signal(
+        category="document-intake",
+        severity="critical",
+        title="Document workflow failed",
+        message="A document stage exhausted its bounded retries. No unverified Gold record was published.",
+        run_id=run_id,
+        evidence_uri=source,
+        evidence_class=evidence_class,
+        detail={"failed_records": 1, "failure_code": failure_code},
+    )
+    return {
+        "run_id": run_id,
+        "status": "failed",
+        "failure_code": failure_code,
+        "evidence_class": evidence_class,
+    }
 
 
 def _training_samples(body: Mapping[str, Any]) -> List[engine.TrainingSample]:
@@ -441,6 +1008,66 @@ def train_model(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, Any]:
         "synthetic_only": True,
     }
     _repo().put_record("model", model_version, record)
+    training_run_id = f"train-{model_version}"
+    _stage(
+        training_run_id,
+        1,
+        "training-snapshot",
+        "Immutable training snapshot retained",
+        "completed",
+        source=_logical_uri(training_key),
+        source_sha256=model["training_digest"],
+        actor=_actor(claims),
+        detail={"record_count": len(samples), "model_version": model_version},
+    )
+    _stage(
+        training_run_id,
+        2,
+        "model-trained",
+        "Classical classifier trained",
+        "completed" if status == "registered" else "running",
+        source=_logical_uri(training_key),
+        destination=_logical_uri(artifact_key),
+        input_sha256=model["training_digest"],
+        output_sha256=operational_evidence.canonical_digest(model),
+        actor=_actor(claims),
+        detail={"model_version": model_version, "record_count": len(samples)},
+    )
+    _stage(
+        training_run_id,
+        3,
+        "evaluation-gate",
+        "Evaluation metrics and promotion gates recorded",
+        "completed",
+        source=_logical_uri(artifact_key),
+        output_sha256=operational_evidence.canonical_digest(metrics),
+        actor=_actor(claims),
+        detail={"model_version": model_version, "schema": "document-taxonomy-v1"},
+    )
+    _stage(
+        training_run_id,
+        4,
+        "candidate-registered",
+        "Candidate registry receipt recorded",
+        "completed" if status == "registered" else "running",
+        source=_logical_uri(artifact_key),
+        destination="model-registry://document-classifier/candidate",
+        actor=_actor(claims),
+        detail={"model_version": model_version, "consumer": "Human promotion review"},
+    )
+    operational_evidence.record_signal(
+        category="model-training",
+        severity="info" if status == "registered" else "medium",
+        title="Document model training receipt recorded",
+        message=(
+            "A classical model candidate completed local AWS evaluation and registry recording."
+            if status == "registered"
+            else "A governed SageMaker training request was submitted or requires environment configuration."
+        ),
+        run_id=training_run_id,
+        evidence_uri=_logical_uri(artifact_key),
+        detail={"model_version": model_version, "record_count": len(samples)},
+    )
     return record
 
 
@@ -478,29 +1105,43 @@ def deploy_model(claims: http.Claims, model_version: str) -> Dict[str, Any]:
     _repo().merge_record(
         "model", model_version, {"status": "deployed", "updated_at": now}
     )
+    _stage(
+        deployment_id,
+        1,
+        "champion-promoted",
+        "Human-approved Champion alias updated",
+        "completed",
+        source=f"model-registry://document-classifier/{model_version}",
+        destination="model-alias://document-classifier/champion",
+        actor=_actor(claims),
+        detail={"model_version": model_version, "consumer": "Document intake inference"},
+    )
+    operational_evidence.record_signal(
+        category="model-deployment",
+        severity="medium",
+        title="Document Champion alias changed",
+        message=f"Model {model_version} was promoted through the explicit human control.",
+        run_id=deployment_id,
+        evidence_uri="model-alias://document-classifier/champion",
+        detail={"model_version": model_version},
+    )
     return deployment
 
 
 def _documents_for_drift(body: Mapping[str, Any]) -> List[str]:
     requested = body.get("documents")
-    if requested is not None:
-        if not isinstance(requested, list) or not 1 <= len(requested) <= 200:
-            raise ValueError("documents must contain between 1 and 200 text values")
-        documents = [str(value).strip() for value in requested]
-        if any(len(value) < 20 for value in documents):
-            raise ValueError("every drift document must contain at least 20 characters")
-        return documents
-    documents = []
-    for run in _repo().list_records("run", limit=25):
-        silver_key = run.get("silver_key")
-        if silver_key:
-            documents.append(
-                str(_repo().get_json(str(silver_key)).get("normalized_text") or "")
-            )
-    if documents:
-        return documents
-    _train, evaluation = engine.split_samples(engine.default_training_samples())
-    return [sample.text for sample in evaluation]
+    if requested is None:
+        raise ValueError(
+            "live drift evaluation requires an explicit public monitoring window"
+        )
+    if not isinstance(requested, list) or not MIN_DRIFT_DOCUMENTS <= len(requested) <= 200:
+        raise ValueError(
+            f"documents must contain between {MIN_DRIFT_DOCUMENTS} and 200 text values"
+        )
+    documents = [str(value).strip() for value in requested]
+    if any(len(value) < 20 for value in documents):
+        raise ValueError("every drift document must contain at least 20 characters")
+    return documents
 
 
 def evaluate_drift(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, Any]:
@@ -519,9 +1160,18 @@ def evaluate_drift(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
     receipt.update(
         {
             "drift_id": drift_id,
+            "evidence_class": "public-operational",
             "evaluated_by": _actor(claims),
             "created_at": now,
             "updated_at": now,
+        }
+    )
+    receipt["evaluation_window_sha256"] = operational_evidence.canonical_digest(documents)
+    receipt["baseline_sha256"] = operational_evidence.canonical_digest(
+        {
+            "model_version": model["model_version"],
+            "class_document_counts": model["class_document_counts"],
+            "vocabulary": model["vocabulary"],
         }
     )
     receipt_key = f"mlops/drift/{drift_id}.json"
@@ -530,6 +1180,60 @@ def evaluate_drift(claims: http.Claims, body: Mapping[str, Any]) -> Dict[str, An
     )
     receipt["receipt_uri"] = _logical_uri(receipt_key)
     _repo().put_record("drift", drift_id, receipt)
+    _stage(
+        drift_id,
+        1,
+        "monitoring-window",
+        "Inference monitoring window sealed",
+        "completed",
+        source="model-alias://document-classifier/champion",
+        input_sha256=receipt["baseline_sha256"],
+        output_sha256=receipt["evaluation_window_sha256"],
+        actor=_actor(claims),
+        detail={
+            "evidence_class": "public-operational",
+            "model_version": model["model_version"],
+            "record_count": len(documents),
+            "threshold": threshold,
+        },
+    )
+    _stage(
+        drift_id,
+        2,
+        "drift-evaluated",
+        "Population and vocabulary drift evaluated",
+        "completed",
+        source="model-alias://document-classifier/champion",
+        destination=_logical_uri(receipt_key),
+        input_sha256=receipt["evaluation_window_sha256"],
+        output_sha256=operational_evidence.canonical_digest(receipt),
+        actor=_actor(claims),
+        detail={
+            "evidence_class": "public-operational",
+            "model_version": model["model_version"],
+            "record_count": len(documents),
+            "threshold": threshold,
+            "consumer": "Model review queue",
+        },
+    )
+    operational_evidence.record_signal(
+        category="model-drift",
+        severity="high" if receipt["drift_detected"] else "info",
+        title="Model drift threshold crossed" if receipt["drift_detected"] else "Model drift check passed",
+        message=(
+            "The monitored window crossed the configured drift threshold. Retraining requires human review."
+            if receipt["drift_detected"]
+            else "The monitored window remained within the configured drift threshold."
+        ),
+        run_id=drift_id,
+        evidence_uri=_logical_uri(receipt_key),
+        detail={
+            "evidence_class": "public-operational",
+            "model_version": model["model_version"],
+            "record_count": len(documents),
+            "threshold": threshold,
+        },
+    )
     return receipt
 
 
@@ -583,13 +1287,20 @@ def _handle_api(event: Mapping[str, Any]) -> Dict[str, Any]:
             _public_record(item)
             for item in _repo().list_records("run", limit=50)
             if _run_visible(claims, item)
+            and item.get("contract") == "compass.document-intake-run.v1"
+            and str(item.get("run_id") or "").startswith("doc-")
         ]
         return http.ok({"runs": runs})
 
     run_match = re.search(r"/documents/runs/([^/]+)$", path)
     if method == "GET" and run_match:
         run = _repo().get_record("run", run_match.group(1))
-        if not run or not _run_visible(claims, run):
+        if (
+            not run
+            or run.get("contract") != "compass.document-intake-run.v1"
+            or not str(run.get("run_id") or "").startswith("doc-")
+            or not _run_visible(claims, run)
+        ):
             return http.not_found("document run not found")
         return http.ok(_public_record(run))
 
@@ -650,6 +1361,10 @@ def handler(event, context=None):
             return curate_stage(event)
         if action == "quarantine":
             return quarantine_stage(event)
+        if action in {"classify_public_awards", "classify_public_records"}:
+            return classify_public_records(event)
+        if action == "workflow_failure":
+            return workflow_failure_stage(event)
         if (event.get("requestContext") or {}).get("http"):
             return _handle_api(event)
         if isinstance(event.get("detail"), Mapping):

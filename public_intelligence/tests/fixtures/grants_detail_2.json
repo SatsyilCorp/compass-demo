@@ -1,0 +1,38 @@
+{
+  "errorcode": 0,
+  "msg": "Webservice Succeeds",
+  "data": {
+    "id": 350002,
+    "opportunityNumber": "N00014-26-S-F002",
+    "opportunityTitle": "Resilient sensing research opportunity",
+    "owningAgencyCode": "DOD-ONR",
+    "docType": "synopsis",
+    "agencyDetails": {
+      "agencyName": "Office of Naval Research",
+      "agencyCode": "DOD-ONR"
+    },
+    "topAgencyDetails": {
+      "agencyName": "Department of Defense",
+      "agencyCode": "DOD"
+    },
+    "synopsis": {
+      "postingDate": "Mar 01, 2026 12:00:00 AM EST",
+      "responseDate": "Jun 01, 2026 12:00:00 AM EDT",
+      "synopsisDesc": "Research robust sensing in contested environments.",
+      "costSharing": true,
+      "awardFloor": "250000",
+      "awardCeiling": "5000000",
+      "fundingInstruments": [
+        {"id": "CA", "description": "Cooperative Agreement"}
+      ],
+      "fundingActivityCategories": [
+        {"id": "ST", "description": "Science and Technology"}
+      ]
+    },
+    "alns": [
+      {"alnNumber": "12.300", "programTitle": "Basic and Applied Scientific Research"}
+    ],
+    "synopsisAttachmentFolders": [],
+    "relatedOpps": [{"opportunityNumber": "N00014-25-S-F001"}]
+  }
+}

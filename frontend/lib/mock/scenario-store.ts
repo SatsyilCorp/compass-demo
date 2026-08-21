@@ -7,6 +7,7 @@
  * The fixed logical clock keeps screenshots and rehearsals reproducible.
  */
 import type { Approval, IngestBatch, Role, StreamRecord } from "@/lib/types";
+import { clearRehearsalPersonaOverride } from "./rehearsal-persona";
 import { replayActor } from "./actors";
 import { ALL_GRANTS, type MockGrant } from "./grants";
 import { buildQualityRows, overallScore } from "./quality";
@@ -340,6 +341,7 @@ export function subscribeScenario(listener: () => void): () => void {
 }
 
 export function resetScenario(): ScenarioState {
+  clearRehearsalPersonaOverride();
   hydrated = true;
   const next = createInitialState();
   persist(next);

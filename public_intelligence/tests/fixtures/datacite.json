@@ -1,0 +1,111 @@
+{
+  "data": [
+    {
+      "id": "10.5281/zenodo.100001",
+      "type": "dois",
+      "attributes": {
+        "doi": "10.5281/zenodo.100001",
+        "creators": [
+          {
+            "name": "Researcher, Riley",
+            "givenName": "Riley",
+            "familyName": "Researcher",
+            "nameIdentifiers": [
+              {"nameIdentifierScheme": "ORCID", "nameIdentifier": "0000-0001-2345-6789"}
+            ],
+            "affiliation": ["Ocean Research Institute"]
+          }
+        ],
+        "contributors": [],
+        "titles": [{"title": "Autonomous sensing benchmark dataset"}],
+        "publisher": "Zenodo",
+        "publicationYear": 2025,
+        "subjects": [{"subject": "Autonomous systems"}, {"subject": "Sensing"}],
+        "dates": [{"date": "2025-05-20", "dateType": "Issued"}],
+        "types": {
+          "schemaOrg": "Dataset",
+          "resourceTypeGeneral": "Dataset",
+          "resourceType": "Benchmark data"
+        },
+        "fundingReferences": [
+          {
+            "funderIdentifierType": "ROR",
+            "funderName": "Office of Naval Research",
+            "funderIdentifier": "https://ror.org/00rk2pe57",
+            "awardNumber": "N00014-24-1-0001",
+            "awardTitle": "Trusted autonomy research"
+          }
+        ],
+        "relatedIdentifiers": [
+          {
+            "relationType": "IsSupplementTo",
+            "resourceTypeGeneral": "JournalArticle",
+            "relatedIdentifier": "10.5555/article.100001",
+            "relatedIdentifierType": "DOI"
+          }
+        ],
+        "rightsList": [
+          {
+            "rightsIdentifierScheme": "SPDX",
+            "rightsUri": "https://creativecommons.org/licenses/by/4.0/legalcode",
+            "rights": "Creative Commons Attribution 4.0 International",
+            "rightsIdentifier": "cc-by-4.0"
+          }
+        ],
+        "descriptions": [
+          {
+            "descriptionType": "Abstract",
+            "description": "A <em>public benchmark</em> for maritime autonomy. Questions: data@example.org."
+          }
+        ],
+        "url": "https://zenodo.org/records/100001",
+        "contentUrl": null,
+        "isActive": true,
+        "state": "findable",
+        "viewCount": 80,
+        "downloadCount": 20,
+        "referenceCount": 3,
+        "citationCount": 5
+      }
+    },
+    {
+      "id": "10.5555/article.100002",
+      "type": "dois",
+      "attributes": {
+        "doi": "10.5555/article.100002",
+        "creators": [
+          {"name": "Scholar, Sam", "affiliation": ["Naval Science University"]}
+        ],
+        "contributors": [],
+        "titles": [{"title": "Resilient sensing for contested environments"}],
+        "publisher": "Research Publisher",
+        "publicationYear": 2026,
+        "subjects": ["Resilient sensing"],
+        "dates": [{"date": "2026-04-10", "dateType": "Issued"}],
+        "types": {
+          "schemaOrg": "ScholarlyArticle",
+          "resourceTypeGeneral": "JournalArticle"
+        },
+        "fundingReferences": [
+          {
+            "funderIdentifierType": "Crossref Funder ID",
+            "funderName": "Office of Naval Research",
+            "funderIdentifier": "10.13039/100000006",
+            "awardNumber": "N00014-25-1-0002"
+          }
+        ],
+        "relatedIdentifiers": [],
+        "rightsList": [],
+        "descriptions": [],
+        "url": "https://doi.org/10.5555/article.100002",
+        "isActive": true,
+        "state": "findable",
+        "citationCount": 2
+      }
+    }
+  ],
+  "meta": {"total": 2},
+  "links": {
+    "self": "https://api.datacite.org/dois?page%5Bcursor%5D=1"
+  }
+}

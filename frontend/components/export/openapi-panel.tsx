@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ExternalLink, FileJson, Loader2 } from "lucide-react";
 
-import { USE_MOCK, getOpenApiSpec } from "@/lib/api";
+import { getOpenApiSpec } from "@/lib/api";
+import { useEvidenceMode } from "@/lib/evidence-mode-context";
 
 import { useCompassAction } from "@/components/dashboard/use-compass-query";
 
@@ -19,6 +20,7 @@ const API_BASE_URL =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL) || "";
 
 export function OpenApiPanel() {
+  const { mode } = useEvidenceMode();
   const [spec, setSpec] = useState<string | null>(null);
   const { run, pending, error } = useCompassAction(getOpenApiSpec);
 
@@ -75,7 +77,7 @@ export function OpenApiPanel() {
       {!API_BASE_URL ? (
         <p className="mt-3 rounded border border-border bg-surface-2 px-3 py-2 text-[11.5px] text-text-muted">
           No <code className="font-mono text-[11px]">NEXT_PUBLIC_API_BASE_URL</code> is configured in
-          this build{USE_MOCK ? " (mock mode)" : ""}, so there is no live document to link to. Fetch
+          this build{mode === "rehearsal" ? " while explicit rehearsal is active" : ""}, so there is no live document to link to. Fetch
           the contract to see exactly what the client receives here.
         </p>
       ) : null}

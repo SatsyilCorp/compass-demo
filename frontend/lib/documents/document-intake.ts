@@ -1,15 +1,17 @@
 import { classifyDocument, type ClassificationResult } from "../mlops/demo-model";
 
-export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
 
 export const DOCUMENT_MEDIA_TYPES = {
   pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   txt: "text/plain",
   md: "text/markdown",
   csv: "text/csv",
   json: "application/json",
   jsonl: "application/x-ndjson",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xml: "application/xml",
 } as const;
 
 export type DocumentMediaType = (typeof DOCUMENT_MEDIA_TYPES)[keyof typeof DOCUMENT_MEDIA_TYPES];
@@ -30,18 +32,27 @@ export type IntakeStage = {
   detail: string;
 };
 
-export type LocalDocumentReceipt = {
+type DocumentReceiptBase = {
   runId: string;
   fileName: string;
   mediaType: DocumentMediaType;
   sizeBytes: number;
   sha256: string;
   shape: "unstructured" | "records" | "workbook";
+};
+
+export type LiveDocumentIdentityReceipt = DocumentReceiptBase & {
+  mode: "live_file_identity";
+};
+
+export type LocalDocumentReceipt = DocumentReceiptBase & {
   qualityScore: number;
   classification: ClassificationResult;
   stages: IntakeStage[];
   mode: "bounded_browser_replay";
 };
+
+export type DocumentIdentityReceipt = LiveDocumentIdentityReceipt | LocalDocumentReceipt;
 
 const EXTENSION_MEDIA = new Map<string, DocumentMediaType>(
   Object.entries(DOCUMENT_MEDIA_TYPES).map(([extension, media]) => [extension, media]),
@@ -54,6 +65,7 @@ export function mediaTypeForFile(fileName: string, browserType = ""): DocumentMe
   if (!browserType || browserType === "application/octet-stream") return expected;
   if (browserType === expected) return expected;
   if (extension === "jsonl" && browserType === "application/json") return expected;
+  if (extension === "xml" && browserType === "text/xml") return expected;
   return null;
 }
 
@@ -70,10 +82,26 @@ export function intakeShape(mediaType: DocumentMediaType): LocalDocumentReceipt[
 }
 
 export function validateDocument(file: Pick<File, "name" | "size" | "type">): string | null {
-  if (!mediaTypeForFile(file.name, file.type)) return "Use PDF, TXT, Markdown, CSV, JSON, JSONL, or XLSX with a matching media type.";
+  if (!mediaTypeForFile(file.name, file.type)) return "Use PDF, DOCX, TXT, Markdown, CSV, JSON, JSONL, XLSX, or XML with a matching media type.";
   if (file.size < 1) return "The selected document is empty.";
-  if (file.size > MAX_DOCUMENT_BYTES) return "The selected document exceeds the 25 MiB demonstration bound.";
+  if (file.size > MAX_DOCUMENT_BYTES) return "The selected document exceeds the 15 MiB demonstration bound.";
   return null;
+}
+
+const LIVE_STAGE_INDEX: Readonly<Record<string, number>> = {
+  "browser-upload": 1,
+  inspect: 4,
+  "bronze-inspected": 4,
+  "quality-gate": 5,
+  curate: 6,
+  "gold-published": 7,
+  quarantine: 5,
+};
+
+export function liveDocumentStageIndex(stage: string, status: string): number {
+  if (status === "completed" || status === "curated") return 7;
+  if (status === "quarantined") return stage === "inspect" ? 4 : 5;
+  return LIVE_STAGE_INDEX[stage] ?? 2;
 }
 
 export function buildLocalReceipt(input: {
@@ -110,8 +138,25 @@ export function buildLocalReceipt(input: {
   };
 }
 
+export function buildLiveFileIdentityReceipt(input: {
+  fileName: string;
+  mediaType: DocumentMediaType;
+  sizeBytes: number;
+  sha256: string;
+}): LiveDocumentIdentityReceipt {
+  return {
+    runId: `pending-${input.sha256.slice(0, 16)}`,
+    fileName: input.fileName,
+    mediaType: input.mediaType,
+    sizeBytes: input.sizeBytes,
+    sha256: input.sha256,
+    shape: intakeShape(input.mediaType),
+    mode: "live_file_identity",
+  };
+}
+
 export function previewTextForBytes(mediaType: DocumentMediaType, bytes: ArrayBuffer): string {
-  const textualMedia: readonly DocumentMediaType[] = [DOCUMENT_MEDIA_TYPES.txt, DOCUMENT_MEDIA_TYPES.md, DOCUMENT_MEDIA_TYPES.csv, DOCUMENT_MEDIA_TYPES.json, DOCUMENT_MEDIA_TYPES.jsonl];
+  const textualMedia: readonly DocumentMediaType[] = [DOCUMENT_MEDIA_TYPES.txt, DOCUMENT_MEDIA_TYPES.md, DOCUMENT_MEDIA_TYPES.csv, DOCUMENT_MEDIA_TYPES.json, DOCUMENT_MEDIA_TYPES.jsonl, DOCUMENT_MEDIA_TYPES.xml];
   if (textualMedia.includes(mediaType)) {
     return new TextDecoder().decode(bytes.slice(0, 256_000));
   }

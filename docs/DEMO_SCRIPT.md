@@ -137,7 +137,7 @@ curl --silent --output /dev/null --write-out '%{http_code}\n' \
 Point to `401`.
 
 > This request has no bearer token, so the protected evidence route stops at
-> the API boundary with 401. All 33 method-and-path operations across 31 URL
+> the API boundary with 401. All 38 method-and-path operations across 35 URL
 > paths use the JWT authorizer by default, including Scale Run, OpenAPI, and System
 > Inspector.
 
@@ -640,7 +640,7 @@ detail, request correlation, and current live label.
 ### 37:20 to 38:05: OpenAPI and portability
 
 Return to Export and open the protected OpenAPI 3.1 panel. Point to the served
-contract and the 33 protected operations across 31 URL paths. Mention the
+contract and the 38 protected operations across 35 URL paths. Mention the
 selected CSV format.
 
 ### Narration
@@ -830,7 +830,7 @@ Do not record until every item is true.
 - All three password-only team sessions are stable, and the formal presenter
   TOTP path was verified before recording.
 - Viewer and poweruser scopes differ as expected.
-- All 33 protected operations work with the intended identity when Scale Run is enabled.
+- All 38 protected operations work with the intended identity when Scale Run is enabled.
 - Clean, legacy, and defective files are absent before the take.
 - The redacted preparation receipt says ready and all five fixture hashes
   match.
@@ -843,7 +843,7 @@ Do not record until every item is true.
 - Reviewer can issue the short-lived approval capability.
 - Exact request succeeds once and token reuse fails.
 - System Inspector shows server audit readback without sensitive fields.
-- OpenAPI reflects 33 operations across 31 URL paths.
+- OpenAPI reflects 38 operations across 35 URL paths.
 - Presenter Guide is closed.
 - No secret, token, account ID, ARN, bucket name, email notification, chat
   message, or password manager appears on screen.

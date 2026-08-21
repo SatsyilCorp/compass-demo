@@ -39,7 +39,10 @@ if [ -z "$BUCKET" ] || [ "$BUCKET" = "None" ] || [ -z "$DIST" ] || [ "$DIST" = "
 fi
 
 echo "Syncing $repo/frontend/out → s3://$BUCKET/"
-"${AWS_CLI[@]}" s3 sync "$repo/frontend/out/" "s3://$BUCKET/" --delete
+"${AWS_CLI[@]}" s3 sync "$repo/frontend/out/" "s3://$BUCKET/" \
+  --delete \
+  --exclude ".DS_Store" \
+  --exclude "*/.DS_Store"
 
 echo "Creating CloudFront invalidation on $DIST"
 INVALIDATION_ID="$("${AWS_CLI[@]}" cloudfront create-invalidation \

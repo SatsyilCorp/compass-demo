@@ -86,10 +86,24 @@ if sys.argv[1] == "deploy":
     make_executable(fake_bin / "docker", successful_stub)
     make_executable(
         fake_bin / "git",
-        "#!/usr/bin/env sh\nset -eu\nprintf '%s\\n' mockrevision\n",
+        """#!/usr/bin/env python3
+import os
+import sys
+
+arguments = sys.argv[1:]
+if arguments == ["rev-parse", "--verify", "HEAD"]:
+    print(os.environ["DEPLOY_TEST_REVISION"])
+elif arguments == ["status", "--porcelain=v1", "--untracked-files=all"]:
+    status = os.environ.get("DEPLOY_TEST_STATUS", "")
+    if status:
+        print(status)
+else:
+    raise SystemExit(f"unexpected Git mock call: {' '.join(arguments)}")
+""",
     )
 
     expected_account = "0" * 12
+    expected_revision = "a" * 40
     environment = os.environ.copy()
     environment.update(
         {
@@ -99,6 +113,9 @@ if sys.argv[1] == "deploy":
             "SATSYIL_EXPECTED_ACCOUNT_ID": expected_account,
             "DEPLOY_TEST_ACCOUNT": expected_account,
             "DEPLOY_TEST_LOG": str(deploy_log),
+            "DEPLOY_TEST_REVISION": expected_revision,
+                "DEPLOY_REVISION": expected_revision,
+                "PUBLIC_SBIR_EXECUTION_ENABLED": "false",
             "DATABASE_MODE": "ha",
             "WEB_CUSTOM_DOMAIN_NAME": "compass.example",
             "WEB_CERTIFICATE_ARN": "arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000",
@@ -120,8 +137,14 @@ if sys.argv[1] == "deploy":
     assert len(deploy_calls) == 2
     assert "DatabaseResilienceMode=demo" in deploy_calls[0]
     assert "DatabaseResilienceMode=ha" in deploy_calls[1]
+    assert f"DeployRevision={expected_revision}" in deploy_calls[0]
+    assert f"DeployRevision={expected_revision}" in deploy_calls[1]
+    assert "PublicSbirExecutionEnabled=false" in deploy_calls[0]
+    assert "PublicSbirExecutionEnabled=false" in deploy_calls[1]
     assert "CognitoDomainPrefix=satsyil-compass-demo" in deploy_calls[0]
     assert "CognitoDomainPrefix=satsyil-compass-demo" in deploy_calls[1]
+    assert not any(value.startswith("NotificationEmail=") for value in deploy_calls[0])
+    assert not any(value.startswith("NotificationEmail=") for value in deploy_calls[1])
     assert not any(value.startswith("WebOrigin=") for value in deploy_calls[0])
     assert "WebOrigin=https://demo.invalid" in deploy_calls[1]
     assert "WebCallbackUrl=https://compass.example/login/" in deploy_calls[1]
@@ -130,6 +153,83 @@ if sys.argv[1] == "deploy":
     template_text = (REPOSITORY_ROOT / "template.yaml").read_text(encoding="utf-8")
     assert "EnableDatabaseHa: !Equals [!Ref DatabaseResilienceMode, ha]" in template_text
     assert "DeletionProtection: !If [EnableDatabaseHa, true, false]" in template_text
+
+
+def _run_provenance_rejection(
+    tmp_path: Path,
+    *,
+    head_revision: str,
+    supplied_revision: str,
+    status: str = "",
+) -> subprocess.CompletedProcess[str]:
+    repository = tmp_path / "repository"
+    fake_bin = tmp_path / "bin"
+    (repository / "scripts").mkdir(parents=True)
+    fake_bin.mkdir()
+    shutil.copy2(
+        REPOSITORY_ROOT / "scripts" / "deploy_satsyil.sh",
+        repository / "scripts" / "deploy_satsyil.sh",
+    )
+    make_executable(
+        fake_bin / "git",
+        """#!/usr/bin/env python3
+import os
+import sys
+
+arguments = sys.argv[1:]
+if arguments == ["rev-parse", "--verify", "HEAD"]:
+    print(os.environ["DEPLOY_TEST_REVISION"])
+elif arguments == ["status", "--porcelain=v1", "--untracked-files=all"]:
+    status = os.environ.get("DEPLOY_TEST_STATUS", "")
+    if status:
+        print(status)
+else:
+    raise SystemExit(f"unexpected Git mock call: {' '.join(arguments)}")
+""",
+    )
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PATH": f"{fake_bin}:{environment['PATH']}",
+            "DEPLOY_TEST_REVISION": head_revision,
+            "DEPLOY_TEST_STATUS": status,
+            "DEPLOY_REVISION": supplied_revision,
+        }
+    )
+    return subprocess.run(
+        [str(repository / "scripts" / "deploy_satsyil.sh")],
+        cwd=repository,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+
+
+def test_deploy_rejects_revision_that_is_not_exact_head(tmp_path: Path) -> None:
+    result = _run_provenance_rejection(
+        tmp_path,
+        head_revision="a" * 40,
+        supplied_revision="b" * 40,
+    )
+
+    assert result.returncode != 0
+    assert "must exactly equal the full Git commit SHA at HEAD" in result.stderr
+
+
+def test_deploy_rejects_dirty_source_tree(tmp_path: Path) -> None:
+    revision = "a" * 40
+    result = _run_provenance_rejection(
+        tmp_path,
+        head_revision=revision,
+        supplied_revision=revision,
+        status=" M template.yaml",
+    )
+
+    assert result.returncode != 0
+    assert "deployment requires a clean Git source tree" in result.stderr
+    assert "M template.yaml" in result.stderr
 
 
 def test_custom_domain_is_managed_by_cloudformation_and_deploy_entrypoint() -> None:
@@ -149,6 +249,21 @@ def test_custom_domain_is_managed_by_cloudformation_and_deploy_entrypoint() -> N
     assert '"WebCertificateArn=$WEB_CERTIFICATE_ARN"' in deploy_text
     assert '"WebHostedZoneId=$WEB_HOSTED_ZONE_ID"' in deploy_text
     assert "must be supplied together" in deploy_text
+
+
+def test_public_sbir_preflight_uses_the_full_model_package_arn() -> None:
+    deploy_text = (
+        REPOSITORY_ROOT / "scripts" / "deploy_satsyil.sh"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        'public_sbir_package_arn="arn:aws:sagemaker:$AWS_REGION:'
+        '$SATSYIL_ACCOUNT_ID:model-package/${STACK_NAME}-public-sbir-transition/2"'
+        in deploy_text
+    )
+    assert '--model-package-name "$public_sbir_package_arn"' in deploy_text
+    assert '--model-package-name "${STACK_NAME}-public-sbir-transition/2"' not in deploy_text
+    assert "sam build \\\n  --use-container \\\n  --no-cached" in deploy_text
 
 
 def test_lambda_cors_includes_the_configured_custom_domain() -> None:

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CodeTourButton } from "@/components/shell/code-tour";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -68,6 +69,7 @@ export default function LoginPage() {
     <>
       <SkipNav />
       <GovBanner />
+      <div className="fixed bottom-5 right-5 z-40"><CodeTourButton route="element-1" /></div>
       <div className="min-h-screen bg-bg">
         <header className="border-b border-border-2 bg-surface">
           <div className="mx-auto flex max-w-[1200px] items-center justify-between px-4 py-4 sm:px-6">
@@ -215,7 +217,7 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
     <div className="min-w-0">
       <dt className="text-[9.5px] font-semibold uppercase tracking-wide text-text-subtle">{label}</dt>
       <dd className={`mt-0.5 text-text-strong ${mono ? "font-mono text-[11.5px]" : ""}`}>{value}</dd>
-    </div>
+</div>
   );
 }
 
@@ -228,7 +230,7 @@ function AccessAssuranceExplainer() {
       <ul className="mt-3 space-y-2 text-[12px] leading-relaxed text-text-muted">
         <li className="flex gap-2">
           <KeyRound className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
-          The pool supports optional TOTP (<code className="font-mono text-[11px]">MfaConfiguration: OPTIONAL</code>). Team reviewers remain password-only, while the dedicated formal presenter identity enrolls an authenticator.
+          The dedicated formal presenter identity signs in with authenticator-based TOTP multi-factor; the pool scopes enrollment per identity (<code className="font-mono text-[11px]">MfaConfiguration: OPTIONAL</code>), and every session then passes the deny-by-default API authorizer.
         </li>
         <li className="flex gap-2">
           <Lock className="mt-0.5 size-3.5 shrink-0 text-gov-secondary" aria-hidden />
@@ -295,9 +297,10 @@ function ZeroTrustExplainer() {
           hidden in the UI.
         </li>
         <li>
-          <strong className="text-text-strong">Every export is audited</strong> - writes an immutable{" "}
-          <code className="font-mono text-[11px]">audit_log</code> row, and rows above the export cap require an
-          approval before they'll run.
+          <strong className="text-text-strong">Protected export policy is separate from browser preview</strong> - the
+          configured <code className="font-mono text-[11px]">POST /export</code> workflow is designed to recheck scope,
+          require approval above its cap, and write an immutable <code className="font-mono text-[11px]">audit_log</code>
+          row. The live public portable-preview screen does not call that workflow and makes no approval or audit claim.
         </li>
       </ul>
     </section>

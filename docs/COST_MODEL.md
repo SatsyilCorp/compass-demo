@@ -13,10 +13,10 @@ monthly cost of keeping the AWS platform deployed. It applies no free tier,
 credits, Savings Plans, private discounts, tax treatment, or support plan.
 
 The inventory and document-workload estimates below price the current
-`local-fe56c61` deployment, which has 13 alarms and 2 dashboards when Scale is
-enabled. The document MLOps resources are deployed, but no end-to-end document
-workload or SageMaker job has been accepted and billing-reconciled. The values
-remain planning estimates rather than observed usage or billing.
+source-target deployment, which has 18 alarms and 2 dashboards
+when Scale is enabled. One authentic public SBIR training job completed, but
+Cost Explorer or Cost and Usage Report evidence has not yet reconciled the
+bill. The values remain planning estimates rather than observed billing.
 
 ## Executive estimate
 
@@ -27,8 +27,12 @@ remain planning estimates rather than observed usage or billing.
 | One live 10K Scale Run | $0.01915314 |
 | One live demo with one document intake and one 10K Scale Run | Up to $0.025 |
 | One optional SageMaker training job, `ml.m5.large`, 30-minute hard limit | $0.0575 compute, plus storage and requests |
-| Low-use month, one writer, Scale enabled, four live demos | About $126.42 |
-| Low-use month, writer plus reader, Scale enabled, four live demos | About $170.22 |
+| Completed 25-record SageMaker Batch Transform current-cohort run | $0.0023 estimate-only compute for 72 observed seconds |
+| Per submitted Batch Transform cleanup guard and retained execution data | Budget up to $0.01 for the bounded schedule, reconciliation requests, dead-letter safety path, and seven-day input, copied-model, and output retention, excluding the transform compute above |
+| Current public-intelligence live-object storage | About $0.0068/month at 294,668,909 bytes across the evidence and SBIR model prefixes |
+| Five-minute USAspending micro-batch acquisition | Budget up to $0.25/month for 8,640 polls, two S3 writes per accepted poll, DynamoDB receipts, Lambda, Kinesis change events, and SNS publications |
+| Low-use month, one writer, Scale enabled, four live demos | About $127.17 |
+| Low-use month, writer plus reader, Scale enabled, four live demos | About $170.97 |
 
 The live demo estimates are workload additions. They do not stop the fixed
 monthly platform charges. Browser replay does not call live compute, so its
@@ -41,8 +45,8 @@ its hourly and monthly charges.
 - The default database mode has one Aurora Serverless v2 writer at a minimum
   of 0.5 ACU. HA adds one reader with the same minimum.
 - The Kinesis ticker stream remains deployed in on-demand mode.
-- Scale enabled means thirteen standard CloudWatch alarms and two dashboards.
-  Scale disabled means six alarms and one dashboard.
+- Scale enabled means eighteen standard CloudWatch alarms and two dashboards.
+  Scale disabled means eleven alarms and one dashboard.
 - WAF planning includes one web ACL and three billed rule-equivalents for the
   rate rule and managed rule group configuration.
 - One low-use month contains four live demos and 5 GB-month of S3 Standard
@@ -69,29 +73,30 @@ service pricing pages on 2026-08-11.
 | Customer-managed KMS key | 1 key-month | $1.00/key-month | $1.00 |
 | Secrets Manager | 1 secret-month | $0.40/secret-month | $0.40 |
 | WAF | 1 ACL and 3 modeled rule-equivalents | $5.00/ACL-month and $1.00/rule-month | $8.00 |
-| CloudWatch, Scale disabled | 6 alarms and 1 dashboard | $0.10/alarm-month and $3.00/dashboard-month | $3.60 |
-| CloudWatch, Scale enabled | 13 alarms and 2 dashboards | $0.10/alarm-month and $3.00/dashboard-month | $7.30 |
+| CloudWatch, Scale disabled | 11 alarms and 1 dashboard | $0.10/alarm-month and $3.00/dashboard-month | $4.10 |
+| CloudWatch, Scale enabled | 18 alarms and 2 dashboards | $0.10/alarm-month and $3.00/dashboard-month | $7.80 |
 
 | Deployment posture | Fixed monthly estimate |
 |---|---:|
-| One writer, Scale disabled | $122.50 |
-| One writer, Scale enabled | $126.20 |
-| Writer plus reader, Scale disabled | $166.30 |
-| Writer plus reader, Scale enabled | $170.00 |
+| One writer, Scale disabled | $123.00 |
+| One writer, Scale enabled | $126.70 |
+| Writer plus reader, Scale disabled | $166.80 |
+| Writer plus reader, Scale enabled | $170.50 |
 
 The HA calculation adds `365 ACU-hours * $0.12 = $43.80` for the reader.
 
 The low-use total for the normal live demonstration posture is:
 
 ```text
-one writer, Scale enabled       $126.200
+one writer, Scale enabled       $126.700
 four live demos, $0.025 each       0.100
 5 GB-month S3 Standard              0.115
+scheduled public acquisition        0.250
                                       -----
-low-use month                    $126.415, rounded to $126.42
+low-use month                    $127.165, rounded to $127.17
 ```
 
-For HA, replace the first line with $170.00, giving $170.22 after rounding.
+For HA, replace the first line with $170.50, giving $170.97 after rounding.
 These are planning floors, not maximum invoices.
 
 ## Live demonstration calculations
@@ -139,6 +144,63 @@ Adding that compute to the $0.025 default live demo gives a modeled subtotal
 of $0.0825. Training volume storage, S3, ECR, logs, network transfer, and any
 other service usage remain separate. No always-on SageMaker endpoint exists in
 the current design, so no endpoint-month is included.
+
+The authentic SBIR session submitted five bounded jobs while packaging and
+runtime defects were diagnosed. Four failed and one completed. SageMaker
+reported 542 aggregate billable seconds: 125, 129, 89, 90, and 109 seconds.
+Using the same $0.115 per hour rate gives:
+
+```text
+542 seconds / 3,600 * $0.115 = $0.01731 modeled training compute
+```
+
+The successful job accounts for 109 seconds, or about $0.00348 of that modeled
+compute. These are rate-based estimates, not reconciled billed values.
+
+The bounded inference session first stopped one diagnosed offline packaging
+attempt after 726 observed seconds, modeled at $0.02319. The corrected smoke
+retry completed eight predictions in 71 observed seconds, modeled at
+$0.002268. The current-cohort production-path run completed 25 predictions in
+72 observed seconds, with a rounded estimate of $0.0023. The combined
+rate-based inference estimate is about $0.02776, excluding storage, requests,
+logs, and tax. These are estimate-only values, not reconciled billing.
+
+Every submitted transform also creates one per-run EventBridge Scheduler
+cleanup guard. It starts after five minutes, invokes reconciliation once per
+minute, self-deletes after terminal cleanup, and has a bounded 24-hour safety
+window for transient cleanup failures. Exhausted retries enter an encrypted
+dead-letter queue with a CloudWatch alarm. Input, the exact
+write-once model copy, and output use a seven-day lifecycle; noncurrent versions
+expire after one day. A conservative $0.01 planning allowance per submission
+covers the bounded schedule, Lambda, S3, KMS, and retained execution objects,
+excluding Batch Transform compute, logs, and tax. This is an allowance, not
+observed billing.
+
+### Public evidence and cited intelligence
+
+The public collectors run locally against no-fee public APIs and downloads, so
+the completed collection incurred no AWS compute charge. After the corrected
+OpenAlex, PubMed, OSTI, USPTO, and official ONR website snapshots were promoted,
+the encrypted public-intelligence prefix contained 232,017,568 bytes across 87
+current S3 objects. The separate SBIR training and registry prefix contained
+62,651,341 bytes across 7 current objects. At the modeled S3 Standard rate of
+$0.023 per GB-month, their combined current-object footprint adds about $0.0068
+per month. Prior object versions, API requests, KMS requests, logs, and future
+snapshots remain separate.
+
+The funding forecast was trained locally from observed USAspending quarterly
+obligations and registered as a candidate in SageMaker Model Registry. The
+separate SBIR transition candidate was trained on SageMaker and registered as
+`PendingManualApproval`. No endpoint exists, so neither candidate adds an
+endpoint-hour charge. S3 storage, KMS requests, registry API activity, and the
+training compute above remain part of normal service usage.
+
+Each cited explanation uses one API Gateway request, one bounded Lambda
+invocation, S3 manifest and index reads that are cached within a warm runtime,
+KMS decryption through S3, and at most one Amazon Bedrock request capped at 500
+output tokens. Exact Bedrock cost depends on the selected model and input and
+output token counts. The runtime returns a deterministic cited answer if the
+model is unavailable, and no always-on generative compute is provisioned.
 
 ## What is not included
 

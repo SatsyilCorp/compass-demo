@@ -1,0 +1,24 @@
+{
+  "title": "Naval Research Information Collection",
+  "type": "Notice",
+  "abstract": "The Office of Naval Research requests public comment.",
+  "action": "Thirty-day information collection notice.",
+  "document_number": "2026-10002",
+  "citation": "91 FR 21002",
+  "html_url": "https://www.federalregister.gov/d/2026-10002",
+  "pdf_url": "https://www.govinfo.gov/content/pkg/FR-2026-06-01/pdf/2026-10002.pdf",
+  "json_url": "https://www.federalregister.gov/api/v1/documents/2026-10002",
+  "publication_date": "2026-06-01",
+  "comments_close_on": "2026-07-01",
+  "agencies": [
+    {
+      "raw_name": "Department of the Navy",
+      "name": "Navy Department",
+      "slug": "navy-department"
+    }
+  ],
+  "docket_ids": ["Docket ID: USN-2026-HQ-0002"],
+  "regulation_id_numbers": [],
+  "cfr_references": [],
+  "topics": ["Information collection"]
+}

@@ -1,9 +1,10 @@
 # Compass production-scale architecture
 
-Status: the current 33-operation resources are deployed in Satsyil AWS in HA
+Status: the current 38-operation resources are deployed in Satsyil AWS in HA
 mode. Scale, browser, document intelligence, model training, exact-version
-promotion, and drift evidence have live acceptance receipts. No SageMaker
-training job or endpoint was started.
+promotion, drift, public-evidence verification, cited explanation, and one
+authentic public SBIR SageMaker training job have live acceptance receipts. The
+candidate remains `PendingManualApproval`, and no endpoint was created.
 
 This diagram is the architecture deployed by the production-scale
 demonstrator. Solid arrows are runtime data or control flow. Receipts are
@@ -41,7 +42,10 @@ flowchart TB
     Parquet[("Curated Parquet partitions")]
     Merge["Full-corpus aggregate and anomaly merge"]
     IR["Intelligence Receipt"]
+    PublicIntel["Public evidence intelligence and cited explanation"]
   end
+
+  PublicLake[("KMS-encrypted public source snapshots and verified serving index")]
 
   subgraph Evidence["Evidence and release plane"]
     ScaleLab["Interactive Scale Lab"]
@@ -72,6 +76,8 @@ flowchart TB
   Athena --> Parquet
   Receipts --> Merge
   Merge --> IR
+  PublicLake --> PublicIntel
+  PublicIntel --> API
   IR --> Ledger
   Ledger --> API
   Aurora --> API
@@ -87,12 +93,12 @@ flowchart TB
 
 | Boundary | Live Satsyil evidence |
 |---|---|
-| Interface | 33 Cognito-protected API operations across 31 URL paths are deployed; unauthenticated protected requests return 401 |
-| Compute | 18 Lambda functions and 3 state machines are deployed; bounded Scale, document, and model paths have accepted receipts |
-| Data | Private encrypted Aurora with one writer and one reader, 14-day backups, deletion protection, DynamoDB ledger, SQS with DLQ, and governed S3 lake zones |
-| Intelligence | Six Glue tables, scan-limited Athena, Parquet materialization, full-corpus deterministic topic and anomaly aggregation, and governed export |
+| Interface | 38 Cognito-protected API operations across 35 URL paths are deployed; unauthenticated protected requests return 401 |
+| Compute | 19 Lambda functions and 3 state machines are deployed; bounded Scale, document, model, and public-intelligence paths have accepted receipts |
+| Data | Private encrypted Aurora with one writer and one reader, 14-day backups, deletion protection, DynamoDB ledger, SQS with DLQ, governed Scale zones, and an isolated KMS-encrypted public-evidence prefix |
+| Intelligence | Six Glue tables, scan-limited Athena, Parquet materialization, full-corpus deterministic topic and anomaly aggregation, governed export, SHA-256 verified public evidence, and Bedrock cited explanation |
 | Edge and identity | CloudFront, WAF, exact-origin CORS, password-only Cognito team accounts, a dedicated TOTP presenter, and ready poweruser, reviewer, and viewer personas |
-| Operations | 13 alarms, 2 dashboards, API and workflow logs, application logs, and X-Ray tracing are deployed |
+| Operations | 15 alarms, 2 dashboards, API and workflow logs, application logs, and X-Ray tracing are deployed |
 
 The fixed demonstration baseline passed 19 of 19 preparation checks. A live
 password-only poweruser session loaded the dashboard with 480 grants across
@@ -120,7 +126,7 @@ The saved acceptance receipts invoked the deployed Scale Control Lambda using
 AWS IAM and a staged API Gateway event. That path exercised the same route
 handler and live data plane, but bypassed Cognito, API Gateway transport, WAF,
 and the browser. Those interfaces were verified separately through the live
-browser and 25-operation CORS checks.
+browser and recorded CORS boundary checks.
 
 ## Evaluator flow
 

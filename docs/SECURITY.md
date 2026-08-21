@@ -246,7 +246,7 @@ Implemented demonstration observability includes:
 - One explicit stack-owned 14-day application log group with function-specific streams
 - Step Functions logging at `ALL`
 - Active X-Ray tracing for Lambda functions
-- Eleven alarms covering API, functions, queues, workflow, and database signals
+- Fifteen alarms covering API, functions, queues, workflow, and database signals
 - Two source-controlled CloudWatch dashboards for operations and Scale Run evidence
 
 No alarm notification target is configured in the demonstration template.
