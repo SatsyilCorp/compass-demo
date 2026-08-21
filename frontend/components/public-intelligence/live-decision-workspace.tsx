@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -19,6 +20,9 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shell/page-header";
+import { AnomalyWorkflow } from "@/components/dashboard/anomaly-workflow";
+import { ApiError, getDashboard } from "@/lib/api";
+import type { DashboardFilters, DashboardResponse } from "@/lib/types";
 import { LiveEvidenceStatus } from "./live-evidence-status";
 import {
   formatPublicMoney,
@@ -169,6 +173,109 @@ export function LivePublicDecisionWorkspace() {
           </section>
         </>
       ) : null}
+
+      <CuratedPortfolioFilter />
+      <AnomalyWorkflow />
+    </div>
+  );
+}
+
+/**
+ * Element 6's search-and-filter on the live plane: the same protected
+ * GET /dashboard the export page trusts, filtered by program area and fiscal
+ * year, rendering the engine-scoped aggregates. Unavailable stays unavailable.
+ */
+function CuratedPortfolioFilter() {
+  const [filters, setFilters] = useState<DashboardFilters>({});
+  const [data, setData] = useState<DashboardResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (next: DashboardFilters) => {
+    setLoading(true);
+    setError(null);
+    try {
+      setData(await getDashboard(next));
+    } catch (err: unknown) {
+      setError(
+        err instanceof ApiError
+          ? `The protected dashboard service answered ${err.status}. No synthetic aggregates were substituted.`
+          : err instanceof Error
+            ? err.message
+            : "Dashboard query failed",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load({});
+  }, [load]);
+
+  function apply(next: DashboardFilters) {
+    setFilters(next);
+    void load(next);
+  }
+
+  const options = data?.filter_options;
+  const kpis = data?.kpis;
+
+  return (
+    <section aria-label="Filter the curated portfolio" className="rounded-xl border border-gov-primary/20 bg-surface p-4 shadow-soft">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wide text-gold-ink">Search and filter</p>
+          <h2 className="mt-1 text-base font-bold text-text-strong">Filter the curated portfolio</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-text-muted">
+            Aggregates come from the protected dashboard query under your row- and column-level scope - the same endpoint the governed export estimates against.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">
+            Program area
+            <select
+              value={filters.program_area ?? ""}
+              onChange={(event) => apply({ ...filters, program_area: event.target.value || undefined })}
+              className="mt-1 block min-h-11 rounded-md border border-border bg-white px-2 text-xs font-semibold text-text-strong"
+            >
+              <option value="">All visible</option>
+              {(options?.program_areas ?? []).map((area) => <option key={area} value={area}>{area}</option>)}
+            </select>
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-subtle">
+            Fiscal year
+            <select
+              value={filters.fiscal_year ?? ""}
+              onChange={(event) => apply({ ...filters, fiscal_year: event.target.value ? Number(event.target.value) : undefined })}
+              className="mt-1 block min-h-11 rounded-md border border-border bg-white px-2 text-xs font-semibold text-text-strong"
+            >
+              <option value="">All visible</option>
+              {(options?.fiscal_years ?? []).map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+      {error ? (
+        <p className="mt-3 rounded-lg border border-warn/35 bg-warn-soft p-3 text-xs leading-5 text-warn">{error}</p>
+      ) : null}
+      {kpis ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-busy={loading}>
+          <MiniKpi label="Records in scope" value={kpis.total_grants.toLocaleString("en-US")} />
+          <MiniKpi label="Total funding" value={kpis.total_funding_usd === null ? "Masked for this role" : `$${kpis.total_funding_usd.toLocaleString("en-US")}`} />
+          <MiniKpi label="Avg quality score" value={kpis.avg_quality_score === null ? "—" : kpis.avg_quality_score.toFixed(1)} />
+          <MiniKpi label="Open anomalies" value={kpis.open_anomalies.toLocaleString("en-US")} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MiniKpi({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-white p-3">
+      <p className="text-[8px] font-bold uppercase tracking-wide text-text-subtle">{label}</p>
+      <p className="mt-1 truncate font-mono text-lg font-bold text-text-strong" title={value}>{value}</p>
     </div>
   );
 }

@@ -19,6 +19,11 @@ const MANIFEST = {
       title: "Cognito pool, MFA, RLS personas",
       note: "MFA and the role-to-row-scope mapping are declared configuration, not a promise." },
   ],
+  "/licenses/": [
+    { path: "src/functions/license/app.py", start: 76, end: 210,
+      title: "License register and renewal alerts",
+      note: "Renewal urgency, seat utilization, and effective status - the prompt (e) methodology as code." },
+  ],
   "/admin/delivery/": [
     { path: ".github/workflows/pipeline.yml",
       title: "Golden pipeline consumption (org standard)",
@@ -26,6 +31,12 @@ const MANIFEST = {
     { path: ".github/workflows/devsecops.yml",
       title: "CloudFormation policy gates",
       note: "The gates the golden standard cannot express yet: SAM validation, policy-as-code, the STIG evidence index, and the enforcing secret scan." },
+    { path: "template.yaml", start: 1, end: 80,
+      title: "The environment as CloudFormation",
+      note: "The single template the whole 100+-resource environment is provisioned from - parameters are the operational policy knobs." },
+    { path: "infra/terraform/main.tf", start: 1, end: 70,
+      title: "The ML slice as Terraform",
+      note: "The same architecture expressed in a second IaC dialect - the anti-lock-in proof." },
   ],
   "/ingest/": [
     { path: "src/functions/intake/pipeline.py", start: 1, end: 160,
@@ -37,12 +48,20 @@ const MANIFEST = {
       title: "Row-level security policy",
       note: "FORCE ROW LEVEL SECURITY - the role-to-rows rule as source-controlled SQL." },
   ],
+  "/admin/lineage/": [
+    { path: "src/functions/operations/app.py", start: 180, end: 280,
+      title: "Lineage readback (server-side)",
+      note: "The per-run lineage the visual trace renders - reconstructed from receipts, stage by stage." },
+  ],
   "/catalog/lineage/": [
     { path: "db/migrations/002_rls.sql", start: 5,
       title: "Row-level security policy",
       note: "FORCE ROW LEVEL SECURITY - the role-to-rows rule as source-controlled SQL." },
   ],
   "/admin/mlops/": [
+    { path: "src/functions/analytics/topic_model.py", start: 1, end: 120,
+      title: "Topic model (open-source Python)",
+      note: "The analytical routine Element 5 triggers - versioned, cited in every run receipt." },
     { path: "src/functions/document_ml/engine.py", start: 380, end: 470,
       title: "Classifier training (readable Python)",
       note: "The document model is auditable stdlib Python - no black box." },
