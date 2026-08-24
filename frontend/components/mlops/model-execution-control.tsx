@@ -63,7 +63,7 @@ function statusStyle(status: PublicModelExecutionReceipt["status"]): string {
   return "border-info/30 bg-info-soft text-info";
 }
 
-export function ModelExecutionControl() {
+export function ModelExecutionControl({ onReceipt }: { onReceipt?: (receipt: PublicModelExecutionReceipt) => void } = {}) {
   const auth = useAppAuth();
   const { mode } = useEvidenceMode();
   const rehearsal = mode === "rehearsal";
@@ -90,7 +90,8 @@ export function ModelExecutionControl() {
     setReceipt(next);
     setLastCheckedAt(new Date().toISOString());
     setPhase(isTerminalModelExecutionStatus(next.status) ? "terminal" : "polling");
-  }, []);
+    onReceipt?.(next);
+  }, [onReceipt]);
 
   const pollExecution = useCallback(async function poll(
     executionId: string,
