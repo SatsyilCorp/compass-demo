@@ -124,17 +124,28 @@ jobs:
           if aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
             echo "STACK_EXISTS=true" >> "$GITHUB_ENV"
             domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue' --output text)
-            python - "$domain" "$GITHUB_ENV" <<'PY'
+            custom_domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Parameters[?ParameterKey==`WebCustomDomainName`].ParameterValue' --output text)
+            python - "$domain" "$custom_domain" "$GITHUB_ENV" <<'PY'
           import re
           import sys
 
-          domain, destination = sys.argv[1:]
+          domain, custom_domain, destination = sys.argv[1:]
           assert re.fullmatch(r"[a-z0-9]+\.cloudfront\.net", domain), "invalid CloudFrontDomain stack output"
+          # Cognito accepts exactly the callback URLs the template lists, so the
+          # sign-in origin must be the domain browsers actually use. When the
+          # stack carries a custom domain, that domain owns identity; the
+          # distribution domain stays the CORS origin (the template adds the
+          # custom domain to CORS_ALLOW_ORIGINS on its own).
+          identity_domain = domain
+          if custom_domain not in ("", "None"):
+              assert re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", custom_domain), "invalid WebCustomDomainName stack parameter"
+              identity_domain = custom_domain
           origin = f"https://{domain}"
+          identity_origin = f"https://{identity_domain}"
           with open(destination, "a", encoding="utf-8") as handle:
               handle.write(f"WEB_ORIGIN={origin}\n")
-              handle.write(f"WEB_CALLBACK_URL={origin}/login/\n")
-              handle.write(f"WEB_LOGOUT_URL={origin}/login/\n")
+              handle.write(f"WEB_CALLBACK_URL={identity_origin}/login/\n")
+              handle.write(f"WEB_LOGOUT_URL={identity_origin}/login/\n")
           PY
           else
             echo "STACK_EXISTS=false" >> "$GITHUB_ENV"
@@ -195,18 +206,26 @@ jobs:
             notification_parameters+=("NotificationEmail=$NOTIFICATION_EMAIL")
           fi
           domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue' --output text)
-          python - "$domain" "$GITHUB_ENV" <<'PY'
+          custom_domain=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Parameters[?ParameterKey==`WebCustomDomainName`].ParameterValue' --output text)
+          identity_origin=$(python - "$domain" "$custom_domain" "$GITHUB_ENV" <<'PY'
           import re
           import sys
 
-          domain, destination = sys.argv[1:]
+          domain, custom_domain, destination = sys.argv[1:]
           assert re.fullmatch(r"[a-z0-9]+\.cloudfront\.net", domain), "invalid CloudFrontDomain stack output"
+          identity_domain = domain
+          if custom_domain not in ("", "None"):
+              assert re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", custom_domain), "invalid WebCustomDomainName stack parameter"
+              identity_domain = custom_domain
           origin = f"https://{domain}"
+          identity_origin = f"https://{identity_domain}"
           with open(destination, "a", encoding="utf-8") as handle:
               handle.write(f"WEB_ORIGIN={origin}\n")
-              handle.write(f"WEB_CALLBACK_URL={origin}/login/\n")
-              handle.write(f"WEB_LOGOUT_URL={origin}/login/\n")
+              handle.write(f"WEB_CALLBACK_URL={identity_origin}/login/\n")
+              handle.write(f"WEB_LOGOUT_URL={identity_origin}/login/\n")
+          print(identity_origin)
           PY
+          )
           web_origin="https://${domain}"
           sam deploy \
             --stack-name "$STACK_NAME" \
@@ -223,8 +242,8 @@ jobs:
               PublicAcquisitionState="$PUBLIC_ACQUISITION_STATE" \
               PublicAcquisitionChangeAlertThreshold="$PUBLIC_ACQUISITION_CHANGE_ALERT_THRESHOLD" \
               "${notification_parameters[@]}" \
-              WebCallbackUrl="${web_origin}/login/" \
-              WebLogoutUrl="${web_origin}/login/" \
+              WebCallbackUrl="${identity_origin}/login/" \
+              WebLogoutUrl="${identity_origin}/login/" \
               WebOrigin="$web_origin"
 
       - name: Apply forward database migrations
