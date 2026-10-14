@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -14,11 +14,21 @@ from compass_common.scale_cost import (
 )
 
 
+def _snapshot_time(catalog: PriceCatalog) -> datetime:
+    return datetime.fromisoformat(catalog.captured_at.replace("Z", "+00:00"))
+
+
 def test_profile_estimates_are_bounded_and_monotonic():
     catalog = PriceCatalog.load()
+    now = _snapshot_time(catalog) + timedelta(days=1)
     estimates = []
     for profile_id, records in (("1k", 1_000), ("10k", 10_000), ("100k", 100_000), ("1m", 1_000_000)):
-        estimate = estimate_incremental(profile_id, modeled_quantities(records), catalog=catalog)
+        estimate = estimate_incremental(
+            profile_id,
+            modeled_quantities(records),
+            catalog=catalog,
+            now=now,
+        )
         assert estimate["within_envelope"] is True
         assert estimate["free_tier_applied"] is False
         assert estimate["line_items"]
@@ -59,6 +69,30 @@ def test_cost_gate_rejects_stale_or_future_price_snapshot():
                 "within_envelope": True,
             }
         )
+
+
+def test_estimate_marks_snapshot_freshness_against_the_given_time():
+    catalog = PriceCatalog.load()
+    captured = _snapshot_time(catalog)
+    quantities = modeled_quantities(1_000)
+
+    def estimate_at(moment: datetime) -> dict:
+        return estimate_incremental("1k", quantities, catalog=catalog, now=moment)
+
+    at_limit = estimate_at(captured + timedelta(days=30))
+    assert at_limit["price_snapshot_fresh"] is True
+    assert Decimal(at_limit["price_snapshot_age_days"]) == Decimal("30")
+    assert at_limit["generated_at"] == (captured + timedelta(days=30)).isoformat()
+    assert_cost_gate(at_limit)
+
+    for moment in (captured + timedelta(days=30, seconds=1), captured - timedelta(days=2)):
+        stale = estimate_at(moment)
+        assert stale["price_snapshot_fresh"] is False
+        with pytest.raises(ValueError, match="snapshot"):
+            assert_cost_gate(stale)
+
+    with pytest.raises(ValueError, match="timezone"):
+        estimate_at(datetime(2026, 8, 12))
 
 
 def test_catalog_snapshot_age_is_timezone_aware():
