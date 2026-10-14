@@ -197,8 +197,10 @@ def estimate_incremental(
     deployed_hard_cap_usd: Decimal | str = Decimal("10.00"),
     contingency_pct: Decimal | str = Decimal("25"),
     price_snapshot_max_age_days: Decimal | str = Decimal("30"),
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     catalog = catalog or PriceCatalog.load()
+    observed = now or datetime.now(timezone.utc)
     profile_cap = PROFILE_ENVELOPES_USD.get(profile_id)
     if profile_cap is None:
         raise ValueError("unknown workload profile")
@@ -206,7 +208,7 @@ def estimate_incremental(
     maximum = min(profile_cap, hard_cap)
     contingency = Decimal(str(contingency_pct))
     maximum_age = Decimal(str(price_snapshot_max_age_days))
-    snapshot_age = catalog.snapshot_age_days()
+    snapshot_age = catalog.snapshot_age_days(observed)
     snapshot_fresh = Decimal("-1") <= snapshot_age <= maximum_age
     mapping = (
         ("lambda_arm_request", quantities.lambda_arm_requests),
@@ -239,7 +241,7 @@ def estimate_incremental(
         "price_snapshot_age_days": _decimal_text(snapshot_age),
         "price_snapshot_max_age_days": _decimal_text(maximum_age),
         "price_snapshot_fresh": snapshot_fresh,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": observed.isoformat(),
         "quantities": _jsonable(asdict(quantities)),
         "line_items": items,
         "subtotal_usd": _decimal_text(subtotal),
